@@ -9,10 +9,13 @@ import '../domain/push_sender.dart';
 final oneSignalServiceProvider =
     Provider<OneSignalService>((ref) => OneSignalService());
 
-final pushSenderProvider = Provider<PushSender>((ref) => HttpPushSender(
-      relayUrl: AppSecrets.pushRelayUrl,
-      relayToken: AppSecrets.pushRelayToken,
-    ));
+final pushSenderProvider = Provider<PushSender>((ref) {
+  if (!AppSecrets.hasPushRelay) return const NoopPushSender();
+  return HttpPushSender(
+    relayUrl: AppSecrets.pushRelayUrl,
+    relayToken: AppSecrets.pushRelayToken,
+  );
+});
 
 final signOutProvider = Provider<Future<void> Function()>((ref) {
   return () async {
