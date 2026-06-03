@@ -20,4 +20,17 @@ void main() {
     expect(() => computeRelease(fund(100000), Money.fromPesos(2000)),
         throwsStateError);
   });
+
+  test('computeRelease NOT low when balance one centavo above threshold', () {
+    // threshold = 3% of 100,000 = 3,000.00 = 300000 centavos.
+    // start 500001 centavos, release 2000.00 -> 300001 -> NOT low
+    final r = computeRelease(fund(500001), Money.fromPesos(2000));
+    expect(r.fundIsLow, isFalse);
+  });
+
+  test('computeRelease allows releasing exactly the full balance to zero', () {
+    final r = computeRelease(fund(200000), Money.fromCentavos(200000));
+    expect(r.newBalance, Money.zero);
+    expect(r.fundIsLow, isTrue);
+  });
 }

@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -33,8 +35,11 @@ class CloudinaryUploader {
         ..fields['folder'] = folder
         ..files.add(http.MultipartFile.fromBytes('file', bytes,
             filename: 'proof.jpg'));
-      final streamed = await client.send(request);
-      final body = await streamed.stream.bytesToString();
+      final streamed =
+          await client.send(request).timeout(const Duration(seconds: 30));
+      final body = await streamed.stream
+          .bytesToString()
+          .timeout(const Duration(seconds: 30));
       if (streamed.statusCode != 200) {
         return Err(UnexpectedFailure('Upload failed (${streamed.statusCode}).'));
       }
@@ -43,7 +48,11 @@ class CloudinaryUploader {
         return const Err(UnexpectedFailure('Upload returned no URL.'));
       }
       return Ok(url);
-    } catch (_) {
+    } on TimeoutException {
+      return const Err(UnexpectedFailure('Upload timed out. Please retry.'));
+    } catch (e, st) {
+      developer.log('cloudinary upload failed',
+          name: 'cloudinary', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Could not upload the proof image.'));
     }
   }

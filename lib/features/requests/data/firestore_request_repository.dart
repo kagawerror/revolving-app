@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../../../core/error/failure.dart';
@@ -58,7 +60,8 @@ class FirestoreRequestRepository implements RequestRepository {
       await _appendHistory(ref.id, 'created', request.createdByUid,
           to: request.status);
       return Ok(ref.id);
-    } catch (_) {
+    } catch (e, st) {
+      developer.log('create failed', name: 'requests', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Could not create the request.'));
     }
   }
@@ -75,17 +78,37 @@ class FirestoreRequestRepository implements RequestRepository {
           'Cannot move ${request.status.name} → ${to.name}.'));
     }
     try {
-      await _requests.doc(request.id).update({
-        'status': to.name,
-        if (to == RequestStatus.acknowledged) ...{
-          'approverUid': actorUid,
-          'approverDecisionAt': FieldValue.serverTimestamp(),
-        },
+      await _db.runTransaction((tx) async {
+        final ref = _requests.doc(request.id);
+        final snap = await tx.get(ref);
+        if (!snap.exists) throw StateError('Request not found.');
+        final current = RequestStatus.fromName(snap.data()!['status'] as String?);
+        if (!current.canTransitionTo(to)) {
+          throw StateError('This request was already updated by someone else.');
+        }
+        tx.update(ref, {
+          'status': to.name,
+          if (to == RequestStatus.acknowledged) ...{
+            'approverUid': actorUid,
+            'approverDecisionAt': FieldValue.serverTimestamp(),
+          },
+        });
+        final historyRef = ref.collection('history').doc();
+        tx.set(historyRef, {
+          'event': to.name,
+          'actorUid': actorUid,
+          'from': current.name,
+          'to': to.name,
+          'note': note,
+          'at': FieldValue.serverTimestamp(),
+        });
       });
-      await _appendHistory(request.id, to.name, actorUid,
-          from: request.status, to: to, note: note);
       return const Ok(null);
-    } catch (_) {
+    } on StateError catch (e) {
+      return Err(ValidationFailure(e.message));
+    } catch (e, st) {
+      developer.log('transition failed',
+          name: 'requests', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Could not update the request.'));
     }
   }
@@ -115,13 +138,22 @@ class FirestoreRequestRepository implements RequestRepository {
           'status': RequestStatus.released.name,
           'releasedAt': FieldValue.serverTimestamp(),
         });
+        final historyRef =
+            _requests.doc(request.id).collection('history').doc();
+        tx.set(historyRef, {
+          'event': 'released',
+          'actorUid': actorUid,
+          'from': request.status.name,
+          'to': RequestStatus.released.name,
+          'note': null,
+          'at': FieldValue.serverTimestamp(),
+        });
       });
-      await _appendHistory(request.id, 'released', actorUid,
-          from: request.status, to: RequestStatus.released);
       return const Ok(null);
     } on StateError catch (e) {
       return Err(ValidationFailure(e.message));
-    } catch (_) {
+    } catch (e, st) {
+      developer.log('release failed', name: 'requests', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Release failed. Please retry.'));
     }
   }
