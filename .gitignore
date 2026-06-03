@@ -53,4 +53,3 @@ app.*.map.json
 .env
 .env.*
 !.env.example
-/lib/core/config/app_secrets.dart
