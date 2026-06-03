@@ -1,5 +1,9 @@
+import 'dart:developer' as developer;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/error/failure.dart';
+import '../../../core/error/result.dart';
 import '../domain/fund.dart';
 import '../domain/fund_repository.dart';
 
@@ -22,5 +26,13 @@ class FirestoreFundRepository implements FundRepository {
       );
 
   @override
-  Future<void> create(Fund fund) => _col.add(fund.toCreateMap());
+  Future<Result<void>> create(Fund fund) async {
+    try {
+      await _col.add(fund.toCreateMap());
+      return const Ok(null);
+    } catch (e, st) {
+      developer.log('create failed', name: 'funds', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not create the fund.'));
+    }
+  }
 }

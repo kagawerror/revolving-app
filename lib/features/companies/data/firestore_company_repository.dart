@@ -1,5 +1,9 @@
+import 'dart:developer' as developer;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import '../../../core/error/failure.dart';
+import '../../../core/error/result.dart';
 import '../domain/company.dart';
 import '../domain/company_repository.dart';
 
@@ -15,8 +19,14 @@ class FirestoreCompanyRepository implements CompanyRepository {
       );
 
   @override
-  Future<String> create(String name) async {
-    final ref = await _col.add({'name': name, 'createdAt': FieldValue.serverTimestamp()});
-    return ref.id;
+  Future<Result<String>> create(String name) async {
+    try {
+      final ref = await _col
+          .add({'name': name, 'createdAt': FieldValue.serverTimestamp()});
+      return Ok(ref.id);
+    } catch (e, st) {
+      developer.log('create failed', name: 'companies', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not create the company.'));
+    }
   }
 }
