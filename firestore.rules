@@ -28,8 +28,10 @@ service cloud.firestore {
     match /funds/{fundId} {
       allow read: if sameCompany(resource.data.companyId);
       allow create: if isAdmin();
-      // balance/status changes are constrained further in Phase 3 rules.
-      allow update: if sameCompany(resource.data.companyId);
+      // Incharge performs releases and replenishment-create/discard; approver
+      // performs replenishment approval which resets the balance.
+      allow update: if sameCompany(resource.data.companyId)
+        && (isIncharge() || isApprover());
       allow delete: if isAdmin();
     }
 
@@ -60,6 +62,31 @@ service cloud.firestore {
         allow create: if signedIn();
         allow update, delete: if false;
       }
+    }
+
+    match /replenishments/{repId} {
+      allow read: if sameCompany(resource.data.companyId);
+      allow create: if isIncharge()
+        && request.resource.data.companyId == myCompany()
+        && request.resource.data.status == 'draft';
+      allow update: if sameCompany(resource.data.companyId) && (
+        (isIncharge()
+          && resource.data.status in ['draft']
+          && request.resource.data.status in ['draft', 'submitted', 'rejected'])
+        || (isApprover()
+          && resource.data.status == 'submitted'
+          && request.resource.data.status in ['approved', 'rejected'])
+      );
+      allow delete: if false;
+    }
+
+    match /notifications/{notifId} {
+      allow read: if sameCompany(resource.data.companyId)
+        && (myRole() in resource.data.recipientRoles);
+      allow create: if sameCompany(request.resource.data.companyId);
+      allow update: if sameCompany(resource.data.companyId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow delete: if false;
     }
   }
 }
