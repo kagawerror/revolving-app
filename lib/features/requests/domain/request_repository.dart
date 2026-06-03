@@ -5,6 +5,7 @@ import 'request_status.dart';
 abstract interface class RequestRepository {
   Stream<List<FundRequest>> watchByFund(String fundId);
   Stream<List<FundRequest>> watchByStatus(String companyId, RequestStatus status);
+  Stream<List<FundRequest>> watchRecentByCompany(String companyId, int limit);
 
   Future<Result<String>> create(FundRequest request);
 
