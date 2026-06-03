@@ -10,6 +10,10 @@ service cloud.firestore {
     function myRole() { return myProfile().role; }
     function isAdmin() { return signedIn() && myRole() == 'admin'; }
     function sameCompany(companyId) { return signedIn() && companyId == myCompany(); }
+    function isIncharge() { return signedIn() && myRole() == 'incharge'; }
+    function isApprover() {
+      return signedIn() && (myRole() in ['superior', 'manager', 'ceo']);
+    }
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
@@ -27,6 +31,35 @@ service cloud.firestore {
       // balance/status changes are constrained further in Phase 3 rules.
       allow update: if sameCompany(resource.data.companyId);
       allow delete: if isAdmin();
+    }
+
+    match /requests/{requestId} {
+      allow read: if sameCompany(resource.data.companyId);
+
+      // Incharge creates; must belong to their company and carry a proof image.
+      allow create: if isIncharge()
+        && request.resource.data.companyId == myCompany()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.proofImageUrl is string
+        && request.resource.data.proofImageUrl.size() > 0;
+
+      // Approvers acknowledge/reject; incharge advances ready/released.
+      allow update: if sameCompany(resource.data.companyId) && (
+        (isApprover()
+          && resource.data.status == 'pendingAck'
+          && request.resource.data.status in ['acknowledged', 'rejected'])
+        || (isIncharge()
+          && resource.data.status in ['acknowledged', 'readyForRelease']
+          && request.resource.data.status in ['readyForRelease', 'released'])
+      );
+
+      allow delete: if false;
+
+      match /history/{eventId} {
+        allow read: if sameCompany(get(/databases/$(database)/documents/requests/$(requestId)).data.companyId);
+        allow create: if signedIn();
+        allow update, delete: if false;
+      }
     }
   }
 }
