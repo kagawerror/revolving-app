@@ -13,4 +13,14 @@ class AppSecrets {
 
   static bool get hasCloudinary =>
       cloudinaryCloudName.isNotEmpty && cloudinaryUploadPreset.isNotEmpty;
+
+  static const String oneSignalAppId =
+      String.fromEnvironment('ONESIGNAL_APP_ID');
+  static const String pushRelayUrl =
+      String.fromEnvironment('PUSH_RELAY_URL');
+  static const String pushRelayToken =
+      String.fromEnvironment('PUSH_RELAY_TOKEN');
+
+  static bool get hasOneSignal => oneSignalAppId.isNotEmpty;
+  static bool get hasPushRelay => pushRelayUrl.isNotEmpty;
 }
