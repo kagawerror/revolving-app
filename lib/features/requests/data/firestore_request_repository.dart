@@ -6,6 +6,7 @@ import '../../../core/error/failure.dart';
 import '../../../core/error/result.dart';
 import '../../../core/money/money.dart';
 import '../../companies/domain/fund.dart';
+import '../../messaging/domain/push_sender.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_repository.dart';
 import '../domain/request_status.dart';
@@ -31,7 +32,9 @@ ReleaseOutcome computeRelease(Fund fund, Money amount) {
 
 class FirestoreRequestRepository implements RequestRepository {
   final FirebaseFirestore _db;
-  FirestoreRequestRepository(this._db);
+  final PushSender _push;
+  FirestoreRequestRepository(this._db, [PushSender? push])
+      : _push = push ?? const NoopPushSender();
 
   CollectionReference<Map<String, dynamic>> get _requests =>
       _db.collection('requests');
@@ -125,6 +128,8 @@ class FirestoreRequestRepository implements RequestRepository {
       return Err(ValidationFailure(
           'Request must be ready-for-release before releasing.'));
     }
+    var newlyLow = false;
+    Fund? releasedFund;
     try {
       await _db.runTransaction((tx) async {
         final fundSnap = await tx.get(_fundRef(request.fundId));
@@ -132,6 +137,7 @@ class FirestoreRequestRepository implements RequestRepository {
           throw StateError('Fund not found.');
         }
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
+        releasedFund = fund;
         final outcome = computeRelease(fund, request.amount);
         tx.update(_fundRef(request.fundId), {
           'availableBalanceCentavos': outcome.newBalance.centavos,
@@ -154,6 +160,7 @@ class FirestoreRequestRepository implements RequestRepository {
         // Low-balance alert ONLY when the fund NEWLY flips to low (avoids
         // spamming incharge on every release once the fund is already low).
         if (outcome.fundIsLow && fund.status != FundStatus.low) {
+          newlyLow = true;
           final notifRef = _db.collection('notifications').doc();
           tx.set(notifRef, {
             'companyId': fund.companyId,
@@ -168,6 +175,18 @@ class FirestoreRequestRepository implements RequestRepository {
           });
         }
       });
+      // Best-effort push AFTER the money transaction commits — only when the
+      // fund NEWLY flipped to low. Not awaited; failures never affect release.
+      final fund = releasedFund;
+      if (newlyLow && fund != null) {
+        _push.notify(
+          companyId: fund.companyId,
+          recipientRoles: const ['incharge'],
+          title: 'Fund ${fund.name} is low',
+          body:
+              'Fund "${fund.name}" has reached its low-balance threshold. Replenish soon.',
+        );
+      }
       return const Ok(null);
     } on StateError catch (e) {
       return Err(ValidationFailure(e.message));

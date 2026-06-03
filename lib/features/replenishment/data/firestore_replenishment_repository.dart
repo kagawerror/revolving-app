@@ -5,6 +5,7 @@ import '../../../core/error/failure.dart';
 import '../../../core/error/result.dart';
 import '../../../core/money/money.dart';
 import '../../companies/domain/fund.dart';
+import '../../messaging/domain/push_sender.dart';
 import '../../requests/domain/request_status.dart';
 import '../domain/replenishment.dart';
 import '../domain/replenishment_status.dart';
@@ -12,7 +13,9 @@ import '../domain/replenishment_repository.dart';
 
 class FirestoreReplenishmentRepository implements ReplenishmentRepository {
   final FirebaseFirestore _db;
-  FirestoreReplenishmentRepository(this._db);
+  final PushSender _push;
+  FirestoreReplenishmentRepository(this._db, [PushSender? push])
+      : _push = push ?? const NoopPushSender();
 
   CollectionReference<Map<String, dynamic>> get _reps => _db.collection('replenishments');
   CollectionReference<Map<String, dynamic>> get _requests => _db.collection('requests');
@@ -275,5 +278,13 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     } catch (e, st) {
       developer.log('notification write failed', name: 'replenishment', error: e, stackTrace: st);
     }
+    // Best-effort push for the same audience/text. Not awaited; failures are
+    // swallowed by the sender and never affect the triggering operation.
+    _push.notify(
+      companyId: companyId,
+      recipientRoles: recipientRoles,
+      title: title,
+      body: body,
+    );
   }
 }
