@@ -7,7 +7,12 @@ import 'routing/app_router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // Android reads google-services.json via the Gradle plugin
+  // Android initializes from google-services.json via the Gradle plugin, so no
+  // options are needed here. iOS, however, requires platform options: run
+  // `flutterfire configure` (it generates the gitignored lib/firebase_options.dart
+  // plus the iOS GoogleService-Info.plist), then switch this call to
+  // `Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)`.
+  await Firebase.initializeApp();
   runApp(const ProviderScope(child: RevApp()));
 }
 
