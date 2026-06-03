@@ -35,7 +35,19 @@ class RequestDetailScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Request')),
       body: ListView(padding: const EdgeInsets.all(16), children: [
         if (request.hasProof)
-          Image.network(request.proofImageUrl, height: 220),
+          Image.network(
+            request.proofImageUrl,
+            height: 220,
+            fit: BoxFit.cover,
+            loadingBuilder: (context, child, progress) => progress == null
+                ? child
+                : const SizedBox(
+                    height: 220,
+                    child: Center(child: CircularProgressIndicator())),
+            errorBuilder: (context, _, __) => const SizedBox(
+                height: 220,
+                child: Center(child: Icon(Icons.broken_image, size: 48))),
+          ),
         const SizedBox(height: 12),
         Text('Beneficiary: ${request.beneficiaryName}'),
         Text('Amount: ${request.amount.format()}'),

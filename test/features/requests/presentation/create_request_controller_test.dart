@@ -48,6 +48,21 @@ void main() {
     expect(res.failureOrNull, isNotNull);
   });
 
+  test('submit fails when amount is zero', () async {
+    final c = ProviderContainer();
+    addTearDown(c.dispose);
+    final res = await c.read(createRequestControllerProvider.notifier).submit(
+          companyId: 'c1',
+          fundId: 'f1',
+          createdByUid: 'u1',
+          beneficiary: 'Ben',
+          amount: Money.zero,
+          purpose: 'x',
+          imageBytes: Uint8List.fromList([1, 2, 3]),
+        );
+    expect(res.failureOrNull, isNotNull);
+  });
+
   test('submit uploads then creates as pendingAck', () async {
     final repo = _MockRepo();
     final uploader = _MockUploader();

@@ -128,7 +128,18 @@ class _State extends ConsumerState<CreateRequestScreen> {
             FilledButton(
               onPressed: submitting ? null : _submit,
               child: submitting
-                  ? const CircularProgressIndicator()
+                  ? Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        SizedBox(
+                            height: 18,
+                            width: 18,
+                            child:
+                                CircularProgressIndicator(strokeWidth: 2)),
+                        SizedBox(width: 12),
+                        Text('Uploading…'),
+                      ],
+                    )
                   : const Text('Send for acknowledgement'),
             ),
           ]),
