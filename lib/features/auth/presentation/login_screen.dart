@@ -70,7 +70,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   child: FilledButton(
                     onPressed: state.loading ? null : _submit,
                     child: state.loading
-                        ? const CircularProgressIndicator()
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
                         : const Text('Sign in'),
                   ),
                 ),

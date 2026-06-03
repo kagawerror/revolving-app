@@ -27,4 +27,26 @@ void main() {
     final res = await repo.signIn(email: 'a@b.com', password: 'x');
     expect(res.failureOrNull, isA<AuthFailure>());
   });
+
+  test('wrong-password and user-not-found map to identical non-leaking message',
+      () async {
+    final repo = FirebaseAuthRepository(auth, firestore);
+
+    when(() => auth.signInWithEmailAndPassword(
+        email: any(named: 'email'),
+        password: any(named: 'password'))).thenThrow(
+      FirebaseAuthException(code: 'wrong-password'),
+    );
+    final resWrong = await repo.signIn(email: 'a@b.com', password: 'x');
+
+    when(() => auth.signInWithEmailAndPassword(
+        email: any(named: 'email'),
+        password: any(named: 'password'))).thenThrow(
+      FirebaseAuthException(code: 'user-not-found'),
+    );
+    final resNotFound = await repo.signIn(email: 'a@b.com', password: 'x');
+
+    expect(resWrong.failureOrNull!.message, 'Incorrect email or password.');
+    expect(resNotFound.failureOrNull!.message, 'Incorrect email or password.');
+  });
 }

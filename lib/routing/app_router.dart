@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -8,7 +9,8 @@ import '../features/companies/presentation/admin_home_screen.dart';
 import '../features/requests/presentation/approver_home_screen.dart';
 import '../features/requests/presentation/incharge_home_screen.dart';
 
-String _homeFor(UserRole role) => switch (role) {
+@visibleForTesting
+String homeFor(UserRole role) => switch (role) {
       UserRole.admin => '/admin',
       UserRole.incharge => '/incharge',
       _ when role.canApprove => '/approvals',
@@ -16,20 +18,27 @@ String _homeFor(UserRole role) => switch (role) {
     };
 
 final routerProvider = Provider<GoRouter>((ref) {
-  final auth = ref.watch(currentUserProvider);
+  // Bridge the auth stream to a Listenable so the router is built once.
+  final refresh = ValueNotifier<AsyncValue<AppUser?>>(const AsyncLoading());
+  ref.onDispose(refresh.dispose);
+  ref.listen<AsyncValue<AppUser?>>(
+    currentUserProvider,
+    (_, next) => refresh.value = next,
+    fireImmediately: true,
+  );
 
   return GoRouter(
     initialLocation: '/login',
+    refreshListenable: refresh,
     redirect: (context, state) {
-      final loggingIn = state.matchedLocation == '/login';
-      final user = auth.valueOrNull;
+      final auth = refresh.value;
       if (auth.isLoading) return null;
+      final user = auth.valueOrNull;
+      final loggingIn = state.matchedLocation == '/login';
       if (user == null) return loggingIn ? null : '/login';
-      final home = _homeFor(user.role);
-      // Block cross-role access: send everyone to their own home.
+      final home = homeFor(user.role);
       if (loggingIn) return home;
-      final allowed = home == state.matchedLocation;
-      return allowed ? null : home;
+      return home == state.matchedLocation ? null : home;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
