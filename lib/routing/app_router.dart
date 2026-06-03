@@ -8,6 +8,7 @@ import '../features/auth/presentation/login_screen.dart';
 import '../features/companies/presentation/admin_home_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/requests/presentation/approver_home_screen.dart';
+import '../features/requests/presentation/create_request_screen.dart';
 import '../features/requests/presentation/incharge_home_screen.dart';
 
 @visibleForTesting
@@ -49,6 +50,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const CreateFundScreen(),
       ),
       GoRoute(path: '/incharge', builder: (_, __) => const InchargeHomeScreen()),
+      GoRoute(
+        path: '/incharge/create',
+        builder: (_, __) => const CreateRequestScreen(),
+      ),
       GoRoute(path: '/approvals', builder: (_, __) => const ApproverHomeScreen()),
     ],
   );
