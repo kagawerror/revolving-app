@@ -71,3 +71,30 @@ There is no self-signup for admins. Bootstrap one manually:
 
 The admin can then create companies and funds, and provision other users
 (incharge, approvers, employees) from within the app.
+
+## 6. Push notifications (Phase 5 — OneSignal, free)
+
+In-app alerts are also delivered as push notifications using OneSignal (free
+tier) plus a free Cloudflare Worker relay. No Cloud Functions / Blaze is
+required; Firestore stays on Spark. The OneSignal **REST API Key** lives only in
+the relay — never in the app.
+
+1. Create a free [OneSignal](https://onesignal.com) app. Add the **Google
+   Android (FCM)** platform by uploading your Firebase service-account JSON.
+   Copy the **App ID** and the **REST API Key**.
+2. Deploy the relay in `relay/` (see `relay/README.md`): set the OneSignal App
+   ID + REST key (and an optional `RELAY_TOKEN`) as Worker secrets via
+   `wrangler secret put`, then `wrangler deploy`. Copy the Worker URL.
+3. Put the values in `.env` (see `.env.example`):
+
+   ```
+   ONESIGNAL_APP_ID=<app id>
+   PUSH_RELAY_URL=<worker url>
+   PUSH_RELAY_TOKEN=<RELAY_TOKEN, if you set one>
+   ```
+
+   Run the app with `--dart-define-from-file=.env`.
+4. Identity: on sign-in the app calls `OneSignal.login(uid)` and tags the device
+   with `company_id` / `role`; the relay targets those tags. Foreground
+   notifications show a SnackBar; tapping a notification opens Alerts; sign-out
+   calls `OneSignal.logout()`. iOS push (APNs) is deferred.
