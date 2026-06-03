@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../../core/error/failure_ui.dart';
 import '../../../core/money/money.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/presentation/admin_providers.dart';
@@ -54,11 +55,7 @@ class _State extends ConsumerState<CreateRequestScreen> {
           imageBytes: _image,
         );
     if (!mounted) return;
-    res.when(
-      ok: (_) => Navigator.of(context).pop(),
-      err: (f) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(f.message))),
-    );
+    if (res.showOnError(context)) Navigator.of(context).pop();
   }
 
   @override
@@ -66,7 +63,7 @@ class _State extends ConsumerState<CreateRequestScreen> {
     final user = ref.watch(currentUserProvider).valueOrNull;
     final funds = user == null
         ? const AsyncValue.loading()
-        : ref.watch(_companyFundsProvider(user.companyId));
+        : ref.watch(companyFundsProvider(user.companyId));
     final submitting = ref.watch(createRequestControllerProvider);
 
     return Scaffold(
@@ -148,7 +145,3 @@ class _State extends ConsumerState<CreateRequestScreen> {
     );
   }
 }
-
-/// Reuses the fund repository provider from the companies feature.
-final _companyFundsProvider = StreamProvider.family((ref, String companyId) =>
-    ref.watch(fundRepositoryProvider).watchByCompany(companyId));

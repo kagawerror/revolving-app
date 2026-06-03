@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/error/failure_ui.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/presentation/admin_providers.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_status.dart';
 import 'request_providers.dart';
-
-/// Funds owned by the incharge's company.
-final _companyFundsProvider = StreamProvider.family((ref, String companyId) =>
-    ref.watch(fundRepositoryProvider).watchByCompany(companyId));
 
 /// Requests under a single fund.
 final _fundRequestsProvider = StreamProvider.family((ref, String fundId) =>
@@ -36,7 +33,7 @@ class InchargeHomeScreen extends ConsumerWidget {
       ),
       body: user == null
           ? const Center(child: CircularProgressIndicator())
-          : ref.watch(_companyFundsProvider(user.companyId)).when(
+          : ref.watch(companyFundsProvider(user.companyId)).when(
                 loading: () => const Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('Error: $e')),
                 data: (funds) => funds.isEmpty
@@ -104,36 +101,30 @@ class _RequestAction extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.read(requestRepositoryProvider);
     final user = ref.read(currentUserProvider).valueOrNull;
+    // Defense-in-depth: only an incharge custodian may release/ready requests
+    // (mirrors the isIncharge() Firestore rule). Otherwise show status text.
+    final canManage = user?.role.canManageFund ?? false;
+    if (!canManage) return Text(request.status.name);
     switch (request.status) {
       case RequestStatus.acknowledged:
         return TextButton(
-          onPressed: user == null
-              ? null
-              : () async {
-                  final res = await repo.transition(
-                    request: request,
-                    to: RequestStatus.readyForRelease,
-                    actorUid: user.uid,
-                  );
-                  if (context.mounted && res.failureOrNull != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(res.failureOrNull!.message)));
-                  }
-                },
+          onPressed: () async {
+            final res = await repo.transition(
+              request: request,
+              to: RequestStatus.readyForRelease,
+              actorUid: user!.uid,
+            );
+            if (context.mounted) res.showOnError(context);
+          },
           child: const Text('Mark ready'),
         );
       case RequestStatus.readyForRelease:
         return FilledButton(
-          onPressed: user == null
-              ? null
-              : () async {
-                  final res = await repo.release(
-                      request: request, actorUid: user.uid);
-                  if (context.mounted && res.failureOrNull != null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(res.failureOrNull!.message)));
-                  }
-                },
+          onPressed: () async {
+            final res =
+                await repo.release(request: request, actorUid: user!.uid);
+            if (context.mounted) res.showOnError(context);
+          },
           child: const Text('Release'),
         );
       default:
