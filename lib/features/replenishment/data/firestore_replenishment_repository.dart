@@ -221,15 +221,24 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     }
     try {
       await _db.runTransaction((tx) async {
+        final repRef = _reps.doc(replenishment.id);
+        final repSnap = await tx.get(repRef);
+        if (!repSnap.exists) throw StateError('Replenishment not found.');
+        final current = ReplenishmentStatus.fromName(repSnap.data()!['status'] as String?);
+        if (current != ReplenishmentStatus.draft) {
+          throw StateError('This draft was already acted on.');
+        }
         final fundSnap = await tx.get(_fundRef(replenishment.fundId));
         if (fundSnap.exists) {
           final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
           tx.update(_fundRef(replenishment.fundId),
               {'status': _restoredStatus(fund).name});
         }
-        tx.update(_reps.doc(replenishment.id), {'status': ReplenishmentStatus.rejected.name});
+        tx.update(repRef, {'status': ReplenishmentStatus.rejected.name});
       });
       return const Ok(null);
+    } on StateError catch (e) {
+      return Err(ValidationFailure(e.message));
     } catch (e, st) {
       developer.log('discardDraft failed', name: 'replenishment', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Could not discard the draft.'));

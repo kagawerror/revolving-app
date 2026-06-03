@@ -5,6 +5,8 @@ import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/replenishment/data/firestore_replenishment_repository.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment_status.dart';
+import 'package:rev_app/features/requests/data/firestore_request_repository.dart';
+import 'package:rev_app/features/requests/domain/fund_request.dart';
 
 void main() {
   late FakeFirebaseFirestore db;
@@ -129,5 +131,72 @@ void main() {
     expect(res.failureOrNull, isA<ValidationFailure>());
     expect((res.failureOrNull as ValidationFailure).message,
         'No released requests to replenish.');
+  });
+
+  // End-to-end money loop driven through the REAL repositories (not a
+  // pre-seeded 'released' status): release -> createDraft -> submit -> approve.
+  // This exercises the cross-repository contract: a release debits the fund and
+  // marks the request 'released'; createDraft compiles released-unreplenished
+  // requests; approve resets the balance and stamps each request 'replenished'.
+  //
+  // NOTE: fake_cloud_firestore does NOT enforce security rules, so this test
+  // validates repository logic ONLY. The firestore.rules branch permitting an
+  // approver to drive a request from 'released' -> 'replenished' must still be
+  // verified against the emulator or in production manually.
+  test('end-to-end: release -> createDraft -> approve resets the fund', () async {
+    db = FakeFirebaseFirestore();
+    await db.collection('funds').doc('f1').set({
+      'companyId': 'c1', 'name': 'PC',
+      'originalBudgetCentavos': 10000000, 'availableBalanceCentavos': 500000,
+      'lowBalanceThresholdPct': 3, 'status': 'active',
+    });
+    await db.collection('requests').doc('r1').set({
+      'companyId': 'c1', 'fundId': 'f1', 'createdByUid': 'inc',
+      'beneficiaryName': 'B', 'amountCentavos': 400000, 'purpose': 'x',
+      'proofImageUrl': 'http://img', 'status': 'readyForRelease',
+      'replenishmentId': null,
+    });
+
+    final requestRepo = FirestoreRequestRepository(db);
+    final replenishRepo = FirestoreReplenishmentRepository(db);
+
+    // 1. Release r1: fund 500000 - 400000 = 100000, which is <= 3% of
+    //    10000000 (= 300000), so the fund flips to 'low'.
+    final r1 = FundRequest.fromMap(
+        'r1', (await db.collection('requests').doc('r1').get()).data()!);
+    final released = await requestRepo.release(request: r1, actorUid: 'inc');
+    expect(released.isOk, isTrue);
+    var fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 100000);
+    expect(fund.data()!['status'], 'low');
+    final r1AfterRelease = await db.collection('requests').doc('r1').get();
+    expect(r1AfterRelease.data()!['status'], 'released');
+
+    // 2. Compile the draft from released-unreplenished requests.
+    final draftRes = await replenishRepo.createDraft(fundId: 'f1', createdByUid: 'inc');
+    expect(draftRes.isOk, isTrue);
+    final draft = draftRes.valueOrNull!;
+    expect(draft.requestIds, contains('r1'));
+    expect(draft.total.centavos, 400000);
+    fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['status'], 'replenishing');
+
+    // 3. Submit then approve.
+    final submitRes = await replenishRepo.submit(
+        replenishment: draft, actorUid: 'inc', notes: 'June');
+    expect(submitRes.isOk, isTrue);
+    final submitted = Replenishment.fromMap(draft.id,
+        (await db.collection('replenishments').doc(draft.id).get()).data()!);
+    final approveRes = await replenishRepo.approve(
+        replenishment: submitted, actorUid: 'mgr');
+    expect(approveRes.isOk, isTrue);
+
+    // 4. Fund is fully restored; request is 'replenished' and tagged.
+    fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 10000000);
+    expect(fund.data()!['status'], 'active');
+    final r1Final = await db.collection('requests').doc('r1').get();
+    expect(r1Final.data()!['status'], 'replenished');
+    expect(r1Final.data()!['replenishmentId'], draft.id);
   });
 }
