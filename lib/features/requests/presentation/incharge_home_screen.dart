@@ -6,9 +6,8 @@ import '../../../core/error/failure_ui.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
-import '../../notifications/presentation/alerts_screen.dart';
+import '../../notifications/presentation/alerts_bell.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
-import '../../notifications/presentation/notification_providers.dart';
 import '../../replenishment/presentation/replenish_review_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
 import '../domain/fund_request.dart';
@@ -22,18 +21,15 @@ final _fundRequestsProvider = StreamProvider.family((ref, String fundId) =>
 /// Compiles a replenishment draft for [fundId], then opens the review screen.
 Future<void> _startReplenish(
     BuildContext context, WidgetRef ref, String fundId, String uid) async {
-  final repo = ref.read(replenishmentRepositoryProvider);
-  final res = await repo.createDraft(fundId: fundId, createdByUid: uid);
+  final res = await ref
+      .read(replenishmentRepositoryProvider)
+      .createDraft(fundId: fundId, createdByUid: uid);
   if (!context.mounted) return;
-  final id = res.valueOrNull;
-  if (id == null) {
+  final draft = res.valueOrNull;
+  if (draft == null) {
     context.showFailure(res.failureOrNull!);
     return;
   }
-  // Read the freshly-created draft once.
-  final draftList = await repo.watchByFund(fundId).first;
-  final draft = draftList.firstWhere((r) => r.id == id);
-  if (!context.mounted) return;
   Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => ReplenishReviewScreen(draft: draft)));
 }
@@ -46,7 +42,7 @@ class InchargeHomeScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider).valueOrNull;
     return Scaffold(
       appBar: AppBar(title: const Text('Incharge'), actions: [
-        const _AlertsBell(),
+        const AlertsBell(),
         IconButton(
           icon: const Icon(Icons.logout),
           onPressed: () => ref.read(authRepositoryProvider).signOut(),
@@ -82,29 +78,29 @@ class InchargeHomeScreen extends ConsumerWidget {
   }
 }
 
-class _AlertsBell extends ConsumerWidget {
-  const _AlertsBell();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(unreadCountProvider);
-    final icon = count > 0
-        ? Badge(label: Text('$count'), child: const Icon(Icons.notifications))
-        : const Icon(Icons.notifications);
-    return IconButton(
-      icon: icon,
-      onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AlertsScreen())),
-    );
-  }
-}
-
-class _FundSection extends ConsumerWidget {
+class _FundSection extends ConsumerStatefulWidget {
   final Fund fund;
   const _FundSection({required this.fund});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_FundSection> createState() => _FundSectionState();
+}
+
+class _FundSectionState extends ConsumerState<_FundSection> {
+  bool _busy = false;
+
+  Future<void> _replenish(String uid) async {
+    setState(() => _busy = true);
+    try {
+      await _startReplenish(context, ref, widget.fund.id, uid);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fund = widget.fund;
     final requests = ref.watch(_fundRequestsProvider(fund.id));
     final user = ref.read(currentUserProvider).valueOrNull;
     final canReplenish = (user?.role.canManageFund ?? false) &&
@@ -122,10 +118,16 @@ class _FundSection extends ConsumerWidget {
               ),
               if (canReplenish)
                 TextButton.icon(
-                  icon: const Icon(Icons.refresh),
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.refresh),
                   label: const Text('Replenish'),
-                  onPressed: () =>
-                      _startReplenish(context, ref, fund.id, user!.uid),
+                  onPressed:
+                      _busy ? null : () => _replenish(user!.uid),
                 ),
             ],
           ),

@@ -28,7 +28,7 @@ void main() {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createDraft(fundId: 'f1', createdByUid: 'inc');
     expect(res.isOk, isTrue);
-    final rp = await db.collection('replenishments').doc(res.valueOrNull!).get();
+    final rp = await db.collection('replenishments').doc(res.valueOrNull!.id).get();
     expect((rp.data()!['requestIds'] as List).length, 2);
     expect(rp.data()!['totalCentavos'], 800000);
     final fund = await db.collection('funds').doc('f1').get();
@@ -44,7 +44,7 @@ void main() {
 
   test('approve resets balance to ceiling, tags requests replenished, fund active', () async {
     final repo = FirestoreReplenishmentRepository(db);
-    final id = (await repo.createDraft(fundId: 'f1', createdByUid: 'inc')).valueOrNull!;
+    final id = (await repo.createDraft(fundId: 'f1', createdByUid: 'inc')).valueOrNull!.id;
     final draft = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
     await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
@@ -66,7 +66,7 @@ void main() {
 
   test('double-approval of a stale submitted object is rejected in-tx', () async {
     final repo = FirestoreReplenishmentRepository(db);
-    final id = (await repo.createDraft(fundId: 'f1', createdByUid: 'inc')).valueOrNull!;
+    final id = (await repo.createDraft(fundId: 'f1', createdByUid: 'inc')).valueOrNull!.id;
     final draft = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
     await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
@@ -83,7 +83,7 @@ void main() {
 
   test('reject restores status to low and leaves requests released', () async {
     final repo = FirestoreReplenishmentRepository(db);
-    final id = (await repo.createDraft(fundId: 'f1', createdByUid: 'inc')).valueOrNull!;
+    final id = (await repo.createDraft(fundId: 'f1', createdByUid: 'inc')).valueOrNull!.id;
     final draft = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
     await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');

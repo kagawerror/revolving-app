@@ -8,7 +8,7 @@ abstract interface class ReplenishmentRepository {
   /// Compiles released-unreplenished requests for the fund into a DRAFT and flips
   /// the fund to `replenishing`. Fails if the fund is already replenishing or has
   /// no released-unreplenished requests.
-  Future<Result<String>> createDraft({required String fundId, required String createdByUid});
+  Future<Result<Replenishment>> createDraft({required String fundId, required String createdByUid});
 
   Future<Result<void>> submit({required Replenishment replenishment, required String actorUid, required String notes});
 

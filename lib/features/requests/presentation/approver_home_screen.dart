@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../auth/presentation/auth_providers.dart';
-import '../../notifications/presentation/alerts_screen.dart';
-import '../../notifications/presentation/notification_providers.dart';
+import '../../notifications/presentation/alerts_bell.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
 import 'approver_inbox_providers.dart';
@@ -18,7 +17,7 @@ class ApproverHomeScreen extends ConsumerWidget {
     final replenishments = ref.watch(pendingReplenishmentsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Approvals'), actions: [
-        const _AlertsBell(),
+        const AlertsBell(),
         IconButton(
           icon: const Icon(Icons.logout),
           onPressed: () => ref.read(authRepositoryProvider).signOut(),
@@ -84,23 +83,6 @@ class _SectionHeader extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
       child: Text(title, style: Theme.of(context).textTheme.titleMedium),
-    );
-  }
-}
-
-class _AlertsBell extends ConsumerWidget {
-  const _AlertsBell();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final count = ref.watch(unreadCountProvider);
-    final icon = count > 0
-        ? Badge(label: Text('$count'), child: const Icon(Icons.notifications))
-        : const Icon(Icons.notifications);
-    return IconButton(
-      icon: icon,
-      onPressed: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const AlertsScreen())),
     );
   }
 }

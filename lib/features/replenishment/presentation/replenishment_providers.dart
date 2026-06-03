@@ -16,6 +16,3 @@ final pendingReplenishmentsProvider = StreamProvider<List<Replenishment>>((ref) 
   return ref.watch(replenishmentRepositoryProvider)
       .watchByCompanyAndStatus(user.companyId, ReplenishmentStatus.submitted.name);
 });
-
-final fundReplenishmentsProvider = StreamProvider.family<List<Replenishment>, String>(
-    (ref, fundId) => ref.watch(replenishmentRepositoryProvider).watchByFund(fundId));

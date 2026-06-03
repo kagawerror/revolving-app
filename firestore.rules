@@ -71,7 +71,7 @@ service cloud.firestore {
         && request.resource.data.status == 'draft';
       allow update: if sameCompany(resource.data.companyId) && (
         (isIncharge()
-          && resource.data.status in ['draft']
+          && resource.data.status == 'draft'
           && request.resource.data.status in ['draft', 'submitted', 'rejected'])
         || (isApprover()
           && resource.data.status == 'submitted'

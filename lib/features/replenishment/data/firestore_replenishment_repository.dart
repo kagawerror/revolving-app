@@ -32,7 +32,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
 
   @override
-  Future<Result<String>> createDraft({required String fundId, required String createdByUid}) async {
+  Future<Result<Replenishment>> createDraft({required String fundId, required String createdByUid}) async {
     try {
       // Query released requests for the fund OUTSIDE the transaction (client SDK
       // transactions cannot run queries). The released-unreplenished filter is
@@ -58,10 +58,12 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         total += Money.fromCentavos((d.data()['amountCentavos'] ?? 0) as int);
       }
       final newRef = _reps.doc();
+      late String companyId;
       await _db.runTransaction((tx) async {
         final fundSnap = await tx.get(_fundRef(fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
+        companyId = fund.companyId;
         if (fund.status == FundStatus.replenishing) {
           throw StateError('This fund is already being replenished.');
         }
@@ -79,7 +81,16 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         });
         tx.update(_fundRef(fundId), {'status': FundStatus.replenishing.name});
       });
-      return Ok(newRef.id);
+      return Ok(Replenishment(
+        id: newRef.id,
+        companyId: companyId,
+        fundId: fundId,
+        status: ReplenishmentStatus.draft,
+        requestIds: ids,
+        total: total,
+        reportNotes: '',
+        createdByUid: createdByUid,
+      ));
     } on StateError catch (e) {
       return Err(ValidationFailure(e.message));
     } catch (e, st) {
