@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 
 import '../../../core/error/failure.dart';
 import '../../../core/error/result.dart';
+import '../../../core/money/money.dart';
 import '../../companies/domain/fund.dart';
 import '../../requests/domain/request_status.dart';
 import '../domain/replenishment.dart';
@@ -48,9 +49,13 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         return const Err(ValidationFailure('No released requests to replenish.'));
       }
       final ids = unreplenished.map((d) => d.id).toList();
-      var totalCentavos = 0;
+      if (ids.length > 450) {
+        return const Err(ValidationFailure(
+            'Too many requests to replenish at once (max 450). Replenish in smaller batches.'));
+      }
+      var total = Money.zero;
       for (final d in unreplenished) {
-        totalCentavos += (d.data()['amountCentavos'] ?? 0) as int;
+        total += Money.fromCentavos((d.data()['amountCentavos'] ?? 0) as int);
       }
       final newRef = _reps.doc();
       await _db.runTransaction((tx) async {
@@ -65,7 +70,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
           'fundId': fundId,
           'status': ReplenishmentStatus.draft.name,
           'requestIds': ids,
-          'totalCentavos': totalCentavos,
+          'totalCentavos': total.centavos,
           'reportNotes': '',
           'createdByUid': createdByUid,
           'submittedByUid': null,
@@ -173,8 +178,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         final fundSnap = await tx.get(_fundRef(replenishment.fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
-        final restored = fund.isLow ? FundStatus.low : FundStatus.active;
-        tx.update(_fundRef(replenishment.fundId), {'status': restored.name});
+        tx.update(_fundRef(replenishment.fundId), {'status': _restoredStatus(fund).name});
         tx.update(_reps.doc(replenishment.id), {
           'status': ReplenishmentStatus.rejected.name,
           'approvedByUid': actorUid,
@@ -210,7 +214,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         if (fundSnap.exists) {
           final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
           tx.update(_fundRef(replenishment.fundId),
-              {'status': (fund.isLow ? FundStatus.low : FundStatus.active).name});
+              {'status': _restoredStatus(fund).name});
         }
         tx.update(_reps.doc(replenishment.id), {'status': ReplenishmentStatus.rejected.name});
       });
@@ -221,6 +225,12 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     }
   }
 
+  /// Recomputes fund status from its CURRENT (unchanged) balance — used when a
+  /// replenishment is rejected/discarded. The prior status is not preserved verbatim;
+  /// it is derived from balance, which is self-consistent with FundStatus semantics.
+  FundStatus _restoredStatus(Fund fund) =>
+      fund.isLow ? FundStatus.low : FundStatus.active;
+
   Future<void> _addNotification({
     required String companyId,
     required List<String> recipientRoles,
@@ -229,17 +239,21 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     required String body,
     String? fundId,
     String? replenishmentId,
-  }) {
-    return _db.collection('notifications').add({
-      'companyId': companyId,
-      'recipientRoles': recipientRoles,
-      'type': type,
-      'title': title,
-      'body': body,
-      'fundId': fundId,
-      'replenishmentId': replenishmentId,
-      'readAt': null,
-      'createdAt': FieldValue.serverTimestamp(),
-    });
+  }) async {
+    try {
+      await _db.collection('notifications').add({
+        'companyId': companyId,
+        'recipientRoles': recipientRoles,
+        'type': type,
+        'title': title,
+        'body': body,
+        'fundId': fundId,
+        'replenishmentId': replenishmentId,
+        'readAt': null,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e, st) {
+      developer.log('notification write failed', name: 'replenishment', error: e, stackTrace: st);
+    }
   }
 }
