@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function myCompany() { return myProfile().companyId; }
+    function myRole() { return myProfile().role; }
+    function isAdmin() { return signedIn() && myRole() == 'admin'; }
+    function sameCompany(companyId) { return signedIn() && companyId == myCompany(); }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    match /companies/{companyId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /funds/{fundId} {
+      allow read: if sameCompany(resource.data.companyId);
+      allow create: if isAdmin();
+      // balance/status changes are constrained further in Phase 3 rules.
+      allow update: if sameCompany(resource.data.companyId);
+      allow delete: if isAdmin();
+    }
+  }
+}
