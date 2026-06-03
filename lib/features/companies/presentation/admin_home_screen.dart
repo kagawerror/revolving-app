@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../auth/presentation/auth_providers.dart';
+import '../../messaging/presentation/messaging_providers.dart';
 import 'admin_providers.dart';
 
 class AdminHomeScreen extends ConsumerWidget {
@@ -15,7 +15,7 @@ class AdminHomeScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Admin'), actions: [
         IconButton(
           icon: const Icon(Icons.logout),
-          onPressed: () => ref.read(authRepositoryProvider).signOut(),
+          onPressed: () => ref.read(signOutProvider)(),
         ),
       ]),
       floatingActionButton: FloatingActionButton.extended(

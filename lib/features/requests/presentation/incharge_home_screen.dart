@@ -6,6 +6,7 @@ import '../../../core/error/failure_ui.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
+import '../../messaging/presentation/messaging_providers.dart';
 import '../../notifications/presentation/alerts_bell.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
 import '../../replenishment/presentation/replenish_review_screen.dart';
@@ -45,7 +46,7 @@ class InchargeHomeScreen extends ConsumerWidget {
         const AlertsBell(),
         IconButton(
           icon: const Icon(Icons.logout),
-          onPressed: () => ref.read(authRepositoryProvider).signOut(),
+          onPressed: () => ref.read(signOutProvider)(),
         ),
       ]),
       floatingActionButton: FloatingActionButton.extended(

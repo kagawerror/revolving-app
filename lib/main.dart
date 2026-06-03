@@ -2,7 +2,9 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'app_keys.dart';
 import 'core/theme/app_theme.dart';
+import 'features/messaging/presentation/messaging_initializer.dart';
 import 'routing/app_router.dart';
 
 Future<void> main() async {
@@ -26,6 +28,9 @@ class RevApp extends ConsumerWidget {
       title: 'Revolving Fund',
       theme: AppTheme.light(),
       routerConfig: router,
+      scaffoldMessengerKey: scaffoldMessengerKey,
+      builder: (context, child) =>
+          MessagingInitializer(child: child ?? const SizedBox.shrink()),
     );
   }
 }

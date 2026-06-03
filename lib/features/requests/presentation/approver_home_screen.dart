@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../auth/presentation/auth_providers.dart';
+import '../../messaging/presentation/messaging_providers.dart';
 import '../../notifications/presentation/alerts_bell.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
@@ -20,7 +20,7 @@ class ApproverHomeScreen extends ConsumerWidget {
         const AlertsBell(),
         IconButton(
           icon: const Icon(Icons.logout),
-          onPressed: () => ref.read(authRepositoryProvider).signOut(),
+          onPressed: () => ref.read(signOutProvider)(),
         ),
       ]),
       body: ListView(children: [

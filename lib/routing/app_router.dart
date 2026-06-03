@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../app_keys.dart';
 import '../features/auth/domain/app_user.dart';
 import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/login_screen.dart';
@@ -30,6 +31,7 @@ final routerProvider = Provider<GoRouter>((ref) {
   );
 
   return GoRouter(
+    navigatorKey: rootNavigatorKey,
     initialLocation: '/login',
     refreshListenable: refresh,
     redirect: (context, state) {
