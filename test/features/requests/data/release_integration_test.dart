@@ -62,6 +62,17 @@ void main() {
           .where((m) => m['event'] == 'released' && m['to'] == 'released')
           .toList();
       expect(released, isNotEmpty);
+
+      // A lowBalance notification is written inside the same transaction when
+      // the fund NEWLY flips to low (active -> low here).
+      final notifs = await fake.collection('notifications').get();
+      final lowBalance = notifs.docs
+          .map((d) => d.data())
+          .where((m) => m['type'] == 'lowBalance')
+          .toList();
+      expect(lowBalance, hasLength(1));
+      expect(lowBalance.first['recipientRoles'], contains('incharge'));
+      expect(lowBalance.first['fundId'], 'f1');
     });
 
     test('insufficient balance: fails with ValidationFailure and rolls back',
@@ -104,6 +115,10 @@ void main() {
       final reqAfter =
           (await fake.collection('requests').doc('r1').get()).data()!;
       expect(reqAfter['status'], 'readyForRelease');
+
+      // No notification should be written when the release fails/rolls back.
+      final notifs = await fake.collection('notifications').get();
+      expect(notifs.docs, isEmpty);
     });
   });
 }

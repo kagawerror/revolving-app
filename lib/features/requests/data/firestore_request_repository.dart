@@ -151,6 +151,22 @@ class FirestoreRequestRepository implements RequestRepository {
           'note': null,
           'at': FieldValue.serverTimestamp(),
         });
+        // Low-balance alert ONLY when the fund NEWLY flips to low (avoids
+        // spamming incharge on every release once the fund is already low).
+        if (outcome.fundIsLow && fund.status != FundStatus.low) {
+          final notifRef = _db.collection('notifications').doc();
+          tx.set(notifRef, {
+            'companyId': fund.companyId,
+            'recipientRoles': const ['incharge'],
+            'type': 'lowBalance',
+            'title': 'Fund balance low',
+            'body': 'A fund has reached its low-balance threshold. Replenish soon.',
+            'fundId': fund.id,
+            'replenishmentId': null,
+            'readAt': null,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+        }
       });
       return const Ok(null);
     } on StateError catch (e) {
