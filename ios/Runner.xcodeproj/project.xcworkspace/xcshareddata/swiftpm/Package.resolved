@@ -118,6 +118,15 @@
       }
     },
     {
+      "identity" : "onesignal-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/OneSignal/OneSignal-XCFramework",
+      "state" : {
+        "revision" : "06f8c1dca77149cc77a4c16b1c400895ec81591c",
+        "version" : "5.5.2"
+      }
+    },
+    {
       "identity" : "promises",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/google/promises.git",
