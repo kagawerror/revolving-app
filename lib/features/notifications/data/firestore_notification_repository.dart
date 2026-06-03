@@ -13,6 +13,7 @@ class FirestoreNotificationRepository implements NotificationRepository {
       .where('companyId', isEqualTo: companyId)
       .where('recipientRoles', arrayContains: role)
       .orderBy('createdAt', descending: true)
+      .limit(50)
       .snapshots()
       .map((s) => s.docs.map((d) => AppNotification.fromMap(d.id, d.data())).toList());
 

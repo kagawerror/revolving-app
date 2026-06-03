@@ -23,7 +23,9 @@ class AlertsScreen extends ConsumerWidget {
                         color: n.isUnread ? Theme.of(context).colorScheme.primary : null),
                     title: Text(n.title),
                     subtitle: Text(n.body),
-                    onTap: () => ref.read(notificationRepositoryProvider).markRead(n.id),
+                    onTap: n.isUnread
+                        ? () => ref.read(notificationRepositoryProvider).markRead(n.id).ignore()
+                        : null,
                   ),
               ]),
       ),
