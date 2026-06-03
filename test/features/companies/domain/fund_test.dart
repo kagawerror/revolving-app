@@ -27,4 +27,30 @@ void main() {
     expect(fund(balance: 500000).canRelease(Money.fromPesos(5000)), isTrue);
     expect(fund(balance: 499999).canRelease(Money.fromPesos(5000)), isFalse);
   });
+
+  test('canRelease true when balance exactly equals amount', () {
+    expect(fund(balance: 500000).canRelease(Money.fromPesos(5000)), isTrue);
+  });
+
+  test('FundStatus.fromName round-trips and defaults to active', () {
+    expect(FundStatus.fromName('low'), FundStatus.low);
+    expect(FundStatus.fromName('replenishing'), FundStatus.replenishing);
+    expect(FundStatus.fromName('garbage'), FundStatus.active);
+    expect(FundStatus.fromName(null), FundStatus.active);
+  });
+
+  test('fromMap parses centavos/status; toCreateMap omits id and seeds fields', () {
+    final f = Fund.fromMap('f9', {
+      'companyId': 'c1', 'name': 'PC',
+      'originalBudgetCentavos': 10000000,
+      'availableBalanceCentavos': 9500000,
+      'lowBalanceThresholdPct': 5, 'status': 'low',
+    });
+    expect(f.id, 'f9');
+    expect(f.availableBalance, Money.fromCentavos(9500000));
+    expect(f.status, FundStatus.low);
+    final map = f.toCreateMap();
+    expect(map.containsKey('id'), isFalse);
+    expect(map['originalBudgetCentavos'], 10000000);
+  });
 }

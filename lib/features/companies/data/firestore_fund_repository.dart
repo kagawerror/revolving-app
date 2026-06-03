@@ -12,6 +12,7 @@ class FirestoreFundRepository implements FundRepository {
   @override
   Stream<List<Fund>> watchByCompany(String companyId) => _col
       .where('companyId', isEqualTo: companyId)
+      .orderBy('name')
       .snapshots()
       .map((s) => s.docs.map((d) => Fund.fromMap(d.id, d.data())).toList());
 
