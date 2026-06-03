@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error/failure_ui.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_status.dart';
@@ -20,11 +21,7 @@ class RequestDetailScreen extends ConsumerWidget {
           actorUid: user.uid,
         );
     if (!context.mounted) return;
-    res.when(
-      ok: (_) => Navigator.of(context).pop(),
-      err: (f) => ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(f.message))),
-    );
+    if (res.showOnError(context)) Navigator.of(context).pop();
   }
 
   @override

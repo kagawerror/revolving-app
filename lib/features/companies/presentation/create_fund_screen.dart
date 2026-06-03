@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error/failure_ui.dart';
 import '../../../core/money/money.dart';
 import '../domain/fund.dart';
 import 'admin_providers.dart';
@@ -24,7 +25,7 @@ class _CreateFundScreenState extends ConsumerState<CreateFundScreen> {
     setState(() => _saving = true);
     try {
       final budget = Money.fromPesos(num.parse(_budget.text));
-      await ref.read(fundRepositoryProvider).create(Fund(
+      final res = await ref.read(fundRepositoryProvider).create(Fund(
             id: '',
             companyId: _companyId!,
             name: _name.text.trim(),
@@ -33,7 +34,8 @@ class _CreateFundScreenState extends ConsumerState<CreateFundScreen> {
             lowBalanceThresholdPct: int.parse(_pct.text),
             status: FundStatus.active,
           ));
-      if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
+      if (res.showOnError(context)) Navigator.of(context).pop();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
