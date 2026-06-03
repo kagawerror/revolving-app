@@ -33,4 +33,13 @@ void main() {
     expect(r.newBalance, Money.zero);
     expect(r.fundIsLow, isTrue);
   });
+
+  test('computeRelease throws when fund is replenishing', () {
+    final replenishing = Fund(
+      id: 'f1', companyId: 'c1', name: 'PC',
+      originalBudget: Money.fromPesos(100000),
+      availableBalance: Money.fromPesos(50000),
+      lowBalanceThresholdPct: 3, status: FundStatus.replenishing);
+    expect(() => computeRelease(replenishing, Money.fromPesos(1000)), throwsStateError);
+  });
 }

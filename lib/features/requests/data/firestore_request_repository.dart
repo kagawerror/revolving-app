@@ -18,6 +18,9 @@ class ReleaseOutcome {
 }
 
 ReleaseOutcome computeRelease(Fund fund, Money amount) {
+  if (fund.status == FundStatus.replenishing) {
+    throw StateError('Fund is being replenished; releases are paused.');
+  }
   if (!fund.canRelease(amount)) {
     throw StateError('Insufficient fund balance for release.');
   }
