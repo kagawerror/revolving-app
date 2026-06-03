@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -130,6 +131,8 @@ class FirestoreRequestRepository implements RequestRepository {
     }
     var newlyLow = false;
     Fund? releasedFund;
+    String? lowTitle;
+    String? lowBody;
     try {
       await _db.runTransaction((tx) async {
         final fundSnap = await tx.get(_fundRef(request.fundId));
@@ -161,13 +164,16 @@ class FirestoreRequestRepository implements RequestRepository {
         // spamming incharge on every release once the fund is already low).
         if (outcome.fundIsLow && fund.status != FundStatus.low) {
           newlyLow = true;
+          lowTitle = 'Fund ${fund.name} is low';
+          lowBody =
+              'Fund "${fund.name}" has reached its low-balance threshold. Replenish soon.';
           final notifRef = _db.collection('notifications').doc();
           tx.set(notifRef, {
             'companyId': fund.companyId,
             'recipientRoles': const ['incharge'],
             'type': 'lowBalance',
-            'title': 'Fund ${fund.name} is low',
-            'body': 'Fund "${fund.name}" has reached its low-balance threshold. Replenish soon.',
+            'title': lowTitle,
+            'body': lowBody,
             'fundId': fund.id,
             'replenishmentId': null,
             'readAt': null,
@@ -179,13 +185,12 @@ class FirestoreRequestRepository implements RequestRepository {
       // fund NEWLY flipped to low. Not awaited; failures never affect release.
       final fund = releasedFund;
       if (newlyLow && fund != null) {
-        _push.notify(
+        unawaited(_push.notify(
           companyId: fund.companyId,
           recipientRoles: const ['incharge'],
-          title: 'Fund ${fund.name} is low',
-          body:
-              'Fund "${fund.name}" has reached its low-balance threshold. Replenish soon.',
-        );
+          title: lowTitle!,
+          body: lowBody!,
+        ));
       }
       return const Ok(null);
     } on StateError catch (e) {

@@ -55,7 +55,7 @@ export default {
       )
     );
 
-    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    const ok = results.filter((r) => r.status === 'fulfilled' && r.value.ok).length;
     return new Response(JSON.stringify({ sent: ok, roles: recipientRoles.length }), {
       headers: { 'content-type': 'application/json' },
     });

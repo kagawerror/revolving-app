@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'dart:async';
 import 'dart:developer' as developer;
 
 import '../../../core/error/failure.dart';
@@ -280,11 +281,11 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     }
     // Best-effort push for the same audience/text. Not awaited; failures are
     // swallowed by the sender and never affect the triggering operation.
-    _push.notify(
+    unawaited(_push.notify(
       companyId: companyId,
       recipientRoles: recipientRoles,
       title: title,
       body: body,
-    );
+    ));
   }
 }
