@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import '../../notifications/presentation/alerts_bell.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
@@ -17,6 +18,12 @@ class ApproverHomeScreen extends ConsumerWidget {
     final replenishments = ref.watch(pendingReplenishmentsProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Approvals'), actions: [
+        IconButton(
+          icon: const Icon(Icons.dashboard_outlined),
+          tooltip: 'Dashboard',
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DashboardScreen())),
+        ),
         const AlertsBell(),
         IconButton(
           icon: const Icon(Icons.logout),

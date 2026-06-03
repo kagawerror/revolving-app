@@ -6,6 +6,7 @@ import '../../../core/error/failure_ui.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
+import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import '../../notifications/presentation/alerts_bell.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
@@ -43,6 +44,12 @@ class InchargeHomeScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider).valueOrNull;
     return Scaffold(
       appBar: AppBar(title: const Text('Incharge'), actions: [
+        IconButton(
+          icon: const Icon(Icons.dashboard_outlined),
+          tooltip: 'Dashboard',
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DashboardScreen())),
+        ),
         const AlertsBell(),
         IconButton(
           icon: const Icon(Icons.logout),

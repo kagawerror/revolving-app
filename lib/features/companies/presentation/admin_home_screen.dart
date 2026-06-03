@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import 'admin_providers.dart';
 
@@ -13,6 +14,12 @@ class AdminHomeScreen extends ConsumerWidget {
     final companies = ref.watch(companiesProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Admin'), actions: [
+        IconButton(
+          icon: const Icon(Icons.dashboard_outlined),
+          tooltip: 'Dashboard',
+          onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const DashboardScreen())),
+        ),
         IconButton(
           icon: const Icon(Icons.logout),
           onPressed: () => ref.read(signOutProvider)(),
