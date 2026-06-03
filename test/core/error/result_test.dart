@@ -22,4 +22,15 @@ void main() {
     final out = ok.when(ok: (v) => 'v$v', err: (f) => 'e${f.message}');
     expect(out, 'v5');
   });
+
+  test('when folds the err branch', () {
+    const Result<int> r = Err(ValidationFailure('bad'));
+    final out = r.when(ok: (v) => 'v$v', err: (f) => 'e:${f.message}');
+    expect(out, 'e:bad');
+  });
+
+  test('failures differ by type even with same message', () {
+    expect(const AuthFailure('x') == const ValidationFailure('x'), isFalse);
+    expect(const AuthFailure('x'), const AuthFailure('x'));
+  });
 }

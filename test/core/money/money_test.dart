@@ -35,4 +35,13 @@ void main() {
   test('rejects negative construction', () {
     expect(() => Money.fromCentavos(-1), throwsArgumentError);
   });
+
+  test('subtraction below zero throws', () {
+    expect(() => Money.fromCentavos(100) - Money.fromCentavos(200),
+        throwsArgumentError);
+  });
+
+  test('percentageOf rounds half-centavo correctly', () {
+    expect(Money.fromCentavos(1001).percentageOf(50).centavos, 501); // 500.5 -> 501
+  });
 }

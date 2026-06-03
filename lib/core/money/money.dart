@@ -14,6 +14,8 @@ class Money extends Equatable implements Comparable<Money> {
     return Money._(centavos);
   }
 
+  /// For human/UI input only. Routes through `double`, so authoritative amounts
+  /// that must round deterministically should be built via [Money.fromCentavos].
   factory Money.fromPesos(num pesos) => Money.fromCentavos((pesos * 100).round());
 
   static const Money zero = Money._(0);
