@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../auth/presentation/auth_providers.dart';
+import 'admin_providers.dart';
 
 class AdminHomeScreen extends ConsumerWidget {
   const AdminHomeScreen({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final companies = ref.watch(companiesProvider);
     return Scaffold(
       appBar: AppBar(title: const Text('Admin'), actions: [
         IconButton(
@@ -14,7 +18,21 @@ class AdminHomeScreen extends ConsumerWidget {
           onPressed: () => ref.read(authRepositoryProvider).signOut(),
         ),
       ]),
-      body: const Center(child: Text('Admin home — provisioning added in Task 12')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => context.push('/admin/create-fund'),
+        label: const Text('New fund'),
+        icon: const Icon(Icons.add),
+      ),
+      body: companies.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Error: $e')),
+        data: (list) => ListView(
+          children: [
+            for (final c in list)
+              ListTile(leading: const Icon(Icons.business), title: Text(c.name)),
+          ],
+        ),
+      ),
     );
   }
 }

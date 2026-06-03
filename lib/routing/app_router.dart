@@ -6,6 +6,7 @@ import '../features/auth/domain/app_user.dart';
 import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/companies/presentation/admin_home_screen.dart';
+import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/requests/presentation/approver_home_screen.dart';
 import '../features/requests/presentation/incharge_home_screen.dart';
 
@@ -38,11 +39,15 @@ final routerProvider = Provider<GoRouter>((ref) {
       if (user == null) return loggingIn ? null : '/login';
       final home = homeFor(user.role);
       if (loggingIn) return home;
-      return home == state.matchedLocation ? null : home;
+      return state.matchedLocation.startsWith(home) ? null : home;
     },
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
       GoRoute(path: '/admin', builder: (_, __) => const AdminHomeScreen()),
+      GoRoute(
+        path: '/admin/create-fund',
+        builder: (_, __) => const CreateFundScreen(),
+      ),
       GoRoute(path: '/incharge', builder: (_, __) => const InchargeHomeScreen()),
       GoRoute(path: '/approvals', builder: (_, __) => const ApproverHomeScreen()),
     ],
