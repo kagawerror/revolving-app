@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
+import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../requests/presentation/approver_inbox_providers.dart';
 import '../domain/dashboard_summary.dart';
 import 'dashboard_providers.dart';
 
@@ -40,7 +42,9 @@ class DashboardScreen extends ConsumerWidget {
             const SizedBox(height: 24),
             Text('Recent activity', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 8),
-            recent.maybeWhen(
+            recent.when(
+              loading: () => const LinearProgressIndicator(),
+              error: (e, _) => const Text('Could not load recent activity'),
               data: (list) => list.isEmpty
                   ? const Text('No recent requests')
                   : Column(children: [
@@ -51,7 +55,6 @@ class DashboardScreen extends ConsumerWidget {
                           subtitle: Text('${r.purpose} · ${r.status.name}'),
                         ),
                     ]),
-              orElse: () => const LinearProgressIndicator(),
             ),
           ],
         ),
@@ -60,14 +63,16 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-class _SummaryGrid extends StatelessWidget {
+class _SummaryGrid extends ConsumerWidget {
   final DashboardSummary summary;
   const _SummaryGrid({required this.summary});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final t = summary.totals;
     final pct = (t.utilization * 100).toStringAsFixed(1);
+    final pendingReq = ref.watch(pendingRequestsProvider).valueOrNull;
+    final pendingRepl = ref.watch(pendingReplenishmentsProvider).valueOrNull;
     return Wrap(
       spacing: 12,
       runSpacing: 12,
@@ -80,10 +85,12 @@ class _SummaryGrid extends StatelessWidget {
         _StatCard(
             label: 'Low / replenishing',
             value: '${t.lowFundCount} / ${t.replenishingFundCount}'),
-        _StatCard(label: 'Pending requests', value: '${summary.pendingRequestCount}'),
+        _StatCard(
+            label: 'Pending requests',
+            value: pendingReq?.length.toString() ?? '…'),
         _StatCard(
             label: 'Pending replenishments',
-            value: '${summary.pendingReplenishmentCount}'),
+            value: pendingRepl?.length.toString() ?? '…'),
       ],
     );
   }

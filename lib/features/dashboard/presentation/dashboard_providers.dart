@@ -10,7 +10,7 @@ import '../domain/dashboard_summary.dart';
 
 final recentRequestsProvider = StreamProvider<List<FundRequest>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
-  if (user == null) return const Stream.empty();
+  if (user == null) return Stream.value(const <FundRequest>[]);
   return ref.watch(requestRepositoryProvider).watchRecentByCompany(user.companyId, 15);
 });
 
