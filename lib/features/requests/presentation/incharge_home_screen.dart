@@ -7,15 +7,14 @@ import '../../../core/error/failure_ui.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/profile_menu_button.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
-import '../../../core/widgets/profile_avatar_button.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
-import '../../messaging/presentation/messaging_providers.dart';
 import '../../notifications/presentation/alerts_bell.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
 import '../../replenishment/presentation/replenish_review_screen.dart';
@@ -61,11 +60,7 @@ class InchargeHomeScreen extends ConsumerWidget {
               MaterialPageRoute(builder: (_) => const DashboardScreen())),
         ),
         const AlertsBell(),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          onPressed: () => ref.read(signOutProvider)(),
-        ),
-        const ProfileAvatarButton(),
+        const ProfileMenuButton(),
       ]),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/incharge/create'),

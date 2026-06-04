@@ -5,13 +5,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/profile_menu_button.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
-import '../../../core/widgets/profile_avatar_button.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
-import '../../messaging/presentation/messaging_providers.dart';
 import '../../notifications/presentation/alerts_bell.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
@@ -36,11 +35,7 @@ class ApproverHomeScreen extends ConsumerWidget {
               MaterialPageRoute(builder: (_) => const DashboardScreen())),
         ),
         const AlertsBell(),
-        IconButton(
-          icon: const Icon(Icons.logout),
-          onPressed: () => ref.read(signOutProvider)(),
-        ),
-        const ProfileAvatarButton(),
+        const ProfileMenuButton(),
       ]),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(
