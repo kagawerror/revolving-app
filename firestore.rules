@@ -29,6 +29,18 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow write: if isAdmin();
+      // Owner self-service: a signed-in user may update ONLY their own
+      // presentation/profile fields. role + companyId are admin-controlled and
+      // must remain immutable on this path.
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['displayName', 'photoUrl', 'themeMode', 'accentId'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.companyId == resource.data.companyId
+        );
       // First-time setup: the founding user creates their own admin profile,
       // allowed only while the app has not been bootstrapped yet.
       allow create: if signedIn()
