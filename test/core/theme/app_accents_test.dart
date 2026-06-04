@@ -23,5 +23,23 @@ void main() {
       expect(ids.toSet().length, ids.length);
       expect(AppAccents.all.every((a) => a.label.isNotEmpty), isTrue);
     });
+    test('all 8 accent seed colors are locked to their expected hex', () {
+      const expected = {
+        'forest': 0xFF0B6E4F,
+        'indigo': 0xFF4F46E5,
+        'violet': 0xFF7C3AED,
+        'sunset': 0xFFF2542D,
+        'amber': 0xFFF59E0B,
+        'teal': 0xFF0D9488,
+        'rose': 0xFFE11D48,
+        'slate': 0xFF475569,
+      };
+      expect(AppAccents.all.length, expected.length);
+      for (final accent in AppAccents.all) {
+        final hex = expected[accent.id];
+        expect(hex, isNotNull, reason: 'unexpected accent id ${accent.id}');
+        expect(accent.seed, Color(hex!), reason: 'seed mismatch for ${accent.id}');
+      }
+    });
   });
 }
