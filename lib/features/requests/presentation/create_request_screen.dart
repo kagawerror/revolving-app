@@ -6,6 +6,9 @@ import 'package:image_picker/image_picker.dart';
 
 import '../../../core/error/failure_ui.dart';
 import '../../../core/money/money.dart';
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/presentation/admin_providers.dart';
 import 'create_request_controller.dart';
@@ -68,79 +71,185 @@ class _State extends ConsumerState<CreateRequestScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('New request')),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: ListView(children: [
-            funds.maybeWhen(
-              data: (list) => DropdownButtonFormField<String>(
-                initialValue: _fundId,
-                decoration: const InputDecoration(labelText: 'Fund'),
-                items: [
-                  for (final f in list)
-                    DropdownMenuItem(value: f.id, child: Text(f.name)),
-                ],
-                onChanged: (v) => setState(() => _fundId = v),
-                validator: (v) => v == null ? 'Select a fund' : null,
-              ),
-              orElse: () => const LinearProgressIndicator(),
-            ),
-            TextFormField(
-              controller: _beneficiary,
-              decoration:
-                  const InputDecoration(labelText: 'Beneficiary (employee)'),
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-            ),
-            TextFormField(
-              controller: _amount,
-              decoration: const InputDecoration(labelText: 'Amount (₱)'),
-              keyboardType: TextInputType.number,
-              validator: (v) {
-                final n = num.tryParse(v ?? '');
-                if (n == null || n <= 0) return 'Enter a positive amount';
-                return null;
-              },
-            ),
-            TextFormField(
-              controller: _purpose,
-              decoration: const InputDecoration(labelText: 'Purpose'),
-              validator: (v) => (v == null || v.isEmpty) ? 'Required' : null,
-            ),
-            const SizedBox(height: 12),
-            if (_image != null) Image.memory(_image!, height: 160),
-            Row(children: [
-              TextButton.icon(
-                onPressed: () => _capture(ImageSource.camera),
-                icon: const Icon(Icons.camera_alt),
-                label: const Text('Camera'),
-              ),
-              TextButton.icon(
-                onPressed: () => _capture(ImageSource.gallery),
-                icon: const Icon(Icons.photo),
-                label: const Text('Gallery'),
-              ),
-            ]),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: submitting ? null : _submit,
-              child: submitting
-                  ? Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        SizedBox(
-                            height: 18,
-                            width: 18,
-                            child:
-                                CircularProgressIndicator(strokeWidth: 2)),
-                        SizedBox(width: 12),
-                        Text('Uploading…'),
+      body: Form(
+        key: _formKey,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(
+              AppTokens.lg, AppTokens.lg, AppTokens.lg, AppTokens.xxl),
+          children: [
+            // --- Details card ---
+            SurfaceCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  funds.maybeWhen(
+                    data: (list) => DropdownButtonFormField<String>(
+                      initialValue: _fundId,
+                      decoration: const InputDecoration(
+                        labelText: 'Fund',
+                        prefixIcon: Icon(Icons.account_balance_wallet_rounded),
+                      ),
+                      items: [
+                        for (final f in list)
+                          DropdownMenuItem(value: f.id, child: Text(f.name)),
                       ],
-                    )
-                  : const Text('Send for acknowledgement'),
+                      onChanged: (v) => setState(() => _fundId = v),
+                      validator: (v) => v == null ? 'Select a fund' : null,
+                    ),
+                    orElse: () => const LinearProgressIndicator(),
+                  ),
+                  const SizedBox(height: AppTokens.md),
+                  TextFormField(
+                    controller: _beneficiary,
+                    textCapitalization: TextCapitalization.words,
+                    decoration: const InputDecoration(
+                      labelText: 'Beneficiary (employee)',
+                      prefixIcon: Icon(Icons.person_rounded),
+                    ),
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Required' : null,
+                  ),
+                  const SizedBox(height: AppTokens.md),
+                  TextFormField(
+                    controller: _amount,
+                    decoration: const InputDecoration(
+                      labelText: 'Amount',
+                      prefixText: '₱ ',
+                      prefixIcon: Icon(Icons.payments_rounded),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true),
+                    validator: (v) {
+                      final n = num.tryParse(v ?? '');
+                      if (n == null || n <= 0) return 'Enter a positive amount';
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: AppTokens.md),
+                  TextFormField(
+                    controller: _purpose,
+                    textCapitalization: TextCapitalization.sentences,
+                    minLines: 1,
+                    maxLines: 3,
+                    decoration: const InputDecoration(
+                      labelText: 'Purpose',
+                      prefixIcon: Icon(Icons.notes_rounded),
+                      alignLabelWithHint: true,
+                    ),
+                    validator: (v) =>
+                        (v == null || v.isEmpty) ? 'Required' : null,
+                  ),
+                ],
+              ),
             ),
-          ]),
+
+            // --- Proof photo card ---
+            const SectionHeader(title: 'Proof of request'),
+            _ProofCard(
+              image: _image,
+              onCamera: () => _capture(ImageSource.camera),
+              onGallery: () => _capture(ImageSource.gallery),
+            ),
+
+            const SizedBox(height: AppTokens.xl),
+            FilledButton.icon(
+              onPressed: submitting ? null : _submit,
+              icon: submitting
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.send_rounded),
+              label: Text(submitting
+                  ? 'Uploading…'
+                  : 'Send for acknowledgement'),
+            ),
+          ],
         ),
+      ),
+    );
+  }
+}
+
+/// Prominent proof-photo capture card: shows a preview thumbnail once a photo is
+/// attached, otherwise a friendly prompt. Camera + gallery buttons drive the
+/// existing pick/compress flow.
+class _ProofCard extends StatelessWidget {
+  const _ProofCard({
+    required this.image,
+    required this.onCamera,
+    required this.onGallery,
+  });
+
+  final Uint8List? image;
+  final VoidCallback onCamera;
+  final VoidCallback onGallery;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final img = image;
+
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ClipRRect(
+            borderRadius: AppTokens.brField,
+            child: SizedBox(
+              height: 180,
+              width: double.infinity,
+              child: img != null
+                  ? Image.memory(img, fit: BoxFit.cover)
+                  : DecoratedBox(
+                      decoration: BoxDecoration(
+                        color: scheme.surfaceContainerHighest,
+                        border: Border.all(
+                          color: scheme.outlineVariant,
+                        ),
+                        borderRadius: AppTokens.brField,
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.add_a_photo_rounded,
+                                size: 40, color: scheme.onSurfaceVariant),
+                            const SizedBox(height: AppTokens.sm),
+                            Text(
+                              'Attach a photo as proof',
+                              style: textTheme.bodyMedium
+                                  ?.copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+            ),
+          ),
+          const SizedBox(height: AppTokens.md),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onCamera,
+                  icon: const Icon(Icons.camera_alt_rounded),
+                  label: const Text('Camera'),
+                ),
+              ),
+              const SizedBox(width: AppTokens.md),
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: onGallery,
+                  icon: const Icon(Icons.photo_library_rounded),
+                  label: Text(img == null ? 'Gallery' : 'Replace'),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
