@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/theme/app_tokens.dart';
+
 /// First screen shown on every app launch.
 ///
 /// Pure presentation: introduces the mascot ("Revvy") and what the app does,
@@ -19,20 +21,25 @@ class WelcomeScreen extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
 
-    // Soft vertical gradient derived entirely from the seeded scheme so it
-    // tracks the brand colour without hardcoding hex values.
+    // Bold, vibrant vertical gradient derived entirely from the seeded scheme so
+    // it tracks the brand colour without hardcoding hex values. Top third leans
+    // into the primary container for punch, then settles onto the surface.
     final background = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
       colors: [
+        Color.alphaBlend(
+          colorScheme.primary.withValues(alpha: 0.18),
+          colorScheme.primaryContainer,
+        ),
         colorScheme.primaryContainer,
         Color.alphaBlend(
-          colorScheme.primaryContainer.withValues(alpha: 0.35),
+          colorScheme.primaryContainer.withValues(alpha: 0.30),
           colorScheme.surface,
         ),
         colorScheme.surface,
       ],
-      stops: const [0.0, 0.45, 1.0],
+      stops: const [0.0, 0.22, 0.55, 1.0],
     );
 
     return Scaffold(
@@ -103,7 +110,7 @@ class _MascotFrame extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const radius = 36.0;
+    const radius = AppTokens.rCard + 14;
 
     // Decode the image downsampled to the physical pixels it actually fills
     // (logical size × device pixel ratio) rather than its full native ~780×1170.
@@ -125,16 +132,16 @@ class _MascotFrame extends StatelessWidget {
           ],
         ),
         boxShadow: [
-          // Soft brand-tinted glow.
+          // Bold brand-tinted glow.
           BoxShadow(
-            color: colorScheme.primary.withValues(alpha: 0.22),
-            blurRadius: 48,
-            spreadRadius: 4,
-            offset: const Offset(0, 12),
+            color: colorScheme.primary.withValues(alpha: 0.30),
+            blurRadius: 56,
+            spreadRadius: 6,
+            offset: const Offset(0, 14),
           ),
           // Crisp ambient depth.
           BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.18),
+            color: colorScheme.shadow.withValues(alpha: 0.20),
             blurRadius: 18,
             offset: const Offset(0, 8),
           ),
@@ -174,8 +181,9 @@ class _Greeting extends StatelessWidget {
           'Hi, I’m Revvy \u{1F44B}',
           textAlign: TextAlign.center,
           style: textTheme.displaySmall?.copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             color: colorScheme.onSurface,
+            letterSpacing: -0.5,
           ),
         ),
         const SizedBox(height: 12),
@@ -183,9 +191,9 @@ class _Greeting extends StatelessWidget {
           'Your Revolving Fund',
           textAlign: TextAlign.center,
           style: textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.w700,
             color: colorScheme.primary,
-            letterSpacing: 0.2,
+            letterSpacing: 0.4,
           ),
         ),
         const SizedBox(height: 16),
@@ -219,12 +227,13 @@ class _ContinueButton extends StatelessWidget {
       onPressed: onContinue,
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(56),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
+        shape: const RoundedRectangleBorder(
+          borderRadius: AppTokens.brCard,
         ),
         textStyle: const TextStyle(
           fontSize: 16,
-          fontWeight: FontWeight.w600,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
         ),
       ),
       child: const Text("Let's Go"),
