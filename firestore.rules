@@ -56,7 +56,7 @@ service cloud.firestore {
     }
 
     match /funds/{fundId} {
-      allow read: if sameCompany(resource.data.companyId);
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
       allow create: if isAdmin();
       // Incharge performs releases and replenishment-create/discard; approver
       // performs replenishment approval which resets the balance.

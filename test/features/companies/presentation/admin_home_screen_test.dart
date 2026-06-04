@@ -4,10 +4,12 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:rev_app/core/error/failure.dart';
 import 'package:rev_app/core/error/result.dart';
+import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/auth/presentation/auth_providers.dart';
 import 'package:rev_app/features/companies/domain/company.dart';
 import 'package:rev_app/features/companies/domain/company_repository.dart';
+import 'package:rev_app/features/companies/domain/fund.dart';
 import 'package:rev_app/features/companies/presentation/admin_home_screen.dart';
 import 'package:rev_app/features/companies/presentation/admin_providers.dart';
 import 'package:rev_app/features/messaging/presentation/messaging_providers.dart';
@@ -29,15 +31,34 @@ void main() {
     repo = _MockCompanyRepository();
   });
 
-  Widget harness({List<Company> companies = const []}) => ProviderScope(
+  Widget harness({
+    List<Company> companies = const [],
+    List<Fund> funds = const [],
+  }) =>
+      ProviderScope(
         overrides: [
           companyRepositoryProvider.overrideWithValue(repo),
-          companiesProvider
-              .overrideWith((ref) => Stream.value(companies)),
+          companiesProvider.overrideWith((ref) => Stream.value(companies)),
+          allFundsProvider.overrideWith((ref) => Stream.value(funds)),
           currentUserProvider.overrideWith((ref) => Stream.value(_admin)),
           signOutProvider.overrideWithValue(() async {}),
         ],
         child: const MaterialApp(home: AdminHomeScreen()),
+      );
+
+  Fund fund({
+    required String id,
+    required String companyId,
+    required String name,
+  }) =>
+      Fund(
+        id: id,
+        companyId: companyId,
+        name: name,
+        originalBudget: Money.fromCentavos(1000000),
+        availableBalance: Money.fromCentavos(500000),
+        lowBalanceThresholdPct: 3,
+        status: FundStatus.active,
       );
 
   testWidgets('empty state shows an Add company action', (tester) async {
@@ -48,6 +69,19 @@ void main() {
     // Both the section header button and the empty-state action read
     // "Add company".
     expect(find.text('Add company'), findsWidgets);
+  });
+
+  testWidgets('funds render grouped under their company name', (tester) async {
+    await tester.pumpWidget(harness(
+      companies: const [Company(id: 'acme', name: 'Acme')],
+      funds: [fund(id: 'f1', companyId: 'acme', name: 'Petty cash')],
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Funds'), findsOneWidget);
+    expect(find.text('Acme'), findsWidgets); // group header
+    expect(find.text('Petty cash'), findsOneWidget);
+    expect(find.text('No funds yet'), findsNothing);
   });
 
   testWidgets('adding a company calls create once and shows success snackbar',

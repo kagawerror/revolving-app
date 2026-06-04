@@ -9,15 +9,24 @@ import '../domain/fund.dart';
 import '../domain/fund_repository.dart';
 
 final companyRepositoryProvider = Provider<CompanyRepository>(
-    (ref) => FirestoreCompanyRepository(ref.watch(firestoreProvider)));
+  (ref) => FirestoreCompanyRepository(ref.watch(firestoreProvider)),
+);
 
 final fundRepositoryProvider = Provider<FundRepository>(
-    (ref) => FirestoreFundRepository(ref.watch(firestoreProvider)));
+  (ref) => FirestoreFundRepository(ref.watch(firestoreProvider)),
+);
 
 final companiesProvider = StreamProvider<List<Company>>(
-    (ref) => ref.watch(companyRepositoryProvider).watchAll());
+  (ref) => ref.watch(companyRepositoryProvider).watchAll(),
+);
 
 /// Funds owned by a single company.
 final companyFundsProvider = StreamProvider.family<List<Fund>, String>(
-  (ref, companyId) => ref.watch(fundRepositoryProvider).watchByCompany(companyId),
+  (ref, companyId) =>
+      ref.watch(fundRepositoryProvider).watchByCompany(companyId),
+);
+
+/// All funds across every company — admin-only confirmation view.
+final allFundsProvider = StreamProvider<List<Fund>>(
+  (ref) => ref.watch(fundRepositoryProvider).watchAll(),
 );

@@ -21,9 +21,16 @@ class FirestoreFundRepository implements FundRepository {
       .map((s) => s.docs.map((d) => Fund.fromMap(d.id, d.data())).toList());
 
   @override
-  Stream<Fund?> watchById(String fundId) => _col.doc(fundId).snapshots().map(
-        (d) => d.exists ? Fund.fromMap(d.id, d.data()!) : null,
-      );
+  Stream<List<Fund>> watchAll() => _col
+      .orderBy('name')
+      .snapshots()
+      .map((s) => s.docs.map((d) => Fund.fromMap(d.id, d.data())).toList());
+
+  @override
+  Stream<Fund?> watchById(String fundId) => _col
+      .doc(fundId)
+      .snapshots()
+      .map((d) => d.exists ? Fund.fromMap(d.id, d.data()!) : null);
 
   @override
   Future<Result<void>> create(Fund fund) async {
