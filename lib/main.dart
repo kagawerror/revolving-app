@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app_keys.dart';
+import 'core/theme/app_accents.dart';
 import 'core/theme/app_theme.dart';
 import 'features/messaging/presentation/messaging_initializer.dart';
 import 'features/welcome/presentation/welcome_gate.dart';
@@ -26,8 +27,9 @@ class RevApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final router = ref.watch(routerProvider);
     return MaterialApp.router(
+      debugShowCheckedModeBanner: false,
       title: 'Revolving Fund',
-      theme: AppTheme.light(),
+      theme: AppTheme.light(AppAccents.byId(AppAccents.defaultId).seed),
       routerConfig: router,
       scaffoldMessengerKey: scaffoldMessengerKey,
       builder: (context, child) => WelcomeGate(
