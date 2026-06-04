@@ -17,8 +17,8 @@ import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
 import '../../requests/domain/fund_request.dart';
-import '../../requests/domain/request_status.dart';
 import '../../requests/presentation/approver_inbox_providers.dart';
+import '../../requests/presentation/request_status_visual.dart';
 import '../domain/dashboard_summary.dart';
 import 'dashboard_providers.dart';
 
@@ -33,26 +33,6 @@ import 'dashboard_providers.dart';
       return (label: 'Low', tone: StatusTone.warning, icon: Icons.warning_amber_rounded);
     case FundStatus.replenishing:
       return (label: 'Replenishing', tone: StatusTone.info, icon: Icons.autorenew_rounded);
-  }
-}
-
-/// Maps a request status to a pill tone + readable label for the activity feed.
-({String label, StatusTone tone}) _requestStatusVisual(RequestStatus status) {
-  switch (status) {
-    case RequestStatus.draft:
-      return (label: 'Draft', tone: StatusTone.neutral);
-    case RequestStatus.pendingAck:
-      return (label: 'Pending', tone: StatusTone.warning);
-    case RequestStatus.acknowledged:
-      return (label: 'Acknowledged', tone: StatusTone.info);
-    case RequestStatus.rejected:
-      return (label: 'Rejected', tone: StatusTone.danger);
-    case RequestStatus.readyForRelease:
-      return (label: 'Ready', tone: StatusTone.info);
-    case RequestStatus.released:
-      return (label: 'Released', tone: StatusTone.success);
-    case RequestStatus.replenished:
-      return (label: 'Replenished', tone: StatusTone.success);
   }
 }
 
@@ -367,7 +347,7 @@ class _RecentTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
-    final visual = _requestStatusVisual(request.status);
+    final visual = requestStatusVisual(request.status);
 
     return AppListTile(
       title: request.beneficiaryName,

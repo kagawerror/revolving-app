@@ -24,6 +24,7 @@ import '../domain/fund_request.dart';
 import '../domain/request_status.dart';
 import 'request_detail_screen.dart';
 import 'request_providers.dart';
+import 'request_status_visual.dart';
 
 /// Requests under a single fund.
 final _fundRequestsProvider = StreamProvider.family((ref, String fundId) =>
