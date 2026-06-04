@@ -3,6 +3,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/error/failure_ui.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
@@ -13,6 +14,7 @@ import '../../../core/widgets/surface_card.dart';
 import '../../companies/domain/company.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../messaging/presentation/messaging_providers.dart';
+import 'add_company_dialog.dart';
 import 'admin_providers.dart';
 
 /// Admin landing screen: provisioned companies + the entry point to create a
@@ -21,6 +23,22 @@ import 'admin_providers.dart';
 /// are all preserved exactly.
 class AdminHomeScreen extends ConsumerWidget {
   const AdminHomeScreen({super.key});
+
+  Future<void> _handleAddCompany(BuildContext context, WidgetRef ref) async {
+    final added = await showAddCompanyDialog(
+      context,
+      onSubmit: (name) async {
+        final res = await ref.read(companyRepositoryProvider).create(name);
+        if (!context.mounted) return false;
+        return res.showOnError(context); // true on success, snackbar on error
+      },
+    );
+    if (added != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Company added')),
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -49,16 +67,20 @@ class AdminHomeScreen extends ConsumerWidget {
       body: companies.when(
         loading: () => const _AdminSkeleton(),
         error: (e, _) => _AdminError(message: 'Error: $e'),
-        data: (list) => _AdminBody(companies: list),
+        data: (list) => _AdminBody(
+          companies: list,
+          onAddCompany: () => _handleAddCompany(context, ref),
+        ),
       ),
     );
   }
 }
 
 class _AdminBody extends StatelessWidget {
-  const _AdminBody({required this.companies});
+  const _AdminBody({required this.companies, required this.onAddCompany});
 
   final List<Company> companies;
+  final VoidCallback onAddCompany;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +91,23 @@ class _AdminBody extends StatelessWidget {
         const SizedBox(height: AppTokens.lg),
         SectionHeader(
           title: 'Companies',
-          trailing: _CountBadge(companies.length),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _CountBadge(companies.length),
+              const SizedBox(width: AppTokens.sm),
+              TextButton.icon(
+                onPressed: onAddCompany,
+                icon: const Icon(Icons.add_business_rounded, size: 20),
+                label: const Text('Add company'),
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(0, 48),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: AppTokens.md),
+                ),
+              ),
+            ],
+          ),
         ),
         SurfaceCard(
           padding: const EdgeInsets.symmetric(
@@ -77,14 +115,18 @@ class _AdminBody extends StatelessWidget {
             vertical: AppTokens.xs,
           ),
           child: companies.isEmpty
-              ? const Padding(
-                  padding: EdgeInsets.symmetric(vertical: AppTokens.lg),
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: AppTokens.lg),
                   child: EmptyState(
                     title: 'No companies yet',
-                    message:
-                        'Provisioned companies will appear here. Create a fund '
-                        'to get started.',
+                    message: 'Add a company first, then create a fund for it. '
+                        'Provisioned companies will appear here.',
                     showMascot: false,
+                    action: FilledButton.icon(
+                      onPressed: onAddCompany,
+                      icon: const Icon(Icons.add_business_rounded),
+                      label: const Text('Add company'),
+                    ),
                   ),
                 )
               : Column(
