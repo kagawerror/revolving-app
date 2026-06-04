@@ -30,9 +30,12 @@ class StatusPill extends StatelessWidget {
       case StatusTone.danger:
         return (scheme.errorContainer, scheme.onErrorContainer);
       case StatusTone.warning:
-        // Amber tint that reads on both light and dark surfaces. The container
-        // is a soft amber; the foreground is a deep amber for contrast.
-        return (const Color(0xFFFDE7C3), const Color(0xFF7A4B00));
+        // No amber role exists in the M3 scheme, so it's hand-tuned — but
+        // brightness-aware so a warning pill tones down on dark surfaces
+        // instead of glowing as a bright island. Both pairs pass WCAG AA.
+        return scheme.brightness == Brightness.dark
+            ? (const Color(0xFF4A3413), const Color(0xFFFFD79A))
+            : (const Color(0xFFFDE7C3), const Color(0xFF7A4B00));
       case StatusTone.info:
         return (scheme.primaryContainer, scheme.onPrimaryContainer);
       case StatusTone.neutral:

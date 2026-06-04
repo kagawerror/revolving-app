@@ -5,6 +5,10 @@ import 'package:rev_app/core/widgets/status_pill.dart';
 void main() {
   // Plain default theme to avoid google-fonts network/font loading in tests.
   final scheme = ColorScheme.fromSeed(seedColor: const Color(0xFF0B6E4F));
+  final darkScheme = ColorScheme.fromSeed(
+    seedColor: const Color(0xFF0B6E4F),
+    brightness: Brightness.dark,
+  );
 
   group('StatusPill widget', () {
     testWidgets('renders its label', (tester) async {
@@ -61,6 +65,18 @@ void main() {
         StatusPill.colorsFor(StatusTone.info, scheme),
         equals((scheme.primaryContainer, scheme.onPrimaryContainer)),
       );
+    });
+
+    test('warning tone is brightness-aware (distinct light vs dark pairs)', () {
+      final light = StatusPill.colorsFor(StatusTone.warning, scheme);
+      final dark = StatusPill.colorsFor(StatusTone.warning, darkScheme);
+
+      // Both pairs are defined and differ, so the dark pill tones down instead
+      // of glowing as a bright island on dark surfaces.
+      expect(light, isNot(equals(dark)));
+      // Light pair: bright container, deep foreground. Dark pair inverts that.
+      expect(light.$1.computeLuminance(), greaterThan(light.$2.computeLuminance()));
+      expect(dark.$1.computeLuminance(), lessThan(dark.$2.computeLuminance()));
     });
   });
 }
