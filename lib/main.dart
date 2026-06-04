@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_keys.dart';
 import 'core/theme/app_theme.dart';
 import 'features/messaging/presentation/messaging_initializer.dart';
+import 'features/welcome/presentation/welcome_gate.dart';
 import 'routing/app_router.dart';
 
 Future<void> main() async {
@@ -29,8 +30,9 @@ class RevApp extends ConsumerWidget {
       theme: AppTheme.light(),
       routerConfig: router,
       scaffoldMessengerKey: scaffoldMessengerKey,
-      builder: (context, child) =>
-          MessagingInitializer(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => WelcomeGate(
+        child: MessagingInitializer(child: child ?? const SizedBox.shrink()),
+      ),
     );
   }
 }
