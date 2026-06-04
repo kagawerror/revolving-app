@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../app_keys.dart';
 import '../features/auth/domain/app_user.dart';
 import '../features/auth/presentation/auth_providers.dart';
+import '../features/auth/presentation/bootstrap_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/companies/presentation/admin_home_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
@@ -20,6 +21,26 @@ String homeFor(UserRole role) => switch (role) {
       _ => '/incharge', // employees view their requests under the incharge shell in v1
     };
 
+/// Pure redirect decision (extracted so it is testable without Firebase).
+///
+/// Returns the path to redirect to, or `null` to stay put. While auth is still
+/// loading we return `null` to avoid a flicker. `/login` and `/setup` are the
+/// two valid signed-out destinations; signed-in users are always pushed to
+/// their role home off either of them.
+@visibleForTesting
+String? redirectFor({
+  required AsyncValue<AppUser?> auth,
+  required String location,
+}) {
+  if (auth.isLoading) return null;
+  final user = auth.valueOrNull;
+  final onAuthScreen = location == '/login' || location == '/setup';
+  if (user == null) return onAuthScreen ? null : '/login';
+  final home = homeFor(user.role);
+  if (onAuthScreen) return home;
+  return location.startsWith(home) ? null : home;
+}
+
 final routerProvider = Provider<GoRouter>((ref) {
   // Bridge the auth stream to a Listenable so the router is built once.
   final refresh = ValueNotifier<AsyncValue<AppUser?>>(const AsyncLoading());
@@ -34,18 +55,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: rootNavigatorKey,
     initialLocation: '/login',
     refreshListenable: refresh,
-    redirect: (context, state) {
-      final auth = refresh.value;
-      if (auth.isLoading) return null;
-      final user = auth.valueOrNull;
-      final loggingIn = state.matchedLocation == '/login';
-      if (user == null) return loggingIn ? null : '/login';
-      final home = homeFor(user.role);
-      if (loggingIn) return home;
-      return state.matchedLocation.startsWith(home) ? null : home;
-    },
+    redirect: (context, state) => redirectFor(
+      auth: refresh.value,
+      location: state.matchedLocation,
+    ),
     routes: [
       GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(path: '/setup', builder: (context, _) => const BootstrapScreen()),
       GoRoute(path: '/admin', builder: (_, __) => const AdminHomeScreen()),
       GoRoute(
         path: '/admin/create-fund',

@@ -58,19 +58,25 @@ Security rules live in `firestore.rules`; the composite index required by
 firebase deploy --only firestore
 ```
 
-## 5. Seed an initial admin
+## 5. Seed the first admin
 
-There is no self-signup for admins. Bootstrap one manually:
-
-1. Create a user in **Firebase Authentication** (email/password).
-2. In Firestore, create a `users/{uid}` document (where `{uid}` is that auth
-   user's UID) with at least:
-   - `role: "admin"`
-   - `companyId: "<an existing companies/{id}>"`
-   - `displayName: "<name>"`
+**Primary path — in-app first-time setup.** When the database has not been
+bootstrapped yet (no `meta/bootstrap` marker), the login screen shows a
+**First-time setup** button. Tap it, enter a display name, email, and password,
+and the app creates the founding administrator: an auth account plus a
+`users/{uid}` document (`role: "admin"`, `companyId: ""`) and the one-time
+`meta/bootstrap` marker, written atomically. This works on a fresh project with
+no manual console steps. Once seeded, the setup entry disappears for good.
 
 The admin can then create companies and funds, and provision other users
 (incharge, approvers, employees) from within the app.
+
+**Fallback — manual console seeding.** If you prefer to seed by hand (or need to
+recover), create a user in **Firebase Authentication** (email/password), then in
+Firestore create a `users/{uid}` document (where `{uid}` is that auth user's UID)
+with at least `role: "admin"`, `companyId: "<an existing companies/{id}>"`, and
+`displayName: "<name>"`. (Seeding manually does not create the `meta/bootstrap`
+marker, so leave the in-app setup unused on that project.)
 
 ## 6. Push notifications (Phase 5 — OneSignal, free)
 

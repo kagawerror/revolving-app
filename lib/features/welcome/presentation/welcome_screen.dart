@@ -3,12 +3,12 @@ import 'package:flutter/material.dart';
 /// First screen shown on every app launch.
 ///
 /// Pure presentation: introduces the mascot ("Revvy") and what the app does,
-/// then calls [onContinue] when the primary button is tapped. It does no
-/// navigation, timing, or state — the parent gate owns dismissal.
+/// then calls [onContinue] when the primary "Let's Go" button is tapped. It
+/// does no navigation, timing, or state — the parent gate owns dismissal.
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key, required this.onContinue});
 
-  /// Fired when the user taps the primary "Get Started" button.
+  /// Fired when the user taps the primary "Let's Go" button.
   final VoidCallback onContinue;
 
   static const String _mascotAsset = 'assets/images/revvy.jpg';
@@ -227,7 +227,7 @@ class _ContinueButton extends StatelessWidget {
           fontWeight: FontWeight.w600,
         ),
       ),
-      child: const Text('Get Started'),
+      child: const Text("Let's Go"),
     );
   }
 }

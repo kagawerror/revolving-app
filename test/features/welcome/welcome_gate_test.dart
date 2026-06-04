@@ -7,13 +7,10 @@ void main() {
   // A child stands in for the routed app beneath the gate.
   const appChild = Text('APP', textDirection: TextDirection.ltr);
 
-  Widget buildGate({required Duration autoDismissAfter}) {
-    return ProviderScope(
+  Widget buildGate() {
+    return const ProviderScope(
       child: MaterialApp(
-        home: WelcomeGate(
-          autoDismissAfter: autoDismissAfter,
-          child: appChild,
-        ),
+        home: WelcomeGate(child: appChild),
       ),
     );
   }
@@ -21,46 +18,42 @@ void main() {
   testWidgets('shows the welcome on top of the routed app first', (
     tester,
   ) async {
-    await tester.pumpWidget(
-      buildGate(autoDismissAfter: const Duration(minutes: 5)),
-    );
+    await tester.pumpWidget(buildGate());
     await tester.pump();
 
     // Welcome is visible (greeting + primary button present).
-    expect(find.text('Get Started'), findsOneWidget);
+    expect(find.text("Let's Go"), findsOneWidget);
     expect(find.textContaining('Revvy'), findsOneWidget);
     // The app child is mounted beneath the welcome (initializing).
     expect(find.text('APP'), findsOneWidget);
   });
 
-  testWidgets('tapping Get Started dismisses the welcome', (tester) async {
-    await tester.pumpWidget(
-      buildGate(autoDismissAfter: const Duration(minutes: 5)),
-    );
+  testWidgets('does not self-dismiss — stays until the user acts', (
+    tester,
+  ) async {
+    await tester.pumpWidget(buildGate());
     await tester.pump();
 
-    await tester.tap(find.text('Get Started'));
+    expect(find.text("Let's Go"), findsOneWidget);
+
+    // Let plenty of time pass; there is no auto-dismiss timer, so the welcome
+    // must still be on screen.
+    await tester.pump(const Duration(minutes: 10));
     await tester.pumpAndSettle();
 
-    expect(find.text('Get Started'), findsNothing);
-    expect(find.textContaining('Revvy'), findsNothing);
-    expect(find.text('APP'), findsOneWidget);
+    expect(find.text("Let's Go"), findsOneWidget);
+    expect(find.textContaining('Revvy'), findsOneWidget);
   });
 
-  testWidgets('auto-dismisses after the configured delay', (tester) async {
-    await tester.pumpWidget(
-      buildGate(autoDismissAfter: const Duration(milliseconds: 10)),
-    );
+  testWidgets('tapping Let\'s Go dismisses the welcome', (tester) async {
+    await tester.pumpWidget(buildGate());
     await tester.pump();
 
-    // Welcome present before the timer fires.
-    expect(find.text('Get Started'), findsOneWidget);
-
-    // Advance past the auto-dismiss delay and let the fade settle.
-    await tester.pump(const Duration(milliseconds: 20));
+    await tester.tap(find.text("Let's Go"));
     await tester.pumpAndSettle();
 
-    expect(find.text('Get Started'), findsNothing);
+    expect(find.text("Let's Go"), findsNothing);
+    expect(find.textContaining('Revvy'), findsNothing);
     expect(find.text('APP'), findsOneWidget);
   });
 
@@ -76,25 +69,22 @@ void main() {
     Widget gate() => UncontrolledProviderScope(
           container: container,
           child: const MaterialApp(
-            home: WelcomeGate(
-              autoDismissAfter: Duration(minutes: 5),
-              child: appChild,
-            ),
+            home: WelcomeGate(child: appChild),
           ),
         );
 
     await tester.pumpWidget(gate());
     await tester.pump();
-    await tester.tap(find.text('Get Started'));
+    await tester.tap(find.text("Let's Go"));
     await tester.pumpAndSettle();
-    expect(find.text('Get Started'), findsNothing);
+    expect(find.text("Let's Go"), findsNothing);
 
     // Rebuild the whole tree against the same provider container.
     await tester.pumpWidget(gate());
     await tester.pumpAndSettle();
 
     // The welcome must NOT re-appear; the app stays visible.
-    expect(find.text('Get Started'), findsNothing);
+    expect(find.text("Let's Go"), findsNothing);
     expect(find.textContaining('Revvy'), findsNothing);
     expect(find.text('APP'), findsOneWidget);
   });

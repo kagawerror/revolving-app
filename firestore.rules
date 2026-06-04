@@ -15,9 +15,27 @@ service cloud.firestore {
       return signedIn() && (myRole() in ['superior', 'manager', 'ceo']);
     }
 
+    // One-time bootstrap marker. Readable signed-out so the login screen can
+    // offer first-time setup; creatable exactly once by the founding admin.
+    match /meta/bootstrap {
+      allow read: if true;
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/meta/bootstrap)
+        && request.resource.data.seeded == true
+        && request.resource.data.seededByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       allow write: if isAdmin();
+      // First-time setup: the founding user creates their own admin profile,
+      // allowed only while the app has not been bootstrapped yet.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'admin'
+        && request.resource.data.companyId == ''
+        && !exists(/databases/$(database)/documents/meta/bootstrap);
     }
 
     match /companies/{companyId} {

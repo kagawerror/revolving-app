@@ -16,3 +16,12 @@ final authRepositoryProvider = Provider<AuthRepository>((ref) {
 final currentUserProvider = StreamProvider<AppUser?>((ref) {
   return ref.watch(authRepositoryProvider).watchCurrentUser();
 });
+
+/// Whether the app still needs first-time setup (no admin seeded yet).
+///
+/// Fails CLOSED: any error resolves to `false` so a flaky or already-seeded
+/// system never offers the founding-admin setup entry by mistake.
+final bootstrapNeededProvider = FutureProvider<bool>((ref) async {
+  final result = await ref.watch(authRepositoryProvider).needsBootstrap();
+  return result.when(ok: (needed) => needed, err: (_) => false);
+});

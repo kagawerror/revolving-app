@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import 'auth_providers.dart';
 import 'login_controller.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
@@ -30,6 +32,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(loginControllerProvider);
+    // Only the very first run (no admin seeded yet) offers first-time setup.
+    final needsSetup =
+        ref.watch(bootstrapNeededProvider).maybeWhen(orElse: () => false, data: (v) => v);
     ref.listen(loginControllerProvider, (_, next) {
       if (next.error != null) {
         ScaffoldMessenger.of(context)
@@ -78,6 +83,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                         : const Text('Sign in'),
                   ),
                 ),
+                if (needsSetup)
+                  TextButton(
+                    onPressed: () => context.push('/setup'),
+                    child: const Text('First-time setup'),
+                  ),
               ],
             ),
           ),

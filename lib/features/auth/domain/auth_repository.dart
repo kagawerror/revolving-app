@@ -8,4 +8,17 @@ abstract interface class AuthRepository {
   Future<Result<AppUser>> signIn({required String email, required String password});
 
   Future<void> signOut();
+
+  /// True when the app has not been bootstrapped yet (no `/meta/bootstrap`
+  /// marker exists). Readable while signed out so the login screen can offer
+  /// first-time setup.
+  Future<Result<bool>> needsBootstrap();
+
+  /// Creates the very first administrator account and marks the app as
+  /// bootstrapped, atomically. Fails closed if setup was already completed.
+  Future<Result<AppUser>> bootstrapFirstAdmin({
+    required String email,
+    required String password,
+    required String displayName,
+  });
 }

@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -5,6 +7,7 @@ import '../../../core/error/failure.dart';
 import '../../../core/error/result.dart';
 import '../domain/app_user.dart';
 import '../domain/auth_repository.dart';
+import '../domain/bootstrap_rules.dart';
 
 class FirebaseAuthRepository implements AuthRepository {
   final FirebaseAuth _auth;
@@ -44,6 +47,119 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Future<void> signOut() => _auth.signOut();
+
+  @override
+  Future<Result<bool>> needsBootstrap() async {
+    try {
+      final snap = await _firestore.collection('meta').doc('bootstrap').get();
+      return Ok(!snap.exists);
+    } catch (e) {
+      developer.log('needsBootstrap failed', name: 'auth', error: e);
+      return const Err(
+        UnexpectedFailure('Could not check setup status. Please try again.'),
+      );
+    }
+  }
+
+  @override
+  Future<Result<AppUser>> bootstrapFirstAdmin({
+    required String email,
+    required String password,
+    required String displayName,
+  }) async {
+    // a. Pure validation before touching anything.
+    final invalid = validateBootstrapInput(
+      email: email,
+      password: password,
+      displayName: displayName,
+    );
+    if (invalid != null) return Err(invalid);
+
+    final markerRef = _firestore.collection('meta').doc('bootstrap');
+
+    // b. Client-side guard: fake_cloud_firestore (and offline races) do not
+    // enforce the server rule, so refuse before creating any auth account if
+    // the app has already been bootstrapped.
+    try {
+      final existing = await markerRef.get();
+      if (existing.exists) {
+        return const Err(PermissionFailure('Setup was already completed.'));
+      }
+    } catch (e) {
+      developer.log('bootstrap precheck failed', name: 'auth', error: e);
+      return const Err(
+        UnexpectedFailure('Could not start setup. Please try again.'),
+      );
+    }
+
+    final cleanEmail = email.trim();
+    final cleanName = displayName.trim();
+
+    // c. Create the auth account.
+    final String uid;
+    try {
+      final cred = await _auth.createUserWithEmailAndPassword(
+        email: cleanEmail,
+        password: password,
+      );
+      uid = cred.user!.uid;
+    } on FirebaseAuthException catch (e) {
+      developer.log('bootstrap createUser failed', name: 'auth', error: e.code);
+      return Err(AuthFailure(_signUpMessage(e.code)));
+    } catch (e) {
+      developer.log('bootstrap createUser failed', name: 'auth', error: e);
+      return const Err(
+        UnexpectedFailure('Could not create the account. Please try again.'),
+      );
+    }
+
+    // d. Write both docs atomically.
+    try {
+      final batch = _firestore.batch();
+      batch.set(_firestore.collection('users').doc(uid), {
+        'role': 'admin',
+        'companyId': '',
+        'displayName': cleanName,
+        'email': cleanEmail,
+      });
+      batch.set(markerRef, {
+        'seeded': true,
+        'seededByUid': uid,
+        'seededAt': FieldValue.serverTimestamp(),
+      });
+      await batch.commit();
+    } catch (e) {
+      // e. Orphan cleanup: a lost write race must not leave a dangling auth
+      // account. Delete it and sign out before surfacing the failure.
+      developer.log('bootstrap batch write failed', name: 'auth', error: e);
+      try {
+        await _auth.currentUser?.delete();
+      } catch (cleanupError) {
+        developer.log('bootstrap orphan cleanup failed',
+            name: 'auth', error: cleanupError);
+      }
+      await _auth.signOut();
+      return const Err(
+        PermissionFailure('Setup was already completed on another device.'),
+      );
+    }
+
+    // f. Success.
+    return Ok(AppUser(
+      uid: uid,
+      companyId: '',
+      role: UserRole.admin,
+      displayName: cleanName,
+      email: cleanEmail,
+    ));
+  }
+
+  String _signUpMessage(String code) => switch (code) {
+        'email-already-in-use' => 'That email address is already in use.',
+        'invalid-email' => 'That email address is invalid.',
+        'weak-password' => 'That password is too weak.',
+        _ => 'Could not create the account. Please try again.',
+      };
 
   String _message(String code) => switch (code) {
         'invalid-email' => 'That email address is invalid.',
