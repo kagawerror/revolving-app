@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart' show ThemeMode;
 
 import '../../../core/error/failure.dart';
 import '../../../core/error/result.dart';
@@ -121,6 +122,8 @@ class FirebaseAuthRepository implements AuthRepository {
         'companyId': '',
         'displayName': cleanName,
         'email': cleanEmail,
+        'themeMode': 'system',
+        'accentId': 'forest',
       });
       batch.set(markerRef, {
         'seeded': true,
@@ -152,6 +155,40 @@ class FirebaseAuthRepository implements AuthRepository {
       displayName: cleanName,
       email: cleanEmail,
     ));
+  }
+
+  @override
+  Future<Result<void>> updateProfile({
+    String? displayName,
+    String? photoUrl,
+    ThemeMode? themeMode,
+    String? accentId,
+  }) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) {
+      return const Err(AuthFailure('You must be signed in to update your profile.'));
+    }
+
+    // Build a sparse map: only the fields the caller actually provided.
+    final data = <String, dynamic>{};
+    if (displayName != null) data['displayName'] = displayName;
+    if (photoUrl != null) data['photoUrl'] = photoUrl;
+    if (themeMode != null) data['themeMode'] = AppUser.themeModeName(themeMode);
+    if (accentId != null) data['accentId'] = accentId;
+    if (data.isEmpty) return const Ok(null);
+
+    try {
+      await _firestore
+          .collection('users')
+          .doc(uid)
+          .set(data, SetOptions(merge: true));
+      return const Ok(null);
+    } catch (e) {
+      developer.log('updateProfile failed', name: 'auth', error: e);
+      return const Err(
+        UnexpectedFailure('Could not save your profile. Please try again.'),
+      );
+    }
   }
 
   String _signUpMessage(String code) => switch (code) {
