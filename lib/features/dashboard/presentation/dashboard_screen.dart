@@ -12,12 +12,8 @@ import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/stat_card.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
-import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
-import '../../companies/presentation/admin_providers.dart';
-import '../../replenishment/presentation/replenishment_providers.dart';
 import '../../requests/domain/fund_request.dart';
-import '../../requests/presentation/approver_inbox_providers.dart';
 import '../../requests/presentation/request_status_visual.dart';
 import '../domain/dashboard_summary.dart';
 import 'dashboard_providers.dart';
@@ -42,10 +38,7 @@ class DashboardScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final summary = ref.watch(dashboardSummaryProvider);
-    final user = ref.watch(currentUserProvider).valueOrNull;
-    final funds = user == null
-        ? const AsyncValue<List<Fund>>.loading()
-        : ref.watch(companyFundsProvider(user.companyId));
+    final funds = ref.watch(dashboardFundsProvider);
     final recent = ref.watch(recentRequestsProvider);
 
     return Scaffold(
@@ -104,8 +97,9 @@ class _StatsSection extends ConsumerWidget {
     // Read the raw async providers directly (not the summary's settled counts)
     // so a still-loading count renders as a quiet em-dash rather than flashing
     // a misleading "0" before the real value arrives.
-    final pendingReq = ref.watch(pendingRequestsProvider).valueOrNull;
-    final pendingRepl = ref.watch(pendingReplenishmentsProvider).valueOrNull;
+    final pendingReq = ref.watch(dashboardPendingRequestsProvider).valueOrNull;
+    final pendingRepl =
+        ref.watch(dashboardPendingReplenishmentsProvider).valueOrNull;
 
     final warnTone =
         StatusPill.colorsFor(StatusTone.warning, scheme).$2;
@@ -215,16 +209,24 @@ class _FundsSection extends StatelessWidget {
   }
 }
 
-class _FundCard extends StatelessWidget {
+class _FundCard extends ConsumerWidget {
   const _FundCard({required this.fund});
 
   final Fund fund;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final visual = _fundStatusVisual(fund.status);
+
+    // Company label (overline above the fund name). The names map resolves to
+    // empty while companies load, so we simply omit the line until it's ready —
+    // never blocking the fund list. Falls back to 'Unknown company' once loaded
+    // but missing (e.g. a deleted company).
+    final names = ref.watch(companyNamesProvider);
+    final companyName =
+        names.isEmpty ? null : (names[fund.companyId] ?? 'Unknown company');
 
     final ceiling = fund.originalBudget.centavos;
     final fraction =
@@ -240,10 +242,26 @@ class _FundCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(
-                  fund.name,
-                  style: textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.w700),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (companyName != null)
+                      Text(
+                        companyName.toUpperCase(),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: textTheme.labelSmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: 0.4,
+                        ),
+                      ),
+                    Text(
+                      fund.name,
+                      style: textTheme.titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(width: AppTokens.sm),

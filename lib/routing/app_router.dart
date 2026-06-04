@@ -7,6 +7,7 @@ import '../features/auth/domain/app_user.dart';
 import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/bootstrap_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
+import '../features/admin_users/presentation/user_admin_screen.dart';
 import '../features/companies/presentation/admin_home_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
@@ -39,8 +40,17 @@ String? redirectFor({
   if (user == null) return onAuthScreen ? null : '/login';
   final home = homeFor(user.role);
   if (onAuthScreen) return home;
+
+  // Shared routes (e.g. /profile) belong to no role shell, so the role-home
+  // guard must let them through. Anything else: a signed-in user may only stay
+  // inside their own role subtree; foreign/unknown routes bounce back home.
+  if (_sharedSignedInRoutes.any(location.startsWith)) return null;
   return location.startsWith(home) ? null : home;
 }
+
+/// Routes any signed-in user may visit regardless of role — no role shell owns
+/// them, so the role-home redirect must not bounce them away.
+const _sharedSignedInRoutes = <String>['/profile'];
 
 final routerProvider = Provider<GoRouter>((ref) {
   // Bridge the auth stream to a Listenable so the router is built once.
@@ -67,6 +77,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin/create-fund',
         builder: (_, __) => const CreateFundScreen(),
+      ),
+      GoRoute(
+        path: '/admin/users',
+        builder: (_, __) => const UserAdminScreen(),
       ),
       GoRoute(path: '/incharge', builder: (_, __) => const InchargeHomeScreen()),
       GoRoute(

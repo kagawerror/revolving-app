@@ -3,6 +3,18 @@ import '../../../core/error/failure.dart';
 /// Minimum password length Firebase Auth accepts.
 const int kBootstrapMinPasswordLength = 6;
 
+/// Shared, deliberately-lenient email check (must contain an `@` with a dotted
+/// domain). Reused by admin user-assignment validation so both setup and the
+/// admin console agree on what "a valid email" means.
+bool isValidEmail(String email) {
+  final trimmed = email.trim();
+  if (trimmed.isEmpty) return false;
+  final at = trimmed.indexOf('@');
+  if (at <= 0) return false;
+  final domain = trimmed.substring(at + 1);
+  return domain.contains('.') && !domain.startsWith('.') && !domain.endsWith('.');
+}
+
 /// Validates the founding-admin setup form before any account is created.
 ///
 /// Pure decision logic (no Firebase): returns `null` when the input is valid,
@@ -17,8 +29,7 @@ ValidationFailure? validateBootstrapInput({
   if (displayName.trim().isEmpty) {
     return const ValidationFailure('Enter a display name.');
   }
-  final trimmedEmail = email.trim();
-  if (trimmedEmail.isEmpty || !trimmedEmail.contains('@')) {
+  if (!isValidEmail(email)) {
     return const ValidationFailure('Enter a valid email address.');
   }
   if (password.length < kBootstrapMinPasswordLength) {

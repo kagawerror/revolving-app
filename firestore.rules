@@ -28,6 +28,9 @@ service cloud.firestore {
 
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Admin maintenance: this `write` covers admin create/update/delete of any
+      // profile doc, including creating a profile at an arbitrary (console-minted)
+      // UID — required by the admin user console (no Cloud Functions on Spark).
       allow write: if isAdmin();
       // Owner self-service: a signed-in user may update ONLY their own
       // presentation/profile fields. role + companyId are admin-controlled and
@@ -58,15 +61,27 @@ service cloud.firestore {
     match /funds/{fundId} {
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
       allow create: if isAdmin();
-      // Incharge performs releases and replenishment-create/discard; approver
-      // performs replenishment approval which resets the balance.
-      allow update: if sameCompany(resource.data.companyId)
-        && (isIncharge() || isApprover());
+      // Admin adjusts budget/metadata (companyId is immutable); incharge performs
+      // releases and replenishment-create/discard; approver performs
+      // replenishment approval which resets the balance.
+      allow update: if (isAdmin()
+          && request.resource.data.companyId == resource.data.companyId)
+        || (sameCompany(resource.data.companyId)
+          && (isIncharge() || isApprover()));
       allow delete: if isAdmin();
+
+      // Append-only audit trail (budgetAdjusted, etc.). Mirrors the request
+      // history block. No amounts are exposed beyond the company scope.
+      match /history/{eventId} {
+        allow read: if isAdmin()
+          || sameCompany(get(/databases/$(database)/documents/funds/$(fundId)).data.companyId);
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
     }
 
     match /requests/{requestId} {
-      allow read: if sameCompany(resource.data.companyId);
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
 
       // Incharge creates; must belong to their company and carry a proof image.
       allow create: if isIncharge()
@@ -99,7 +114,7 @@ service cloud.firestore {
     }
 
     match /replenishments/{repId} {
-      allow read: if sameCompany(resource.data.companyId);
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
       allow create: if isIncharge()
         && request.resource.data.companyId == myCompany()
         && request.resource.data.status == 'draft';

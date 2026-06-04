@@ -29,4 +29,17 @@ class FirestoreCompanyRepository implements CompanyRepository {
       return const Err(UnexpectedFailure('Could not create the company.'));
     }
   }
+
+  // CODER: implement the real rename (and matching firestore.rules). Stub keeps
+  // the build green for the presentation layer.
+  @override
+  Future<Result<void>> update(String id, String name) async {
+    try {
+      await _col.doc(id).update({'name': name});
+      return const Ok(null);
+    } catch (e, st) {
+      developer.log('update failed', name: 'companies', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not update the company.'));
+    }
+  }
 }

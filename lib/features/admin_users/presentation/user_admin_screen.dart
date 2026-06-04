@@ -1,0 +1,308 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_list_tile.dart';
+import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/skeleton.dart';
+import '../../../core/widgets/status_pill.dart';
+import '../../../core/widgets/surface_card.dart';
+import '../../../core/widgets/user_role_label.dart';
+import '../../auth/domain/app_user.dart';
+import '../../auth/presentation/auth_providers.dart';
+import '../../companies/domain/company.dart';
+import '../../companies/presentation/admin_providers.dart';
+import '../domain/user_assignment.dart';
+import 'user_admin_providers.dart';
+import 'user_form_dialog.dart';
+
+/// Admin-only user maintenance: lists every user with role + company, supports
+/// add (paste-UID) and tap-to-edit. Three-state aware (loading/empty/error).
+///
+/// Route: `/admin/users` (add to app_router.dart — see notes). Role-gating is
+/// also enforced at the router level via the admin home subtree, but the screen
+/// fails safe if reached by a non-admin.
+class UserAdminScreen extends ConsumerWidget {
+  const UserAdminScreen({super.key});
+
+  Future<void> _openForm(
+    BuildContext context,
+    WidgetRef ref, {
+    AppUser? existing,
+  }) async {
+    final companies = ref.read(companiesProvider).valueOrNull ?? const [];
+    if (companies.isEmpty && existing == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a company first.')),
+      );
+      return;
+    }
+
+    final isCreate = existing == null;
+    final result = await showUserFormDialog(
+      context,
+      companies: companies,
+      existing: existing,
+      onSubmit: (s) async {
+        // Pure validation first; surface its message inline (dialog stays open).
+        // Email is immutable on edit, so only validate it on the create path.
+        final invalid = validateUserAssignment(
+          uid: s.uid,
+          displayName: s.displayName,
+          email: s.email,
+          role: s.role,
+          companyId: s.companyId,
+          existingCompanyIds: {for (final c in companies) c.id},
+          validateEmail: isCreate,
+        );
+        if (invalid != null) return invalid.message;
+
+        final repo = ref.read(userAdminRepositoryProvider);
+        final res = isCreate
+            ? await repo.createProfile(
+                AppUser(
+                  uid: s.uid,
+                  companyId: s.companyId,
+                  role: s.role,
+                  displayName: s.displayName,
+                  email: s.email,
+                ),
+              )
+            : await repo.updateAssignment(
+                uid: s.uid,
+                role: s.role,
+                companyId: s.companyId,
+                displayName: s.displayName,
+              );
+        return res.failureOrNull?.message; // null == success
+      },
+    );
+
+    if (result != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(isCreate ? 'User added' : 'User updated')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final me = ref.watch(currentUserProvider).valueOrNull;
+    if (me != null && !me.role.isAdmin) {
+      return const Scaffold(
+        body: EmptyState(
+          title: 'Admins only',
+          message: 'You do not have access to user maintenance.',
+          showMascot: false,
+        ),
+      );
+    }
+
+    final users = ref.watch(allUsersProvider);
+    // Company id -> name lookup for the per-user company chip.
+    final companyNames = <String, String>{
+      for (final c in ref.watch(companiesProvider).valueOrNull ?? const <Company>[])
+        c.id: c.name,
+    };
+
+    return Scaffold(
+      appBar: AppBar(title: const Text('Users')),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openForm(context, ref),
+        label: const Text('Add user'),
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+      ),
+      body: users.when(
+        loading: () => const _UsersSkeleton(),
+        error: (e, _) => _UsersError(
+          onRetry: () => ref.invalidate(allUsersProvider),
+        ),
+        data: (list) {
+          if (list.isEmpty) {
+            return _UsersEmpty(onAdd: () => _openForm(context, ref));
+          }
+          return ListView(
+            padding: const EdgeInsets.all(AppTokens.lg),
+            children: [
+              SectionHeader(
+                title: 'All users',
+                trailing: _CountBadge(list.length),
+              ),
+              SurfaceCard(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTokens.sm,
+                  vertical: AppTokens.xs,
+                ),
+                child: Column(
+                  children: [
+                    for (var i = 0; i < list.length; i++) ...[
+                      if (i > 0)
+                        const Divider(
+                          height: 1,
+                          indent: AppTokens.md,
+                          endIndent: AppTokens.md,
+                        ),
+                      _UserTile(
+                        user: list[i],
+                        companyName: list[i].companyId.isEmpty
+                            ? null
+                            : companyNames[list[i].companyId] ??
+                                'Unknown company',
+                        onTap: () =>
+                            _openForm(context, ref, existing: list[i]),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 80), // FAB breathing room
+            ],
+          ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
+        },
+      ),
+    );
+  }
+}
+
+class _UserTile extends StatelessWidget {
+  const _UserTile({
+    required this.user,
+    required this.companyName,
+    required this.onTap,
+  });
+  final AppUser user;
+  final String? companyName;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final initial =
+        (user.displayName.isNotEmpty ? user.displayName[0] : '?').toUpperCase();
+
+    return AppListTile(
+      onTap: onTap,
+      leading: CircleAvatar(
+        radius: 22,
+        backgroundColor: scheme.primaryContainer,
+        foregroundColor: scheme.onPrimaryContainer,
+        child: Text(
+          initial,
+          style: textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.w800,
+            color: scheme.onPrimaryContainer,
+          ),
+        ),
+      ),
+      title: user.displayName.isEmpty ? '(no name)' : user.displayName,
+      subtitle: user.email,
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 150),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            StatusPill(
+              label: userRoleLabel(user.role),
+              tone: user.role.isAdmin ? StatusTone.info : StatusTone.neutral,
+            ),
+            if (companyName != null) ...[
+              const SizedBox(height: AppTokens.xs),
+              Text(
+                companyName!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.right,
+                style: textTheme.bodySmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge(this.count);
+  final int count;
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.md,
+        vertical: AppTokens.xs,
+      ),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(AppTokens.rPill),
+      ),
+      child: Text(
+        '$count',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: scheme.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+class _UsersSkeleton extends StatelessWidget {
+  const _UsersSkeleton();
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(AppTokens.lg),
+      children: [
+        Skeleton.line(width: 120),
+        const SizedBox(height: AppTokens.lg),
+        const SurfaceCard(child: SkeletonList(count: 6)),
+      ],
+    );
+  }
+}
+
+class _UsersEmpty extends StatelessWidget {
+  const _UsersEmpty({required this.onAdd});
+  final VoidCallback onAdd;
+  @override
+  Widget build(BuildContext context) {
+    return EmptyState(
+      title: 'No users yet',
+      message: 'Add a user by pasting their UID from the Firebase Console, '
+          'then assign a role and company.',
+      showMascot: false,
+      action: FilledButton.icon(
+        onPressed: onAdd,
+        icon: const Icon(Icons.person_add_alt_1_rounded),
+        label: const Text('Add user'),
+      ),
+    );
+  }
+}
+
+class _UsersError extends StatelessWidget {
+  const _UsersError({required this.onRetry});
+  final VoidCallback onRetry;
+  @override
+  Widget build(BuildContext context) {
+    return EmptyState(
+      title: 'Couldn’t load users',
+      message: 'Something went wrong while loading the user list.',
+      showMascot: false,
+      action: FilledButton.tonalIcon(
+        onPressed: onRetry,
+        icon: const Icon(Icons.refresh_rounded),
+        label: const Text('Retry'),
+      ),
+    );
+  }
+}

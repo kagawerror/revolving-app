@@ -70,5 +70,21 @@ void main() {
         isNull,
       );
     });
+
+    test('authenticated admin can reach the shared /profile route', () {
+      // /profile is role-agnostic: it must NOT be bounced back to the role home.
+      expect(
+        redirectFor(auth: const AsyncData(_admin), location: '/profile'),
+        isNull,
+      );
+    });
+
+    test('authenticated admin on another role\'s home is sent to /admin', () {
+      // The guard must still keep a user out of a foreign role shell.
+      expect(
+        redirectFor(auth: const AsyncData(_admin), location: '/incharge'),
+        '/admin',
+      );
+    });
   });
 }

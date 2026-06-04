@@ -13,9 +13,12 @@ import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../companies/domain/company.dart';
 import '../../companies/domain/fund.dart';
+import '../../auth/presentation/auth_providers.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import 'add_company_dialog.dart';
 import 'admin_providers.dart';
+import 'edit_company_dialog.dart';
+import 'edit_fund_dialog.dart';
 import 'fund_grouping.dart';
 
 /// Admin landing screen: provisioned companies + the entry point to create a
@@ -38,6 +41,69 @@ class AdminHomeScreen extends ConsumerWidget {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Company added')));
+    }
+  }
+
+  Future<void> _handleEditCompany(
+    BuildContext context,
+    WidgetRef ref,
+    Company company,
+  ) async {
+    final saved = await showEditCompanyDialog(
+      context,
+      initialName: company.name,
+      onSubmit: (name) async {
+        final res =
+            await ref.read(companyRepositoryProvider).update(company.id, name);
+        if (!context.mounted) return false;
+        return res.showOnError(context);
+      },
+    );
+    if (saved != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Company updated')),
+      );
+    }
+  }
+
+  Future<void> _handleEditFund(
+    BuildContext context,
+    WidgetRef ref,
+    Fund fund,
+  ) async {
+    final actorUid = ref.read(currentUserProvider).valueOrNull?.uid ?? '';
+    final saved = await showEditFundDialog(
+      context,
+      fund: fund,
+      onSubmit: (s) async {
+        final repo = ref.read(fundRepositoryProvider);
+        // Budget change first: it shifts both budget and available balance by
+        // the same delta and writes an audit entry.
+        if (s.touchesBudget) {
+          final res = await repo.adjustBudget(
+            fundId: fund.id,
+            newBudget: s.newBudget!,
+            actorUid: actorUid,
+            note: 'Admin budget edit',
+          );
+          if (!context.mounted || !res.showOnError(context)) return false;
+        }
+        if (s.touchesDetails) {
+          final res = await repo.updateDetails(
+            fundId: fund.id,
+            name: s.name ?? fund.name,
+            lowBalanceThresholdPct:
+                s.lowBalanceThresholdPct ?? fund.lowBalanceThresholdPct,
+          );
+          if (!context.mounted || !res.showOnError(context)) return false;
+        }
+        return true;
+      },
+    );
+    if (saved != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fund updated')),
+      );
     }
   }
 
@@ -79,6 +145,9 @@ class AdminHomeScreen extends ConsumerWidget {
           ),
           onRetryFunds: () => ref.invalidate(allFundsProvider),
           onAddCompany: () => _handleAddCompany(context, ref),
+          onEditCompany: (c) => _handleEditCompany(context, ref, c),
+          onEditFund: (f) => _handleEditFund(context, ref, f),
+          onManageUsers: () => context.push('/admin/users'),
         ),
       ),
     );
@@ -92,6 +161,9 @@ class _AdminBody extends StatelessWidget {
     required this.totalFundCount,
     required this.onRetryFunds,
     required this.onAddCompany,
+    required this.onEditCompany,
+    required this.onEditFund,
+    required this.onManageUsers,
   });
 
   final List<Company> companies;
@@ -102,6 +174,9 @@ class _AdminBody extends StatelessWidget {
   final int totalFundCount;
   final VoidCallback onRetryFunds;
   final VoidCallback onAddCompany;
+  final ValueChanged<Company> onEditCompany;
+  final ValueChanged<Fund> onEditFund;
+  final VoidCallback onManageUsers;
 
   @override
   Widget build(BuildContext context) {
@@ -159,7 +234,10 @@ class _AdminBody extends StatelessWidget {
                           indent: AppTokens.md,
                           endIndent: AppTokens.md,
                         ),
-                      _CompanyTile(company: companies[i]),
+                      _CompanyTile(
+                        company: companies[i],
+                        onEdit: () => onEditCompany(companies[i]),
+                      ),
                     ],
                   ],
                 ),
@@ -169,7 +247,10 @@ class _AdminBody extends StatelessWidget {
           funds: funds,
           totalCount: totalFundCount,
           onRetry: onRetryFunds,
+          onEditFund: onEditFund,
         ),
+        const SizedBox(height: AppTokens.lg),
+        _UsersSection(onManage: onManageUsers),
         // Bottom breathing room so the FAB never covers the last row.
         const SizedBox(height: 80),
       ],
@@ -178,9 +259,10 @@ class _AdminBody extends StatelessWidget {
 }
 
 class _CompanyTile extends StatelessWidget {
-  const _CompanyTile({required this.company});
+  const _CompanyTile({required this.company, required this.onEdit});
 
   final Company company;
+  final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
@@ -200,6 +282,11 @@ class _CompanyTile extends StatelessWidget {
         ),
       ),
       title: company.name,
+      trailing: IconButton(
+        icon: const Icon(Icons.edit_outlined),
+        tooltip: 'Edit company',
+        onPressed: onEdit,
+      ),
     );
   }
 }
@@ -209,6 +296,7 @@ class _FundsSection extends StatelessWidget {
     required this.funds,
     required this.totalCount,
     required this.onRetry,
+    required this.onEditFund,
   });
   final AsyncValue<
     List<({String companyId, String companyName, List<Fund> funds})>
@@ -216,6 +304,7 @@ class _FundsSection extends StatelessWidget {
   funds;
   final int totalCount;
   final VoidCallback onRetry;
+  final ValueChanged<Fund> onEditFund;
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -267,7 +356,10 @@ class _FundsSection extends StatelessWidget {
                       count: groups[g].funds.length,
                     ),
                     for (var i = 0; i < groups[g].funds.length; i++)
-                      _FundTile(fund: groups[g].funds[i]),
+                      _FundTile(
+                        fund: groups[g].funds[i],
+                        onEdit: () => onEditFund(groups[g].funds[i]),
+                      ),
                   ],
                 ],
               ),
@@ -324,8 +416,9 @@ class _FundGroupHeader extends StatelessWidget {
 }
 
 class _FundTile extends StatelessWidget {
-  const _FundTile({required this.fund});
+  const _FundTile({required this.fund, required this.onEdit});
   final Fund fund;
+  final VoidCallback onEdit;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -347,30 +440,40 @@ class _FundTile extends StatelessWidget {
       ),
       title: fund.name,
       subtitle: 'Budget ${fund.originalBudget.format()}',
-      trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 132),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Semantics(
-              label: 'Available balance ${fund.availableBalance.format()}',
-              child: Text(
-                fund.availableBalance.format(),
-                maxLines: 1,
-                overflow: TextOverflow.visible,
-                textAlign: TextAlign.right,
-                style: textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w800,
-                  fontFeatures: const [FontFeature.tabularFigures()],
-                  color: low ? scheme.error : scheme.onSurface,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 132),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Semantics(
+                  label: 'Available balance ${fund.availableBalance.format()}',
+                  child: Text(
+                    fund.availableBalance.format(),
+                    maxLines: 1,
+                    overflow: TextOverflow.visible,
+                    textAlign: TextAlign.right,
+                    style: textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w800,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                      color: low ? scheme.error : scheme.onSurface,
+                    ),
+                  ),
                 ),
-              ),
+                const SizedBox(height: AppTokens.xs),
+                _FundStatusChip(status: fund.status, isLow: low),
+              ],
             ),
-            const SizedBox(height: AppTokens.xs),
-            _FundStatusChip(status: fund.status, isLow: low),
-          ],
-        ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.edit_outlined),
+            tooltip: 'Edit fund',
+            onPressed: onEdit,
+          ),
+        ],
       ),
     );
   }
@@ -451,6 +554,50 @@ class _FundsInlineError extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Entry point to user maintenance (`/admin/users`). Fulfils the hero's promise
+/// of managing "companies, funds, and users". A single tappable row keeps the
+/// admin landing scannable; the heavy list lives on its own screen.
+class _UsersSection extends StatelessWidget {
+  const _UsersSection({required this.onManage});
+  final VoidCallback onManage;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(title: 'Users'),
+        SurfaceCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.sm,
+            vertical: AppTokens.xs,
+          ),
+          child: AppListTile(
+            onTap: onManage,
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: scheme.primaryContainer,
+                borderRadius: AppTokens.brField,
+              ),
+              child: Icon(
+                Icons.group_rounded,
+                color: scheme.onPrimaryContainer,
+                semanticLabel: 'Users',
+              ),
+            ),
+            title: 'Manage users',
+            subtitle: 'Assign roles and companies',
+            trailing: const Icon(Icons.chevron_right_rounded),
+          ),
+        ),
+      ],
+    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
   }
 }
 
