@@ -1,0 +1,126 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    function myCompany() { return myProfile().companyId; }
+    function myRole() { return myProfile().role; }
+    function isAdmin() { return signedIn() && myRole() == 'admin'; }
+    function sameCompany(companyId) { return signedIn() && companyId == myCompany(); }
+    function isIncharge() { return signedIn() && myRole() == 'incharge'; }
+    function isApprover() {
+      return signedIn() && (myRole() in ['superior', 'manager', 'ceo']);
+    }
+
+    // One-time bootstrap marker. Readable signed-out so the login screen can
+    // offer first-time setup; creatable exactly once by the founding admin.
+    match /meta/bootstrap {
+      allow read: if true;
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/meta/bootstrap)
+        && request.resource.data.seeded == true
+        && request.resource.data.seededByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      allow write: if isAdmin();
+      // Owner self-service: a signed-in user may update ONLY their own
+      // presentation/profile fields. role + companyId are admin-controlled and
+      // must remain immutable on this path.
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['displayName', 'photoUrl', 'themeMode', 'accentId'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.companyId == resource.data.companyId
+        );
+      // First-time setup: the founding user creates their own admin profile,
+      // allowed only while the app has not been bootstrapped yet.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'admin'
+        && request.resource.data.companyId == ''
+        && !exists(/databases/$(database)/documents/meta/bootstrap);
+    }
+
+    match /companies/{companyId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /funds/{fundId} {
+      allow read: if sameCompany(resource.data.companyId);
+      allow create: if isAdmin();
+      // Incharge performs releases and replenishment-create/discard; approver
+      // performs replenishment approval which resets the balance.
+      allow update: if sameCompany(resource.data.companyId)
+        && (isIncharge() || isApprover());
+      allow delete: if isAdmin();
+    }
+
+    match /requests/{requestId} {
+      allow read: if sameCompany(resource.data.companyId);
+
+      // Incharge creates; must belong to their company and carry a proof image.
+      allow create: if isIncharge()
+        && request.resource.data.companyId == myCompany()
+        && request.resource.data.createdByUid == request.auth.uid
+        && request.resource.data.proofImageUrl is string
+        && request.resource.data.proofImageUrl.size() > 0;
+
+      // Approvers acknowledge/reject; incharge advances ready/released.
+      allow update: if sameCompany(resource.data.companyId) && (
+        (isApprover()
+          && resource.data.status == 'pendingAck'
+          && request.resource.data.status in ['acknowledged', 'rejected'])
+        || (isIncharge()
+          && resource.data.status in ['acknowledged', 'readyForRelease']
+          && request.resource.data.status in ['readyForRelease', 'released'])
+        || (isApprover()
+          && resource.data.status == 'released'
+          && request.resource.data.status == 'replenished'
+          && request.resource.data.replenishmentId is string)
+      );
+
+      allow delete: if false;
+
+      match /history/{eventId} {
+        allow read: if sameCompany(get(/databases/$(database)/documents/requests/$(requestId)).data.companyId);
+        allow create: if signedIn();
+        allow update, delete: if false;
+      }
+    }
+
+    match /replenishments/{repId} {
+      allow read: if sameCompany(resource.data.companyId);
+      allow create: if isIncharge()
+        && request.resource.data.companyId == myCompany()
+        && request.resource.data.status == 'draft';
+      allow update: if sameCompany(resource.data.companyId) && (
+        (isIncharge()
+          && resource.data.status == 'draft'
+          && request.resource.data.status in ['draft', 'submitted', 'rejected'])
+        || (isApprover()
+          && resource.data.status == 'submitted'
+          && request.resource.data.status in ['approved', 'rejected'])
+      );
+      allow delete: if false;
+    }
+
+    match /notifications/{notifId} {
+      allow read: if sameCompany(resource.data.companyId)
+        && (myRole() in resource.data.recipientRoles);
+      allow create: if sameCompany(request.resource.data.companyId);
+      allow update: if sameCompany(resource.data.companyId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow delete: if false;
+    }
+  }
+}
