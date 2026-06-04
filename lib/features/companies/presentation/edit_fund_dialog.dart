@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
 import '../../../core/money/money.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -116,47 +115,18 @@ class _EditFundDialogState extends State<_EditFundDialog> {
         : pesos.toStringAsFixed(2);
   }
 
-  // --- Parsed current field values -----------------------------------------
+  // --- Change detection -----------------------------------------------------
+  //
+  // Only the fund name is editable on a saved fund. Budget and the low-balance
+  // threshold are shown read-only (the budget edit would shift real money via
+  // adjustBudget), so the name is the sole source of a change here.
 
   String get _trimmedName => _name.text.trim();
-
-  /// New budget centavos parsed from the field, or null if blank/invalid.
-  int? get _parsedBudgetCentavos {
-    final n = num.tryParse(_budget.text.trim());
-    if (n == null || n < 0) return null;
-    return Money.fromPesos(n).centavos;
-  }
-
-  int? get _parsedPct {
-    final n = int.tryParse(_pct.text.trim());
-    if (n == null || n < 1 || n > 100) return null;
-    return n;
-  }
-
-  // --- Change detection -----------------------------------------------------
 
   bool get _nameChanged =>
       _trimmedName.isNotEmpty && _trimmedName != widget.fund.name;
 
-  bool get _pctChanged {
-    final p = _parsedPct;
-    return p != null && p != widget.fund.lowBalanceThresholdPct;
-  }
-
-  bool get _budgetChanged {
-    final c = _parsedBudgetCentavos;
-    return c != null && c != _originalBudgetCentavos;
-  }
-
-  /// Signed delta in centavos applied to BOTH original budget and available
-  /// balance. Null when the budget field is blank/invalid or unchanged.
-  int? get _budgetDeltaCentavos {
-    final c = _parsedBudgetCentavos;
-    if (c == null) return null;
-    return c - _originalBudgetCentavos;
-  }
-
-  bool get _hasChanges => _nameChanged || _pctChanged || _budgetChanged;
+  bool get _hasChanges => _nameChanged;
   bool get _canSave => _hasChanges && !_saving;
 
   Future<void> _save() async {
@@ -164,13 +134,8 @@ class _EditFundDialogState extends State<_EditFundDialog> {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     setState(() => _saving = true);
 
-    final submission = EditFundSubmission(
-      name: _nameChanged ? _trimmedName : null,
-      lowBalanceThresholdPct: _pctChanged ? _parsedPct : null,
-      newBudget: _budgetChanged
-          ? Money.fromCentavos(_parsedBudgetCentavos!)
-          : null,
-    );
+    // Name is the only editable field; budget and threshold stay untouched.
+    final submission = EditFundSubmission(name: _trimmedName);
 
     final ok = await widget.onSubmit(submission);
     if (!mounted) return;
@@ -213,8 +178,9 @@ class _EditFundDialogState extends State<_EditFundDialog> {
                 enabled: !_saving,
                 autofocus: true,
                 textCapitalization: TextCapitalization.words,
-                textInputAction: TextInputAction.next,
+                textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
+                onFieldSubmitted: (_) => _canSave ? _save() : null,
                 decoration: const InputDecoration(
                   labelText: 'Fund name',
                   prefixIcon: Icon(Icons.savings_outlined),
@@ -223,51 +189,37 @@ class _EditFundDialogState extends State<_EditFundDialog> {
                     (v == null || v.trim().isEmpty) ? 'Required' : null,
               ),
               const SizedBox(height: AppTokens.lg),
+              // Budget and the low-balance threshold are locked once a fund is
+              // saved — changing the budget would move real money. They stay
+              // visible (read-only) for reference; only the name can change.
               TextFormField(
                 controller: _budget,
-                enabled: !_saving,
+                enabled: false,
                 keyboardType:
                     const TextInputType.numberWithOptions(decimal: true),
-                textInputAction: TextInputAction.next,
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
-                ],
-                onChanged: (_) => setState(() {}),
                 decoration: const InputDecoration(
                   labelText: 'Budget (₱)',
                   prefixIcon: Icon(Icons.payments_outlined),
+                  suffixIcon: Icon(Icons.lock_outline_rounded, size: 18),
+                  helperText: "Can't be changed after the fund is created",
                 ),
-                validator: (v) {
-                  final n = num.tryParse((v ?? '').trim());
-                  if (n == null || n <= 0) return 'Enter a positive amount';
-                  return null;
-                },
               ),
               const SizedBox(height: AppTokens.sm),
               _BalanceImpact(
                 currentAvailable: widget.fund.availableBalance,
-                deltaCentavos: _budgetDeltaCentavos,
+                deltaCentavos: null,
               ),
               const SizedBox(height: AppTokens.lg),
               TextFormField(
                 controller: _pct,
-                enabled: !_saving,
+                enabled: false,
                 keyboardType: TextInputType.number,
-                textInputAction: TextInputAction.done,
-                inputFormatters: [
-                  FilteringTextInputFormatter.digitsOnly,
-                ],
-                onChanged: (_) => setState(() {}),
-                onFieldSubmitted: (_) => _canSave ? _save() : null,
                 decoration: const InputDecoration(
                   labelText: 'Low-balance alert (%)',
                   prefixIcon: Icon(Icons.notifications_active_outlined),
+                  suffixIcon: Icon(Icons.lock_outline_rounded, size: 18),
+                  helperText: "Can't be changed after the fund is created",
                 ),
-                validator: (v) {
-                  final n = int.tryParse((v ?? '').trim());
-                  if (n == null || n < 1 || n > 100) return 'Enter 1–100';
-                  return null;
-                },
               ),
             ],
           ),

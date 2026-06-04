@@ -5,6 +5,9 @@ abstract interface class ReplenishmentRepository {
   Stream<List<Replenishment>> watchByFund(String fundId);
   Stream<List<Replenishment>> watchByCompanyAndStatus(String companyId, String status);
 
+  /// Admin-only: every company's replenishments with the given status (unscoped).
+  Stream<List<Replenishment>> watchByStatusAll(String status);
+
   /// Compiles released-unreplenished requests for the fund into a DRAFT and flips
   /// the fund to `replenishing`. Fails if the fund is already replenishing or has
   /// no released-unreplenished requests.

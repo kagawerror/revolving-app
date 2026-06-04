@@ -148,6 +148,8 @@ class AdminHomeScreen extends ConsumerWidget {
           onEditCompany: (c) => _handleEditCompany(context, ref, c),
           onEditFund: (f) => _handleEditFund(context, ref, f),
           onManageUsers: () => context.push('/admin/users'),
+          onOperateIncharge: () => context.push('/incharge'),
+          onOpenApprovals: () => context.push('/approvals'),
         ),
       ),
     );
@@ -164,6 +166,8 @@ class _AdminBody extends StatelessWidget {
     required this.onEditCompany,
     required this.onEditFund,
     required this.onManageUsers,
+    required this.onOperateIncharge,
+    required this.onOpenApprovals,
   });
 
   final List<Company> companies;
@@ -177,6 +181,8 @@ class _AdminBody extends StatelessWidget {
   final ValueChanged<Company> onEditCompany;
   final ValueChanged<Fund> onEditFund;
   final VoidCallback onManageUsers;
+  final VoidCallback onOperateIncharge;
+  final VoidCallback onOpenApprovals;
 
   @override
   Widget build(BuildContext context) {
@@ -184,6 +190,11 @@ class _AdminBody extends StatelessWidget {
       padding: const EdgeInsets.all(AppTokens.lg),
       children: [
         const _AdminHero(),
+        const SizedBox(height: AppTokens.lg),
+        _OperationsSection(
+          onOperateIncharge: onOperateIncharge,
+          onOpenApprovals: onOpenApprovals,
+        ),
         const SizedBox(height: AppTokens.lg),
         SectionHeader(
           title: 'Companies',
@@ -554,6 +565,84 @@ class _FundsInlineError extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Superuser entry into the operational shells. An admin isn't scoped to a
+/// company, so these push the incharge / approval homes where an
+/// [AdminCompanyContextBar] lets them pick which company to operate in. Two
+/// tappable rows, same card/tile rhythm as Users, so the landing stays scannable.
+class _OperationsSection extends StatelessWidget {
+  const _OperationsSection({
+    required this.onOperateIncharge,
+    required this.onOpenApprovals,
+  });
+
+  final VoidCallback onOperateIncharge;
+  final VoidCallback onOpenApprovals;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(title: 'Operations'),
+        SurfaceCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.sm,
+            vertical: AppTokens.xs,
+          ),
+          child: Column(
+            children: [
+              AppListTile(
+                onTap: onOperateIncharge,
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: scheme.primaryContainer,
+                    borderRadius: AppTokens.brField,
+                  ),
+                  child: Icon(
+                    Icons.point_of_sale_rounded,
+                    color: scheme.onPrimaryContainer,
+                    semanticLabel: 'Operate as incharge',
+                  ),
+                ),
+                title: 'Operate as incharge',
+                subtitle: 'Create requests, release cash, replenish',
+                trailing: const Icon(Icons.chevron_right_rounded),
+              ),
+              const Divider(
+                height: 1,
+                indent: AppTokens.md,
+                endIndent: AppTokens.md,
+              ),
+              AppListTile(
+                onTap: onOpenApprovals,
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: scheme.secondaryContainer,
+                    borderRadius: AppTokens.brField,
+                  ),
+                  child: Icon(
+                    Icons.fact_check_rounded,
+                    color: scheme.onSecondaryContainer,
+                    semanticLabel: 'Approvals inbox',
+                  ),
+                ),
+                title: 'Approvals inbox',
+                subtitle: 'Acknowledge or reject pending requests',
+                trailing: const Icon(Icons.chevron_right_rounded),
+              ),
+            ],
+          ),
+        ),
+      ],
+    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
   }
 }
 

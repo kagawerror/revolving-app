@@ -120,6 +120,32 @@ void main() {
     expect(res.failureOrNull, isA<ValidationFailure>());
   });
 
+  test('watchByStatusAll returns submitted reps across all companies, excluding other statuses',
+      () async {
+    db = FakeFirebaseFirestore();
+    final repo = FirestoreReplenishmentRepository(db);
+    await db.collection('replenishments').doc('a').set({
+      'companyId': 'c1', 'fundId': 'f', 'status': 'submitted',
+      'requestIds': const ['r1'], 'totalCentavos': 100, 'reportNotes': '',
+      'createdByUid': 'inc',
+    });
+    await db.collection('replenishments').doc('b').set({
+      'companyId': 'c2', 'fundId': 'f', 'status': 'submitted',
+      'requestIds': const ['r2'], 'totalCentavos': 100, 'reportNotes': '',
+      'createdByUid': 'inc',
+    });
+    await db.collection('replenishments').doc('c').set({
+      'companyId': 'c1', 'fundId': 'f', 'status': 'draft',
+      'requestIds': const ['r3'], 'totalCentavos': 100, 'reportNotes': '',
+      'createdByUid': 'inc',
+    });
+
+    final list = await repo.watchByStatusAll('submitted').first;
+    final ids = list.map((r) => r.id).toSet();
+    expect(ids, {'a', 'b'});
+    expect(list.every((r) => r.status == ReplenishmentStatus.submitted), isTrue);
+  });
+
   test('createDraft fails with no released requests for the fund', () async {
     await db.collection('funds').doc('f2').set({
       'companyId': 'c1', 'name': 'PC2',

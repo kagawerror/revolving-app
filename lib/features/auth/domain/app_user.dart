@@ -22,6 +22,15 @@ enum UserRole {
   bool get canManageFund => this == UserRole.incharge;
 
   bool get isAdmin => this == UserRole.admin;
+
+  /// Superuser-aware approval capability: any approver role OR an admin (who may
+  /// operate the approval workflow in any company). Keeps [canApprove]
+  /// role-pure for the Firestore-rule mirror; gate UI/actions on this.
+  bool get canApproveOrAdmin => canApprove || isAdmin;
+
+  /// Superuser-aware fund-management capability: the incharge custodian OR an
+  /// admin operating a chosen company. Keeps [canManageFund] role-pure.
+  bool get canManageFundOrAdmin => canManageFund || isAdmin;
 }
 
 class AppUser extends Equatable {

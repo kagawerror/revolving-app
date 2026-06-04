@@ -41,6 +41,11 @@ String? redirectFor({
   final home = homeFor(user.role);
   if (onAuthScreen) return home;
 
+  // Admin is a superuser: it operates the incharge + approval workflows in any
+  // company on top of admin maintenance, so it may visit any signed-in route
+  // without being bounced back to /admin (homeFor still lands it on /admin).
+  if (user.role.isAdmin) return null;
+
   // Shared routes (e.g. /profile) belong to no role shell, so the role-home
   // guard must let them through. Anything else: a signed-in user may only stay
   // inside their own role subtree; foreign/unknown routes bounce back home.

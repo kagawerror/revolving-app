@@ -18,11 +18,20 @@ class FirebaseAuthRepository implements AuthRepository {
 
   @override
   Stream<AppUser?> watchCurrentUser() {
-    return _auth.authStateChanges().asyncMap((user) async {
-      if (user == null) return null;
-      final doc = await _firestore.collection('users').doc(user.uid).get();
-      if (!doc.exists) return null;
-      return AppUser.fromMap(user.uid, doc.data()!);
+    // Listen LIVE to the user document, not a one-shot get(): profile edits
+    // (display name, photo, theme, accent) must propagate to every watcher —
+    // router, theme controller, profile screen — without an auth-state change
+    // or app restart. asyncExpand cancels the previous doc listener whenever
+    // auth state changes (sign-out / account switch), so only the current
+    // user's doc is ever observed.
+    return _auth.authStateChanges().asyncExpand((user) {
+      if (user == null) return Stream<AppUser?>.value(null);
+      return _firestore
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .map((doc) =>
+              doc.exists ? AppUser.fromMap(user.uid, doc.data()!) : null);
     });
   }
 

@@ -11,6 +11,14 @@ const _admin = AppUser(
   email: 'admin@acme.com',
 );
 
+const _incharge = AppUser(
+  uid: 'i',
+  companyId: 'c1',
+  role: UserRole.incharge,
+  displayName: 'Ina',
+  email: 'ina@acme.com',
+);
+
 void main() {
   test('homeFor routes each role to its shell', () {
     expect(homeFor(UserRole.admin), '/admin');
@@ -79,11 +87,31 @@ void main() {
       );
     });
 
-    test('authenticated admin on another role\'s home is sent to /admin', () {
-      // The guard must still keep a user out of a foreign role shell.
+    test('admin superuser may visit any other role shell (no redirect)', () {
+      // Admin is a superuser: it operates the incharge + approval workflows in
+      // any company, so the role-home guard must NOT bounce it back to /admin.
       expect(
         redirectFor(auth: const AsyncData(_admin), location: '/incharge'),
-        '/admin',
+        isNull,
+      );
+      expect(
+        redirectFor(auth: const AsyncData(_admin), location: '/approvals'),
+        isNull,
+      );
+    });
+
+    test('non-admin incharge on /approvals is still bounced to /incharge', () {
+      // Escalation guard intact: only admin gets the cross-shell pass.
+      expect(
+        redirectFor(auth: const AsyncData(_incharge), location: '/approvals'),
+        '/incharge',
+      );
+    });
+
+    test('non-admin incharge stays on its own /incharge shell', () {
+      expect(
+        redirectFor(auth: const AsyncData(_incharge), location: '/incharge'),
+        isNull,
       );
     });
   });

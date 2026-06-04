@@ -36,6 +36,12 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
 
   @override
+  Stream<List<Replenishment>> watchByStatusAll(String status) => _reps
+      .where('status', isEqualTo: status)
+      .snapshots()
+      .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
+
+  @override
   Future<Result<Replenishment>> createDraft({required String fundId, required String createdByUid}) async {
     try {
       // Query released requests for the fund OUTSIDE the transaction (client SDK

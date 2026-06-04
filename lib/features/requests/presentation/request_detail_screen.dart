@@ -35,7 +35,8 @@ class RequestDetailScreen extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final canApprove =
-        ref.watch(currentUserProvider).valueOrNull?.role.canApprove ?? false;
+        ref.watch(currentUserProvider).valueOrNull?.role.canApproveOrAdmin ??
+            false;
     final visual = requestStatusVisual(request.status);
     final canDecide =
         canApprove && request.status == RequestStatus.pendingAck;

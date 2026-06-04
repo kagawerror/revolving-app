@@ -61,13 +61,29 @@ service cloud.firestore {
     match /funds/{fundId} {
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
       allow create: if isAdmin();
-      // Admin adjusts budget/metadata (companyId is immutable); incharge performs
-      // releases and replenishment-create/discard; approver performs
-      // replenishment approval which resets the balance.
+      // Two distinct paths:
+      //  1) METADATA EDIT (first disjunct): an admin renaming a saved fund.
+      //     name is the sole mutable field — companyId, budget, balance,
+      //     threshold and status are all pinned immutable here (mirrors the
+      //     name-only Edit-fund dialog: budget changes would move real money).
+      //  2) OPERATIONAL (second disjunct): incharge releases and replenishment
+      //     create/discard, approver replenishment approval (resets the
+      //     balance), and admin acting as superuser. This path trusts the
+      //     writer to mutate ANY fund field, including the balance — admin is
+      //     trusted exactly the same way incharge/approver already are. That is
+      //     safe because every money write goes through a runTransaction in the
+      //     repos that re-reads and re-validates against current server state.
       allow update: if (isAdmin()
-          && request.resource.data.companyId == resource.data.companyId)
-        || (sameCompany(resource.data.companyId)
-          && (isIncharge() || isApprover()));
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.originalBudgetCentavos
+              == resource.data.originalBudgetCentavos
+          && request.resource.data.availableBalanceCentavos
+              == resource.data.availableBalanceCentavos
+          && request.resource.data.lowBalanceThresholdPct
+              == resource.data.lowBalanceThresholdPct
+          && request.resource.data.status == resource.data.status)
+        || ((sameCompany(resource.data.companyId) || isAdmin())
+          && (isIncharge() || isApprover() || isAdmin()));
       allow delete: if isAdmin();
 
       // Append-only audit trail (budgetAdjusted, etc.). Mirrors the request
@@ -84,21 +100,31 @@ service cloud.firestore {
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
 
       // Incharge creates; must belong to their company and carry a proof image.
-      allow create: if isIncharge()
-        && request.resource.data.companyId == myCompany()
-        && request.resource.data.createdByUid == request.auth.uid
-        && request.resource.data.proofImageUrl is string
-        && request.resource.data.proofImageUrl.size() > 0;
+      // Admin superuser may create in ANY company (non-empty companyId), still
+      // owning the doc and attaching a proof image.
+      allow create: if (isIncharge()
+          && request.resource.data.companyId == myCompany()
+          && request.resource.data.createdByUid == request.auth.uid
+          && request.resource.data.proofImageUrl is string
+          && request.resource.data.proofImageUrl.size() > 0)
+        || (isAdmin()
+          && request.resource.data.companyId is string
+          && request.resource.data.companyId.size() > 0
+          && request.resource.data.createdByUid == request.auth.uid
+          && request.resource.data.proofImageUrl is string
+          && request.resource.data.proofImageUrl.size() > 0);
 
-      // Approvers acknowledge/reject; incharge advances ready/released.
-      allow update: if sameCompany(resource.data.companyId) && (
-        (isApprover()
+      // Approvers acknowledge/reject; incharge advances ready/released. Admin is
+      // a superuser across companies, but the status-transition checks below stay
+      // unchanged so admin still cannot make an illegal transition.
+      allow update: if (sameCompany(resource.data.companyId) || isAdmin()) && (
+        ((isApprover() || isAdmin())
           && resource.data.status == 'pendingAck'
           && request.resource.data.status in ['acknowledged', 'rejected'])
-        || (isIncharge()
+        || ((isIncharge() || isAdmin())
           && resource.data.status in ['acknowledged', 'readyForRelease']
           && request.resource.data.status in ['readyForRelease', 'released'])
-        || (isApprover()
+        || ((isApprover() || isAdmin())
           && resource.data.status == 'released'
           && request.resource.data.status == 'replenished'
           && request.resource.data.replenishmentId is string)
@@ -115,14 +141,21 @@ service cloud.firestore {
 
     match /replenishments/{repId} {
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
-      allow create: if isIncharge()
-        && request.resource.data.companyId == myCompany()
-        && request.resource.data.status == 'draft';
-      allow update: if sameCompany(resource.data.companyId) && (
-        (isIncharge()
+      // Incharge creates in their own company; admin superuser in any company.
+      allow create: if (isIncharge()
+          && request.resource.data.companyId == myCompany()
+          && request.resource.data.status == 'draft')
+        || (isAdmin()
+          && request.resource.data.companyId is string
+          && request.resource.data.companyId.size() > 0
+          && request.resource.data.status == 'draft');
+      // Admin superuser may act across companies; the status-transition checks
+      // stay unchanged so admin cannot make an illegal transition.
+      allow update: if (sameCompany(resource.data.companyId) || isAdmin()) && (
+        ((isIncharge() || isAdmin())
           && resource.data.status == 'draft'
           && request.resource.data.status in ['draft', 'submitted', 'rejected'])
-        || (isApprover()
+        || ((isApprover() || isAdmin())
           && resource.data.status == 'submitted'
           && request.resource.data.status in ['approved', 'rejected'])
       );
@@ -132,8 +165,10 @@ service cloud.firestore {
     match /notifications/{notifId} {
       allow read: if sameCompany(resource.data.companyId)
         && (myRole() in resource.data.recipientRoles);
-      allow create: if sameCompany(request.resource.data.companyId);
-      allow update: if sameCompany(resource.data.companyId)
+      // Admin's post-commit notif writes target other companies (admin
+      // myCompany()==''), so allow them explicitly.
+      allow create: if sameCompany(request.resource.data.companyId) || isAdmin();
+      allow update: if (sameCompany(resource.data.companyId) || isAdmin())
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
       allow delete: if false;
     }

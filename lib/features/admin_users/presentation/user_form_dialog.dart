@@ -247,6 +247,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
               const SizedBox(height: AppTokens.lg),
               DropdownButtonFormField<UserRole>(
                 initialValue: _role,
+                isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Role',
                   prefixIcon: Icon(Icons.security_rounded),
@@ -274,6 +275,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
               const SizedBox(height: AppTokens.lg),
               DropdownButtonFormField<String>(
                 initialValue: _companyId,
+                isExpanded: true,
                 // Disabled and cleared for admins (companyId == '').
                 onChanged: (_saving || _isAdminRole)
                     ? null

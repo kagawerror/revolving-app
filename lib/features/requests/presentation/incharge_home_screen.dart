@@ -11,8 +11,11 @@ import '../../../core/widgets/profile_menu_button.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
+import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
+import '../../companies/presentation/admin_active_company.dart';
+import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../notifications/presentation/alerts_bell.dart';
@@ -69,44 +72,71 @@ class InchargeHomeScreen extends ConsumerWidget {
       ),
       body: user == null
           ? const Center(child: CircularProgressIndicator())
-          : ref.watch(companyFundsProvider(user.companyId)).when(
-                loading: () => const Padding(
-                  padding: EdgeInsets.all(AppTokens.lg),
-                  child: SurfaceCard(child: SkeletonList()),
+          : Column(
+              children: [
+                // Admin-only operating-company picker; SizedBox.shrink for
+                // everyone else, so non-admin layout is unchanged.
+                const AdminCompanyContextBar(),
+                Expanded(
+                  child: _InchargeBody(user: user),
                 ),
-                error: (e, _) => Center(child: Text('Error: $e')),
-                data: (funds) => Column(
-                  children: [
-                    LowBalanceBanner(funds: funds),
-                    Expanded(
-                      child: funds.isEmpty
-                          ? const EmptyState(
-                              title: 'No funds yet',
-                              message:
-                                  'Once an admin sets up a fund for your '
-                                  'company, it will appear here.',
-                            )
-                          : ListView(
-                              padding: const EdgeInsets.fromLTRB(
-                                AppTokens.lg,
-                                AppTokens.md,
-                                AppTokens.lg,
-                                AppTokens.xxl + AppTokens.xl,
-                              ),
-                              children: [
-                                for (final f in funds)
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                        bottom: AppTokens.lg),
-                                    child: _FundSection(fund: f),
-                                  ),
-                              ],
-                            ),
-                    ),
-                  ],
-                ),
-              ),
+              ],
+            ),
     );
+  }
+}
+
+/// The scrolling fund list for the resolved company. For an admin with no
+/// company selected yet it shows [AdminSelectCompanyPrompt] instead of funds.
+class _InchargeBody extends ConsumerWidget {
+  const _InchargeBody({required this.user});
+
+  final AppUser user;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final companyId =
+        effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+    // Admin superuser hasn't picked a company yet: prompt instead of an empty
+    // list. Non-admins always have a non-empty companyId, so never see this.
+    if (companyId.isEmpty) return const AdminSelectCompanyPrompt();
+
+    return ref.watch(companyFundsProvider(companyId)).when(
+          loading: () => const Padding(
+            padding: EdgeInsets.all(AppTokens.lg),
+            child: SurfaceCard(child: SkeletonList()),
+          ),
+          error: (e, _) => Center(child: Text('Error: $e')),
+          data: (funds) => Column(
+            children: [
+              LowBalanceBanner(funds: funds),
+              Expanded(
+                child: funds.isEmpty
+                    ? const EmptyState(
+                        title: 'No funds yet',
+                        message: 'Once an admin sets up a fund for your '
+                            'company, it will appear here.',
+                      )
+                    : ListView(
+                        padding: const EdgeInsets.fromLTRB(
+                          AppTokens.lg,
+                          AppTokens.md,
+                          AppTokens.lg,
+                          AppTokens.xxl + AppTokens.xl,
+                        ),
+                        children: [
+                          for (final f in funds)
+                            Padding(
+                              padding:
+                                  const EdgeInsets.only(bottom: AppTokens.lg),
+                              child: _FundSection(fund: f),
+                            ),
+                        ],
+                      ),
+              ),
+            ],
+          ),
+        );
   }
 }
 
@@ -137,7 +167,7 @@ class _FundSectionState extends ConsumerState<_FundSection> {
     final fund = widget.fund;
     final requests = ref.watch(_fundRequestsProvider(fund.id));
     final user = ref.read(currentUserProvider).valueOrNull;
-    final canReplenish = (user?.role.canManageFund ?? false) &&
+    final canReplenish = (user?.role.canManageFundOrAdmin ?? false) &&
         fund.status != FundStatus.replenishing;
 
     return SurfaceCard(
@@ -262,9 +292,10 @@ class _RequestAction extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final repo = ref.read(requestRepositoryProvider);
     final user = ref.read(currentUserProvider).valueOrNull;
-    // Defense-in-depth: only an incharge custodian may release/ready requests
-    // (mirrors the isIncharge() Firestore rule). Otherwise show status pill.
-    final canManage = user?.role.canManageFund ?? false;
+    // Defense-in-depth: an incharge custodian (or an admin superuser operating
+    // this company) may release/ready requests — mirrors the isIncharge() ||
+    // isAdmin() Firestore rule. Otherwise show the status pill.
+    final canManage = user?.role.canManageFundOrAdmin ?? false;
     if (!canManage) return _statusPill();
     switch (request.status) {
       case RequestStatus.acknowledged:

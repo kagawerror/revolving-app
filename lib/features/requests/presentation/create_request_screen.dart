@@ -10,6 +10,8 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../companies/presentation/admin_active_company.dart';
+import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
 import 'create_request_controller.dart';
 import 'request_providers.dart';
@@ -48,8 +50,15 @@ class _State extends ConsumerState<CreateRequestScreen> {
         _fundId == null) {
       return;
     }
+    // Admins are not pinned to a company; their scope is the in-session
+    // selection. Resolve it the same way the fund dropdown does so the submitted
+    // companyId matches the funds the user actually picked from. A non-empty id
+    // is guaranteed here because the form is gated below when it's empty.
+    final companyId =
+        effectiveCompanyId(user, ref.read(adminActiveCompanyProvider));
+    if (companyId.isEmpty) return;
     final res = await ref.read(createRequestControllerProvider.notifier).submit(
-          companyId: user.companyId,
+          companyId: companyId,
           fundId: _fundId!,
           createdByUid: user.uid,
           beneficiary: _beneficiary.text.trim(),
@@ -64,9 +73,29 @@ class _State extends ConsumerState<CreateRequestScreen> {
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider).valueOrNull;
+    // Non-admins resolve to their own pinned companyId (unchanged). Admins
+    // resolve to their in-session selection, which may be empty if they reached
+    // this screen without choosing a company.
+    final companyId = user == null
+        ? ''
+        : effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+
+    // Admin with no company picked: show a friendly "choose a company" state
+    // instead of an empty, un-submittable form. This screen has no context bar,
+    // so we point them back to the home shell. Non-admins never hit this.
+    if (user != null && companyId.isEmpty) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('New request')),
+        body: const AdminSelectCompanyPrompt(
+          message: 'Choose a company from the home screen before creating a '
+              'request.',
+        ),
+      );
+    }
+
     final funds = user == null
         ? const AsyncValue.loading()
-        : ref.watch(companyFundsProvider(user.companyId));
+        : ref.watch(companyFundsProvider(companyId));
     final submitting = ref.watch(createRequestControllerProvider);
 
     return Scaffold(

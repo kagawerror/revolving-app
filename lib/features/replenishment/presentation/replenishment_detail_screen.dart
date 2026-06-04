@@ -52,7 +52,8 @@ class _ReplenishmentDetailScreenState
   @override
   Widget build(BuildContext context) {
     final canApprove =
-        ref.watch(currentUserProvider).valueOrNull?.role.canApprove ?? false;
+        ref.watch(currentUserProvider).valueOrNull?.role.canApproveOrAdmin ??
+            false;
     final r = widget.replenishment;
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;

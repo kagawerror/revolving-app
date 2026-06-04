@@ -10,6 +10,9 @@ import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
+import '../../auth/presentation/auth_providers.dart';
+import '../../companies/presentation/admin_active_company.dart';
+import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../notifications/presentation/alerts_bell.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
@@ -23,8 +26,10 @@ class ApproverHomeScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final pending = ref.watch(pendingRequestsProvider);
-    final replenishments = ref.watch(pendingReplenishmentsProvider);
+    final user = ref.watch(currentUserProvider).valueOrNull;
+    final companyId = user == null
+        ? ''
+        : effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
 
     return Scaffold(
       appBar: AppBar(title: const Text('Approvals'), actions: [
@@ -37,7 +42,30 @@ class ApproverHomeScreen extends ConsumerWidget {
         const AlertsBell(),
         const ProfileMenuButton(),
       ]),
-      body: ListView(
+      body: Column(
+        children: [
+          // Admin-only operating-company picker; SizedBox.shrink otherwise.
+          const AdminCompanyContextBar(),
+          // Admin with no company picked: prompt instead of empty inboxes.
+          if (companyId.isEmpty)
+            const Expanded(child: AdminSelectCompanyPrompt())
+          else
+            const Expanded(child: _ApproverInbox()),
+        ],
+      ),
+    );
+  }
+}
+
+class _ApproverInbox extends ConsumerWidget {
+  const _ApproverInbox();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final pending = ref.watch(pendingRequestsProvider);
+    final replenishments = ref.watch(pendingReplenishmentsProvider);
+
+    return ListView(
         padding: const EdgeInsets.fromLTRB(
             AppTokens.lg, AppTokens.sm, AppTokens.lg, AppTokens.xxl),
         children: [
@@ -142,7 +170,6 @@ class ApproverHomeScreen extends ConsumerWidget {
                   ).animate().fadeIn(duration: 280.ms),
           ),
         ],
-      ),
     );
   }
 }
