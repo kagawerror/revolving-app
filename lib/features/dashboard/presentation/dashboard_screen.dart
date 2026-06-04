@@ -1,13 +1,60 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/theme/theme_controller.dart';
+import '../../../core/widgets/app_list_tile.dart';
+import '../../../core/widgets/balance_hero_card.dart';
+import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/skeleton.dart';
+import '../../../core/widgets/stat_card.dart';
+import '../../../core/widgets/status_pill.dart';
+import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../requests/domain/fund_request.dart';
+import '../../requests/domain/request_status.dart';
 import '../../requests/presentation/approver_inbox_providers.dart';
 import '../domain/dashboard_summary.dart';
 import 'dashboard_providers.dart';
+
+/// Maps a fund's lifecycle status to a consistent, color-coded pill tone +
+/// label. The same status looks the same everywhere in the app.
+({String label, StatusTone tone, IconData icon}) _fundStatusVisual(
+    FundStatus status) {
+  switch (status) {
+    case FundStatus.active:
+      return (label: 'Active', tone: StatusTone.success, icon: Icons.check_circle_rounded);
+    case FundStatus.low:
+      return (label: 'Low', tone: StatusTone.warning, icon: Icons.warning_amber_rounded);
+    case FundStatus.replenishing:
+      return (label: 'Replenishing', tone: StatusTone.info, icon: Icons.autorenew_rounded);
+  }
+}
+
+/// Maps a request status to a pill tone + readable label for the activity feed.
+({String label, StatusTone tone}) _requestStatusVisual(RequestStatus status) {
+  switch (status) {
+    case RequestStatus.draft:
+      return (label: 'Draft', tone: StatusTone.neutral);
+    case RequestStatus.pendingAck:
+      return (label: 'Pending', tone: StatusTone.warning);
+    case RequestStatus.acknowledged:
+      return (label: 'Acknowledged', tone: StatusTone.info);
+    case RequestStatus.rejected:
+      return (label: 'Rejected', tone: StatusTone.danger);
+    case RequestStatus.readyForRelease:
+      return (label: 'Ready', tone: StatusTone.info);
+    case RequestStatus.released:
+      return (label: 'Released', tone: StatusTone.success);
+    case RequestStatus.replenished:
+      return (label: 'Replenished', tone: StatusTone.success);
+  }
+}
 
 class DashboardScreen extends ConsumerWidget {
   const DashboardScreen({super.key});
@@ -24,38 +71,19 @@ class DashboardScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Dashboard')),
       body: summary.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
+        loading: () => const _DashboardSkeleton(),
+        error: (e, _) => _DashboardError(message: 'Error: $e'),
         data: (s) => ListView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppTokens.lg),
           children: [
-            _SummaryGrid(summary: s),
-            const SizedBox(height: 24),
-            Text('Funds', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            funds.maybeWhen(
-              data: (list) => Column(
-                children: [for (final f in list) _FundUtilizationTile(fund: f)],
-              ),
-              orElse: () => const LinearProgressIndicator(),
-            ),
-            const SizedBox(height: 24),
-            Text('Recent activity', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
-            recent.when(
-              loading: () => const LinearProgressIndicator(),
-              error: (e, _) => const Text('Could not load recent activity'),
-              data: (list) => list.isEmpty
-                  ? const Text('No recent requests')
-                  : Column(children: [
-                      for (final r in list)
-                        ListTile(
-                          dense: true,
-                          title: Text('${r.beneficiaryName} — ${r.amount.format()}'),
-                          subtitle: Text('${r.purpose} · ${r.status.name}'),
-                        ),
-                    ]),
-            ),
+            _HeroSection(summary: s),
+            const SizedBox(height: AppTokens.lg),
+            _StatsSection(summary: s),
+            const SectionHeader(title: 'Funds'),
+            _FundsSection(funds: funds),
+            const SectionHeader(title: 'Recent activity'),
+            _RecentSection(recent: recent),
+            const SizedBox(height: AppTokens.lg),
           ],
         ),
       ),
@@ -63,113 +91,377 @@ class DashboardScreen extends ConsumerWidget {
   }
 }
 
-class _SummaryGrid extends ConsumerWidget {
+class _HeroSection extends ConsumerWidget {
+  const _HeroSection({required this.summary});
+
   final DashboardSummary summary;
-  const _SummaryGrid({required this.summary});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final seed = ref.watch(themeControllerProvider).seed;
+    final t = summary.totals;
+    return BalanceHeroCard(
+      seed: seed,
+      primaryLabel: 'Available balance',
+      primaryAmount: t.totalAvailable.format(),
+      secondaryLabel: 'Total budget',
+      secondaryAmount: t.totalBudget.format(),
+    ).animate().fadeIn(duration: 320.ms).slideY(begin: 0.06, end: 0);
+  }
+}
+
+class _StatsSection extends ConsumerWidget {
+  const _StatsSection({required this.summary});
+
+  final DashboardSummary summary;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final t = summary.totals;
     final pct = (t.utilization * 100).toStringAsFixed(1);
+
+    // Read the raw async providers directly (not the summary's settled counts)
+    // so a still-loading count renders as a quiet em-dash rather than flashing
+    // a misleading "0" before the real value arrives.
     final pendingReq = ref.watch(pendingRequestsProvider).valueOrNull;
     final pendingRepl = ref.watch(pendingReplenishmentsProvider).valueOrNull;
-    return Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        _StatCard(label: 'Total budget', value: t.totalBudget.format()),
-        _StatCard(label: 'Available', value: t.totalAvailable.format()),
-        _StatCard(label: 'Disbursed', value: t.totalDisbursed.format()),
-        _StatCard(label: 'Utilization', value: '$pct%'),
-        _StatCard(label: 'Funds', value: '${t.fundCount}'),
-        _StatCard(
-            label: 'Low / replenishing',
-            value: '${t.lowFundCount} / ${t.replenishingFundCount}'),
-        _StatCard(
-            label: 'Pending requests',
-            value: pendingReq?.length.toString() ?? '…'),
-        _StatCard(
-            label: 'Pending replenishments',
-            value: pendingRepl?.length.toString() ?? '…'),
-      ],
+
+    final warnTone =
+        StatusPill.colorsFor(StatusTone.warning, scheme).$2;
+    final infoTone = scheme.primary;
+
+    final cards = <Widget>[
+      StatCard(
+        label: 'Disbursed',
+        value: t.totalDisbursed.format(),
+        icon: Icons.trending_down_rounded,
+        tone: scheme.tertiary,
+      ),
+      StatCard(
+        label: 'Utilization',
+        value: '$pct%',
+        icon: Icons.donut_large_rounded,
+        tone: infoTone,
+      ),
+      StatCard(
+        label: 'Funds',
+        value: '${t.fundCount}',
+        icon: Icons.account_balance_wallet_rounded,
+        tone: scheme.secondary,
+      ),
+      StatCard(
+        label: 'Pending requests',
+        value: pendingReq?.length.toString() ?? '—',
+        icon: Icons.receipt_long_rounded,
+        tone: warnTone,
+      ),
+      StatCard(
+        label: 'Pending replenishments',
+        value: pendingRepl?.length.toString() ?? '—',
+        icon: Icons.replay_circle_filled_rounded,
+        tone: warnTone,
+      ),
+      StatCard(
+        label: 'Low / replenishing',
+        value: '${t.lowFundCount} / ${t.replenishingFundCount}',
+        icon: Icons.error_outline_rounded,
+        tone: scheme.error,
+      ),
+    ];
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Two columns on phones, three on wider screens.
+        final columns = constraints.maxWidth >= 560 ? 3 : 2;
+        final spacing = AppTokens.md;
+        final itemWidth =
+            (constraints.maxWidth - spacing * (columns - 1)) / columns;
+        return Wrap(
+          spacing: spacing,
+          runSpacing: spacing,
+          children: [
+            for (final card in cards)
+              SizedBox(width: itemWidth, child: card),
+          ],
+        );
+      },
     );
   }
 }
 
-class _StatCard extends StatelessWidget {
-  final String label;
-  final String value;
-  const _StatCard({required this.label, required this.value});
+class _FundsSection extends StatelessWidget {
+  const _FundsSection({required this.funds});
+
+  final AsyncValue<List<Fund>> funds;
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 160,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return funds.when(
+      loading: () => Column(
+        children: [
+          for (var i = 0; i < 2; i++)
+            const Padding(
+              padding: EdgeInsets.only(bottom: AppTokens.md),
+              child: _FundSkeletonCard(),
+            ),
+        ],
+      ),
+      error: (_, _) => const SurfaceCard(
+        child: Text('Could not load funds'),
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return const SurfaceCard(
+            child: Text('No funds yet'),
+          );
+        }
+        return Column(
+          children: [
+            for (var i = 0; i < list.length; i++)
+              Padding(
+                padding: EdgeInsets.only(
+                  bottom: i == list.length - 1 ? 0 : AppTokens.md,
+                ),
+                child: _FundCard(fund: list[i])
+                    .animate()
+                    .fadeIn(duration: 260.ms, delay: (60 * i).ms)
+                    .slideX(begin: 0.04, end: 0),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _FundCard extends StatelessWidget {
+  const _FundCard({required this.fund});
+
+  final Fund fund;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final visual = _fundStatusVisual(fund.status);
+
+    final ceiling = fund.originalBudget.centavos;
+    final fraction =
+        ceiling == 0 ? 0.0 : (fund.availableBalance.centavos / ceiling).clamp(0.0, 1.0);
+
+    // Progress bar color follows the status tone for an unmistakable read.
+    final (_, barColor) = StatusPill.colorsFor(visual.tone, scheme);
+
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
-              Text(label, style: Theme.of(context).textTheme.labelMedium),
-              const SizedBox(height: 4),
-              Text(value, style: Theme.of(context).textTheme.titleLarge),
+              Expanded(
+                child: Text(
+                  fund.name,
+                  style: textTheme.titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const SizedBox(width: AppTokens.sm),
+              StatusPill(
+                label: visual.label,
+                tone: visual.tone,
+                icon: visual.icon,
+              ),
             ],
           ),
-        ),
+          const SizedBox(height: AppTokens.md),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(AppTokens.sm),
+            child: LinearProgressIndicator(
+              value: fraction,
+              minHeight: 10,
+              color: barColor,
+              backgroundColor: scheme.surfaceContainerHighest,
+            ),
+          ),
+          const SizedBox(height: AppTokens.sm),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Expanded(
+                child: RichText(
+                  text: TextSpan(
+                    style: textTheme.bodyMedium
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    children: [
+                      TextSpan(
+                        text: fund.availableBalance.format(),
+                        style: textTheme.bodyLarge?.copyWith(
+                          color: scheme.onSurface,
+                          fontWeight: FontWeight.w700,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
+                      TextSpan(text: ' of ${fund.originalBudget.format()}'),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: AppTokens.sm),
+              Text(
+                'alert ≤ ${fund.lowBalanceThreshold.format()}',
+                style: textTheme.bodySmall
+                    ?.copyWith(color: scheme.onSurfaceVariant),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 }
 
-class _FundUtilizationTile extends StatelessWidget {
-  final Fund fund;
-  const _FundUtilizationTile({required this.fund});
+class _RecentSection extends StatelessWidget {
+  const _RecentSection({required this.recent});
+
+  final AsyncValue<List<FundRequest>> recent;
 
   @override
   Widget build(BuildContext context) {
-    final ceiling = fund.originalBudget.centavos;
-    final fraction =
-        ceiling == 0 ? 0.0 : fund.availableBalance.centavos / ceiling;
+    return recent.when(
+      loading: () => const SurfaceCard(child: SkeletonList(count: 4)),
+      error: (_, _) => const SurfaceCard(
+        child: Text('Could not load recent activity'),
+      ),
+      data: (list) {
+        if (list.isEmpty) {
+          return const SurfaceCard(
+            child: EmptyState(
+              title: 'No recent activity',
+              message: 'Requests and releases will show up here.',
+            ),
+          );
+        }
+        return SurfaceCard(
+          padding: const EdgeInsets.symmetric(vertical: AppTokens.xs),
+          child: Column(
+            children: [
+              for (var i = 0; i < list.length; i++)
+                _RecentTile(request: list[i])
+                    .animate()
+                    .fadeIn(duration: 220.ms, delay: (40 * i).ms),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RecentTile extends StatelessWidget {
+  const _RecentTile({required this.request});
+
+  final FundRequest request;
+
+  @override
+  Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = switch (fund.status) {
-      FundStatus.low => scheme.error,
-      FundStatus.replenishing => scheme.tertiary,
-      FundStatus.active => scheme.primary,
-    };
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+    final textTheme = Theme.of(context).textTheme;
+    final visual = _requestStatusVisual(request.status);
+
+    return AppListTile(
+      title: request.beneficiaryName,
+      subtitle: request.purpose,
+      trailing: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            request.amount.format(),
+            style: textTheme.bodyLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: scheme.onSurface,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+          const SizedBox(height: AppTokens.xs),
+          StatusPill(label: visual.label, tone: visual.tone),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Loading / error scaffolding ------------------------------------------
+
+class _DashboardSkeleton extends StatelessWidget {
+  const _DashboardSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(AppTokens.lg),
+      children: [
+        Skeleton.box(height: 132, radius: AppTokens.rCard),
+        const SizedBox(height: AppTokens.lg),
+        Wrap(
+          spacing: AppTokens.md,
+          runSpacing: AppTokens.md,
+          children: [
+            for (var i = 0; i < 4; i++)
+              SizedBox(
+                width: 150,
+                child: Skeleton.box(height: 96, radius: AppTokens.rCard),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppTokens.xl),
+        const _FundSkeletonCard(),
+        const SizedBox(height: AppTokens.md),
+        const _FundSkeletonCard(),
+      ],
+    );
+  }
+}
+
+class _FundSkeletonCard extends StatelessWidget {
+  const _FundSkeletonCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return SurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Expanded(child: Text(fund.name)),
-              Chip(
-                label: Text(fund.status.name),
-                visualDensity: VisualDensity.compact,
-              ),
+              Skeleton.line(width: 140),
+              Skeleton.box(width: 84, height: 24, radius: AppTokens.rPill),
             ],
           ),
-          const SizedBox(height: 4),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(4),
-            child: LinearProgressIndicator(
-              value: fraction,
-              minHeight: 8,
-              color: color,
-              backgroundColor: scheme.surfaceContainerHighest,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '${fund.availableBalance.format()} of ${fund.originalBudget.format()} '
-            '(alert ≤ ${fund.lowBalanceThreshold.format()})',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+          const SizedBox(height: AppTokens.md),
+          Skeleton.box(height: 10, radius: AppTokens.sm),
+          const SizedBox(height: AppTokens.sm),
+          Skeleton.line(width: 180),
         ],
       ),
+    );
+  }
+}
+
+class _DashboardError extends StatelessWidget {
+  const _DashboardError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return EmptyState(
+      title: 'Something went wrong',
+      message: message,
+      showMascot: false,
     );
   }
 }
