@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure_ui.dart';
+import '../../../core/widgets/profile_avatar_button.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
@@ -55,6 +56,7 @@ class InchargeHomeScreen extends ConsumerWidget {
           icon: const Icon(Icons.logout),
           onPressed: () => ref.read(signOutProvider)(),
         ),
+        const ProfileAvatarButton(),
       ]),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/incharge/create'),

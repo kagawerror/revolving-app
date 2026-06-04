@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/widgets/profile_avatar_button.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import 'admin_providers.dart';
@@ -24,6 +25,7 @@ class AdminHomeScreen extends ConsumerWidget {
           icon: const Icon(Icons.logout),
           onPressed: () => ref.read(signOutProvider)(),
         ),
+        const ProfileAvatarButton(),
       ]),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => context.push('/admin/create-fund'),

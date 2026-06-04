@@ -9,6 +9,7 @@ import '../features/auth/presentation/bootstrap_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/companies/presentation/admin_home_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
+import '../features/profile/presentation/profile_screen.dart';
 import '../features/requests/presentation/approver_home_screen.dart';
 import '../features/requests/presentation/create_request_screen.dart';
 import '../features/requests/presentation/incharge_home_screen.dart';
@@ -73,6 +74,9 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, __) => const CreateRequestScreen(),
       ),
       GoRoute(path: '/approvals', builder: (_, __) => const ApproverHomeScreen()),
+      GoRoute(
+          path: '/profile',
+          builder: (context, state) => const ProfileScreen()),
     ],
   );
 });

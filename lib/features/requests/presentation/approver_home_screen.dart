@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/widgets/profile_avatar_button.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import '../../notifications/presentation/alerts_bell.dart';
@@ -29,6 +30,7 @@ class ApproverHomeScreen extends ConsumerWidget {
           icon: const Icon(Icons.logout),
           onPressed: () => ref.read(signOutProvider)(),
         ),
+        const ProfileAvatarButton(),
       ]),
       body: ListView(children: [
         _SectionHeader('Pending replenishments'),
