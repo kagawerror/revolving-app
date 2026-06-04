@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_tokens.dart';
 import '../domain/bootstrap_rules.dart';
 import 'bootstrap_controller.dart';
 
@@ -71,7 +73,7 @@ class _BootstrapScreenState extends ConsumerState<BootstrapScreen> {
       appBar: AppBar(title: const Text('First-time setup')),
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppTokens.xl),
           child: ConstrainedBox(
             // Keep the form readable on tablets / wide windows.
             constraints: const BoxConstraints(maxWidth: 440),
@@ -85,7 +87,7 @@ class _BootstrapScreenState extends ConsumerState<BootstrapScreen> {
                     colorScheme: colorScheme,
                     textTheme: textTheme,
                   ),
-                  const SizedBox(height: 28),
+                  const SizedBox(height: AppTokens.xxl),
                   TextFormField(
                     controller: _displayName,
                     decoration: const InputDecoration(
@@ -164,7 +166,7 @@ class _BootstrapScreenState extends ConsumerState<BootstrapScreen> {
                   ),
                 ],
               ),
-            ),
+            ).animate().fadeIn(duration: 260.ms).slideY(begin: 0.06, end: 0),
           ),
         ),
       ),
@@ -172,11 +174,13 @@ class _BootstrapScreenState extends ConsumerState<BootstrapScreen> {
   }
 }
 
-/// Founding-admin header: shield mark, title, and a short subtitle explaining
-/// why this screen exists. Kept as a private const widget so it never rebuilds
-/// with the form's keystrokes.
+/// Founding-admin header: a bold gradient halo over the Revvy mascot, a title,
+/// and a short subtitle explaining why this screen exists. Kept as a private
+/// const widget so it never rebuilds with the form's keystrokes.
 class _SetupHeader extends StatelessWidget {
   const _SetupHeader({required this.colorScheme, required this.textTheme});
+
+  static const String _mascotAsset = 'assets/images/revvy.jpg';
 
   final ColorScheme colorScheme;
   final TextTheme textTheme;
@@ -189,30 +193,39 @@ class _SetupHeader extends StatelessWidget {
       children: [
         Center(
           child: Container(
-            width: 72,
-            height: 72,
+            width: 104,
+            height: 104,
+            padding: const EdgeInsets.all(6),
             decoration: BoxDecoration(
-              color: colorScheme.primaryContainer,
+              gradient: AppTokens.heroGradient(colorScheme.primary),
               shape: BoxShape.circle,
+              boxShadow: AppTokens.softShadow(colorScheme.primary),
             ),
-            child: Icon(
-              Icons.admin_panel_settings_outlined,
-              size: 38,
-              color: colorScheme.onPrimaryContainer,
-              semanticLabel: 'Administrator setup',
+            child: ClipOval(
+              child: Image.asset(
+                _mascotAsset,
+                fit: BoxFit.cover,
+                semanticLabel: 'Revvy, the rev_app mascot',
+                errorBuilder: (context, error, stack) => Icon(
+                  Icons.admin_panel_settings_outlined,
+                  size: 44,
+                  color: Colors.white,
+                  semanticLabel: 'Administrator setup',
+                ),
+              ),
             ),
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: AppTokens.xl),
         Text(
           'Create the first administrator',
           textAlign: TextAlign.center,
           style: textTheme.headlineSmall?.copyWith(
-            fontWeight: FontWeight.w700,
+            fontWeight: FontWeight.w800,
             color: colorScheme.onSurface,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppTokens.sm),
         Text(
           'No accounts exist yet. Create the first administrator '
           'to get started.',

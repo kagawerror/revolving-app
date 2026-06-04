@@ -1,18 +1,31 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/app_list_tile.dart';
+import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/profile_avatar_button.dart';
+import '../../../core/widgets/section_header.dart';
+import '../../../core/widgets/skeleton.dart';
+import '../../../core/widgets/surface_card.dart';
+import '../../companies/domain/company.dart';
 import '../../dashboard/presentation/dashboard_screen.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import 'admin_providers.dart';
 
+/// Admin landing screen: provisioned companies + the entry point to create a
+/// fund. Presentation-only redesign — the data source (`companiesProvider`),
+/// sign-out action, dashboard navigation, profile entry, and create-fund route
+/// are all preserved exactly.
 class AdminHomeScreen extends ConsumerWidget {
   const AdminHomeScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final companies = ref.watch(companiesProvider);
+
     return Scaffold(
       appBar: AppBar(title: const Text('Admin'), actions: [
         IconButton(
@@ -23,6 +36,7 @@ class AdminHomeScreen extends ConsumerWidget {
         ),
         IconButton(
           icon: const Icon(Icons.logout),
+          tooltip: 'Sign out',
           onPressed: () => ref.read(signOutProvider)(),
         ),
         const ProfileAvatarButton(),
@@ -33,15 +47,198 @@ class AdminHomeScreen extends ConsumerWidget {
         icon: const Icon(Icons.add),
       ),
       body: companies.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('Error: $e')),
-        data: (list) => ListView(
-          children: [
-            for (final c in list)
-              ListTile(leading: const Icon(Icons.business), title: Text(c.name)),
-          ],
+        loading: () => const _AdminSkeleton(),
+        error: (e, _) => _AdminError(message: 'Error: $e'),
+        data: (list) => _AdminBody(companies: list),
+      ),
+    );
+  }
+}
+
+class _AdminBody extends StatelessWidget {
+  const _AdminBody({required this.companies});
+
+  final List<Company> companies;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(AppTokens.lg),
+      children: [
+        const _AdminHero(),
+        const SizedBox(height: AppTokens.lg),
+        SectionHeader(
+          title: 'Companies',
+          trailing: _CountBadge(companies.length),
+        ),
+        SurfaceCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.sm,
+            vertical: AppTokens.xs,
+          ),
+          child: companies.isEmpty
+              ? const Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppTokens.lg),
+                  child: EmptyState(
+                    title: 'No companies yet',
+                    message:
+                        'Provisioned companies will appear here. Create a fund '
+                        'to get started.',
+                    showMascot: false,
+                  ),
+                )
+              : Column(
+                  children: [
+                    for (var i = 0; i < companies.length; i++) ...[
+                      if (i > 0)
+                        const Divider(height: 1, indent: AppTokens.md, endIndent: AppTokens.md),
+                      _CompanyTile(company: companies[i]),
+                    ],
+                  ],
+                ),
+        ),
+        // Bottom breathing room so the FAB never covers the last row.
+        const SizedBox(height: 80),
+      ],
+    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
+  }
+}
+
+class _CompanyTile extends StatelessWidget {
+  const _CompanyTile({required this.company});
+
+  final Company company;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return AppListTile(
+      leading: Container(
+        width: 44,
+        height: 44,
+        decoration: BoxDecoration(
+          color: scheme.primaryContainer,
+          borderRadius: AppTokens.brField,
+        ),
+        child: Icon(
+          Icons.business_rounded,
+          color: scheme.onPrimaryContainer,
+          semanticLabel: 'Company',
         ),
       ),
+      title: company.name,
+    );
+  }
+}
+
+/// Bold gradient banner anchoring the admin console with a one-line purpose.
+class _AdminHero extends StatelessWidget {
+  const _AdminHero();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppTokens.xl),
+      decoration: BoxDecoration(
+        gradient: AppTokens.heroGradient(scheme.primary),
+        borderRadius: AppTokens.brCard,
+        boxShadow: AppTokens.softShadow(scheme.primary),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.admin_panel_settings_rounded,
+            color: Colors.white,
+            size: 36,
+            semanticLabel: 'Admin console',
+          ),
+          const SizedBox(width: AppTokens.lg),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Admin console',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                      ),
+                ),
+                const SizedBox(height: AppTokens.xs),
+                Text(
+                  'Provision companies, funds, and users.',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Colors.white.withValues(alpha: 0.92),
+                      ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge(this.count);
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.md,
+        vertical: AppTokens.xs,
+      ),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(AppTokens.rPill),
+      ),
+      child: Text(
+        '$count',
+        style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: scheme.onSecondaryContainer,
+              fontWeight: FontWeight.w700,
+            ),
+      ),
+    );
+  }
+}
+
+class _AdminSkeleton extends StatelessWidget {
+  const _AdminSkeleton();
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(AppTokens.lg),
+      children: [
+        Skeleton.box(height: 96, radius: AppTokens.rCard),
+        const SizedBox(height: AppTokens.xl),
+        Skeleton.line(width: 140),
+        const SizedBox(height: AppTokens.lg),
+        const SurfaceCard(child: SkeletonList(count: 4)),
+      ],
+    );
+  }
+}
+
+class _AdminError extends StatelessWidget {
+  const _AdminError({required this.message});
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return EmptyState(
+      title: 'Something went wrong',
+      message: message,
+      showMascot: false,
     );
   }
 }
