@@ -33,8 +33,12 @@ void main() {
     await fake.collection('requests').doc('r1').set(requestMap('acknowledged'));
     final req = FundRequest.fromMap('r1', requestMap('acknowledged'));
 
-    final res = await FirestoreRequestRepository(fake)
-        .release(request: req, actorUid: 'incharge1');
+    final res = await FirestoreRequestRepository(fake).release(
+      request: req,
+      actorUid: 'incharge1',
+      releaseProofUrl: 'https://img/release.jpg',
+      releaseSignatureUrl: 'https://img/sig.png',
+    );
 
     expect(res.isOk, isTrue);
     final fundAfter = (await fake.collection('funds').doc('f1').get()).data()!;
@@ -65,11 +69,21 @@ void main() {
     // Both callers hold the same stale acknowledged snapshot (shared worklist).
     final req = FundRequest.fromMap('r1', requestMap('acknowledged'));
 
-    final first = await repo.release(request: req, actorUid: 'incharge1');
+    final first = await repo.release(
+      request: req,
+      actorUid: 'incharge1',
+      releaseProofUrl: 'https://img/release.jpg',
+      releaseSignatureUrl: 'https://img/sig.png',
+    );
     expect(first.isOk, isTrue);
 
     // Second tap on the SAME stale request object.
-    final second = await repo.release(request: req, actorUid: 'incharge2');
+    final second = await repo.release(
+      request: req,
+      actorUid: 'incharge2',
+      releaseProofUrl: 'https://img/release.jpg',
+      releaseSignatureUrl: 'https://img/sig.png',
+    );
     expect(second.failureOrNull, isA<ValidationFailure>());
 
     // The fund must have been deducted exactly once.

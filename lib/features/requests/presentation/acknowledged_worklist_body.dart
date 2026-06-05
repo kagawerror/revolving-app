@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/error/failure_ui.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
@@ -11,8 +10,8 @@ import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../domain/fund_request.dart';
 import 'approver_inbox_providers.dart';
+import 'release_flow_controller.dart';
 import 'request_detail_screen.dart';
-import 'request_providers.dart';
 
 /// Body of the acknowledged worklist: the queue of requests an approver has
 /// already acknowledged / marked ready, with a one-tap RELEASE on each row.
@@ -168,49 +167,19 @@ class _WorklistRowState extends ConsumerState<_WorklistRow> {
 
   Future<void> _confirmAndRelease() async {
     final r = widget.request;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.payments_rounded),
-        title: const Text('Release cash?'),
-        content: Text(
-          'This will deduct ${r.amount.format()} from the fund and pay out to '
-          '${r.beneficiaryName}. This cannot be undone. Release now?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.icon(
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            icon: const Icon(Icons.payments_rounded, size: 18),
-            label: const Text('Release'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true || !mounted) return;
-
     final uid = ref.read(currentUserProvider).valueOrNull?.uid;
     if (uid == null) return;
 
     setState(() => _releasing = true);
-    final result = await ref
-        .read(requestRepositoryProvider)
-        .release(request: r, actorUid: uid);
-    // The row may be torn down by the stream re-emitting on success, so guard
-    // every post-await touch of state/context.
+    // The release flow controller owns the confirm dialog, photo + signature
+    // capture, the uploads, and the transaction, plus its own success/cancel
+    // snackbars. We only keep the per-row in-flight flag here.
+    final released = await ref
+        .read(releaseFlowControllerProvider.notifier)
+        .run(context, r, uid);
+    // On success the stream drops this row; otherwise re-enable the button.
     if (!mounted) return;
-    final messenger = ScaffoldMessenger.of(context);
-    if (result.showOnError(context)) {
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Released. Fund updated.')),
-      );
-      // On success the stream drops this row; no need to clear _releasing.
-    } else {
-      setState(() => _releasing = false);
-    }
+    if (!released) setState(() => _releasing = false);
   }
 
   @override

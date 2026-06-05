@@ -258,7 +258,12 @@ void main() {
     //    10000000 (= 300000), so the fund flips to 'low'.
     final r1 = FundRequest.fromMap(
         'r1', (await db.collection('requests').doc('r1').get()).data()!);
-    final released = await requestRepo.release(request: r1, actorUid: 'inc');
+    final released = await requestRepo.release(
+      request: r1,
+      actorUid: 'inc',
+      releaseProofUrl: 'https://img/release.jpg',
+      releaseSignatureUrl: 'https://img/sig.png',
+    );
     expect(released.isOk, isTrue);
     var fund = await db.collection('funds').doc('f1').get();
     expect(fund.data()!['availableBalanceCentavos'], 100000);

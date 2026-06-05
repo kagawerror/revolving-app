@@ -140,6 +140,8 @@ class _FakeRequestRepo implements RequestRepository {
   Future<Result<void>> release({
     required FundRequest request,
     required String actorUid,
+    required String releaseProofUrl,
+    required String releaseSignatureUrl,
   }) async => const Ok(null);
 }
 

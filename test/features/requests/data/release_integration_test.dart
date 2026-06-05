@@ -33,8 +33,12 @@ void main() {
 
       final req = FundRequest.fromMap('r1', requestMap);
 
-      final result = await FirestoreRequestRepository(fake)
-          .release(request: req, actorUid: 'incharge1');
+      final result = await FirestoreRequestRepository(fake).release(
+        request: req,
+        actorUid: 'incharge1',
+        releaseProofUrl: 'https://img/release.jpg',
+        releaseSignatureUrl: 'https://img/sig.png',
+      );
 
       expect(result.isOk, isTrue);
       expect(result.failureOrNull, isNull);
@@ -102,8 +106,12 @@ void main() {
 
       final req = FundRequest.fromMap('r1', requestMap);
 
-      final result = await FirestoreRequestRepository(fake)
-          .release(request: req, actorUid: 'incharge1');
+      final result = await FirestoreRequestRepository(fake).release(
+        request: req,
+        actorUid: 'incharge1',
+        releaseProofUrl: 'https://img/release.jpg',
+        releaseSignatureUrl: 'https://img/sig.png',
+      );
 
       expect(result.failureOrNull, isA<ValidationFailure>());
 

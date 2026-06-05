@@ -9,6 +9,7 @@ import '../../../core/money/money.dart';
 import '../../companies/domain/fund.dart';
 import '../../messaging/domain/push_sender.dart';
 import '../domain/fund_request.dart';
+import '../domain/release_preconditions.dart';
 import '../domain/request_repository.dart';
 import '../domain/request_status.dart';
 
@@ -195,7 +196,18 @@ class FirestoreRequestRepository implements RequestRepository {
   Future<Result<void>> release({
     required FundRequest request,
     required String actorUid,
+    required String releaseProofUrl,
+    required String releaseSignatureUrl,
   }) async {
+    // Mandatory proof photo + recipient signature — reject BEFORE opening any
+    // transaction so a missing capture never deducts the fund.
+    final precondition = ensureReleaseSignature(
+      releaseProofUrl: releaseProofUrl,
+      releaseSignatureUrl: releaseSignatureUrl,
+    );
+    if (precondition != null) {
+      return Err(precondition);
+    }
     if (!request.status.canTransitionTo(RequestStatus.released)) {
       return Err(ValidationFailure(
           'Request must be ready-for-release before releasing.'));
@@ -234,6 +246,8 @@ class FirestoreRequestRepository implements RequestRepository {
         tx.update(reqRef, {
           'status': RequestStatus.released.name,
           'releasedAt': FieldValue.serverTimestamp(),
+          'releaseProofUrl': releaseProofUrl,
+          'releaseSignatureUrl': releaseSignatureUrl,
         });
         final historyRef = reqRef.collection('history').doc();
         tx.set(historyRef, {
@@ -242,6 +256,8 @@ class FirestoreRequestRepository implements RequestRepository {
           'from': currentStatus.name,
           'to': RequestStatus.released.name,
           'note': null,
+          'releaseProofUrl': releaseProofUrl,
+          'releaseSignatureUrl': releaseSignatureUrl,
           'at': FieldValue.serverTimestamp(),
         });
         // Low-balance alert ONLY when the fund NEWLY flips to low (avoids

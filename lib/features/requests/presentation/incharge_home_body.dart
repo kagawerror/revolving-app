@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -23,6 +25,7 @@ import '../../replenishment/presentation/replenishment_providers.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_breakdown.dart';
 import '../domain/request_status.dart';
+import 'release_flow_controller.dart';
 import 'request_detail_screen.dart';
 import 'request_providers.dart';
 import 'request_status_visual.dart';
@@ -303,11 +306,9 @@ class _RequestAction extends ConsumerWidget {
         );
       case RequestStatus.readyForRelease:
         return FilledButton.icon(
-          onPressed: () async {
-            final res =
-                await repo.release(request: request, actorUid: user!.uid);
-            if (context.mounted) res.showOnError(context);
-          },
+          onPressed: () => unawaited(ref
+              .read(releaseFlowControllerProvider.notifier)
+              .run(context, request, user!.uid)),
           icon: const Icon(Icons.payments_rounded, size: 18),
           label: const Text('Release'),
         );

@@ -15,6 +15,7 @@ import '../domain/request_breakdown.dart';
 import '../domain/request_status.dart';
 import 'request_providers.dart';
 import 'request_status_visual.dart';
+import 'widgets/release_signature_tile.dart';
 import 'widgets/request_breakdown_view.dart';
 
 class RequestDetailScreen extends ConsumerWidget {
@@ -60,6 +61,21 @@ class RequestDetailScreen extends ConsumerWidget {
               .animate()
               .fadeIn(duration: 280.ms)
               .moveY(begin: 8, end: 0, duration: 280.ms),
+          // Release proof photo + recipient signature captured at release
+          // (proof reads first, then sign). Both self-hide when empty —
+          // legacy/unreleased requests show nothing.
+          if (request.hasReleaseProof) ...[
+            const SizedBox(height: AppTokens.lg),
+            ReleaseProofTile(proofUrl: request.releaseProofUrl)
+                .animate()
+                .fadeIn(delay: 40.ms, duration: 280.ms),
+          ],
+          if (request.hasReleaseSignature) ...[
+            const SizedBox(height: AppTokens.lg),
+            ReleaseSignatureTile(signatureUrl: request.releaseSignatureUrl)
+                .animate()
+                .fadeIn(delay: 60.ms, duration: 280.ms),
+          ],
           const SizedBox(height: AppTokens.lg),
 
           // Headline amount + status.

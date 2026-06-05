@@ -45,9 +45,14 @@ abstract interface class RequestRepository {
   });
 
   /// RELEASE: atomically validates balance, deducts, flips fund to `low` if
-  /// the new balance is at/under threshold, sets request to released, logs history.
+  /// the new balance is at/under threshold, sets request to released, logs
+  /// history. Requires a release proof photo and recipient signature (both
+  /// pre-uploaded URLs, mandatory) which are written into the request doc
+  /// atomically and are immutable thereafter.
   Future<Result<void>> release({
     required FundRequest request,
     required String actorUid,
+    required String releaseProofUrl,
+    required String releaseSignatureUrl,
   });
 }

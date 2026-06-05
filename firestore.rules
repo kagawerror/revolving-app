@@ -130,21 +130,38 @@ service cloud.firestore {
         ((isApprover() || isAdmin())
           && resource.data.status == 'pendingAck'
           && request.resource.data.status in ['acknowledged', 'rejected'])
+        // Incharge advances ready/released. A write that sets status 'released'
+        // MUST carry a non-empty release proof photo AND recipient signature
+        // (mirrors the Dart ensureReleaseSignature guard). The
+        // `status != 'released' || (both present)` shape lets the
+        // acknowledged -> readyForRelease move pass with neither field set.
         || ((isIncharge() || isAdmin())
           && resource.data.status in ['acknowledged', 'readyForRelease']
-          && request.resource.data.status in ['readyForRelease', 'released'])
+          && request.resource.data.status in ['readyForRelease', 'released']
+          && (request.resource.data.status != 'released'
+            || (request.resource.data.releaseProofUrl is string
+              && request.resource.data.releaseProofUrl.size() > 0
+              && request.resource.data.releaseSignatureUrl is string
+              && request.resource.data.releaseSignatureUrl.size() > 0)))
+        // Full replenishment: once released, the captured proof + signature are
+        // immutable — a later write may not alter them.
         || ((isApprover() || isAdmin())
           && resource.data.status == 'released'
           && request.resource.data.status == 'replenished'
-          && request.resource.data.replenishmentId is string)
+          && request.resource.data.replenishmentId is string
+          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
+          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
         // Partial replenishment: the request stays `released` while only
-        // replenishedCentavos grows; the original amount is immutable.
+        // replenishedCentavos grows; the original amount, release proof and
+        // signature are immutable.
         || ((isApprover() || isAdmin())
           && resource.data.status == 'released'
           && request.resource.data.status == 'released'
           && request.resource.data.replenishedCentavos
               > resource.data.get('replenishedCentavos', 0)
-          && request.resource.data.amountCentavos == resource.data.amountCentavos)
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
+          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
       );
 
       allow delete: if false;

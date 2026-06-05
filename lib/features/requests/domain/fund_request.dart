@@ -16,6 +16,13 @@ class FundRequest extends Equatable {
   final RequestStatus status;
   final String? replenishmentId;
 
+  /// Captured at cash release: a proof photo of the handover and the recipient's
+  /// signature image URL. Empty until release (and on legacy released docs).
+  /// Both are immutable once set (enforced in firestore.rules). Never written
+  /// by [toCreateMap] — they don't exist at creation time.
+  final String releaseProofUrl;
+  final String releaseSignatureUrl;
+
   /// Centavos of this request's [amount] already returned to the fund via
   /// replenishment (full or one-or-more partials). Default 0; legacy docs read
   /// as 0. The request closes (`replenished`) when a Full covers the remainder.
@@ -37,11 +44,15 @@ class FundRequest extends Equatable {
     required this.proofImageUrl,
     required this.status,
     this.replenishmentId,
+    this.releaseProofUrl = '',
+    this.releaseSignatureUrl = '',
     this.replenishedCentavos = 0,
     this.createdAt,
   });
 
   bool get hasProof => proofImageUrl.isNotEmpty;
+  bool get hasReleaseProof => releaseProofUrl.isNotEmpty;
+  bool get hasReleaseSignature => releaseSignatureUrl.isNotEmpty;
 
   Money get replenished => Money.fromCentavos(replenishedCentavos);
 
@@ -59,6 +70,8 @@ class FundRequest extends Equatable {
         proofImageUrl: (m['proofImageUrl'] ?? '') as String,
         status: RequestStatus.fromName(m['status'] as String?),
         replenishmentId: m['replenishmentId'] as String?,
+        releaseProofUrl: (m['releaseProofUrl'] ?? '') as String,
+        releaseSignatureUrl: (m['releaseSignatureUrl'] ?? '') as String,
         replenishedCentavos: (m['replenishedCentavos'] ?? 0) as int,
         createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
       );
@@ -81,6 +94,7 @@ class FundRequest extends Equatable {
   List<Object?> get props => [
         id, companyId, fundId, createdByUid, beneficiaryName,
         amount, purpose, proofImageUrl, status, replenishmentId,
+        releaseProofUrl, releaseSignatureUrl,
         replenishedCentavos, createdAt,
       ];
 }
