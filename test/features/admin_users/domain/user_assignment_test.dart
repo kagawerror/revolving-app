@@ -12,6 +12,7 @@ void main() {
     String email = 'jane@acme.com',
     UserRole role = UserRole.incharge,
     String companyId = 'c1',
+    List<String> companyIds = const ['c1'],
     bool validateEmail = true,
   }) =>
       validateUserAssignment(
@@ -20,6 +21,7 @@ void main() {
         email: email,
         role: role,
         companyId: companyId,
+        companyIds: companyIds,
         existingCompanyIds: companies,
         validateEmail: validateEmail,
       );
@@ -28,8 +30,18 @@ void main() {
     expect(validate(), isNull);
   });
 
-  test('valid admin (no company) returns null', () {
-    expect(validate(role: UserRole.admin, companyId: ''), isNull);
+  test('valid admin (no company, no memberships) returns null', () {
+    expect(
+      validate(role: UserRole.admin, companyId: '', companyIds: const []),
+      isNull,
+    );
+  });
+
+  test('valid multi-company non-admin returns null', () {
+    expect(
+      validate(companyId: 'c1', companyIds: const ['c1', 'c2']),
+      isNull,
+    );
   });
 
   test('empty uid is rejected', () {
@@ -59,17 +71,36 @@ void main() {
   });
 
   test('admin with a companyId is rejected', () {
-    final f = validate(role: UserRole.admin, companyId: 'c1');
+    final f = validate(role: UserRole.admin, companyId: 'c1', companyIds: const []);
     expect(f!.message, 'Admins are not assigned to a company.');
   });
 
-  test('non-admin with empty company is rejected', () {
-    final f = validate(companyId: '');
+  test('admin with non-empty companyIds is rejected', () {
+    final f = validate(
+      role: UserRole.admin,
+      companyId: '',
+      companyIds: const ['c1'],
+    );
+    expect(f!.message, 'Admins are not assigned to a company.');
+  });
+
+  test('non-admin with empty memberships is rejected', () {
+    final f = validate(companyId: '', companyIds: const []);
     expect(f!.message, 'Select an existing company.');
   });
 
-  test('non-admin with unknown company is rejected', () {
-    final f = validate(companyId: 'nope');
+  test('non-admin with an unknown membership id is rejected', () {
+    final f = validate(companyId: 'c1', companyIds: const ['c1', 'nope']);
+    expect(f!.message, 'Select an existing company.');
+  });
+
+  test('non-admin whose primary is not in the membership list is rejected', () {
+    final f = validate(companyId: 'c2', companyIds: const ['c1']);
+    expect(f!.message, 'Select an existing company.');
+  });
+
+  test('non-admin with duplicate membership ids is rejected', () {
+    final f = validate(companyId: 'c1', companyIds: const ['c1', 'c1']);
     expect(f!.message, 'Select an existing company.');
   });
 }

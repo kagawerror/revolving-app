@@ -11,6 +11,7 @@ void main() {
   AppUser user({
     String uid = 'u1',
     String companyId = 'c1',
+    List<String> companyIds = const ['c1'],
     UserRole role = UserRole.incharge,
     String displayName = 'Jane',
     String email = 'jane@acme.com',
@@ -18,6 +19,7 @@ void main() {
       AppUser(
         uid: uid,
         companyId: companyId,
+        companyIds: companyIds,
         role: role,
         displayName: displayName,
         email: email,
@@ -37,6 +39,16 @@ void main() {
       expect(data['email'], 'jane@acme.com');
       expect(data['themeMode'], 'system');
       expect(data['accentId'], 'forest');
+    });
+
+    test('persists companyIds membership', () async {
+      final repo = FirestoreUserAdminRepository(db);
+      final res = await repo.createProfile(
+        user(companyId: 'c1', companyIds: const ['c1', 'c2']),
+      );
+      expect(res.isOk, isTrue);
+      final data = (await db.collection('users').doc('u1').get()).data()!;
+      expect(data['companyIds'], ['c1', 'c2']);
     });
 
     test('rejects a duplicate uid without overwriting', () async {
@@ -74,18 +86,37 @@ void main() {
         uid: 'u1',
         role: UserRole.manager,
         companyId: 'c2',
+        companyIds: const ['c2', 'c3'],
         displayName: 'New',
       );
       expect(res.isOk, isTrue);
       final data = (await db.collection('users').doc('u1').get()).data()!;
       expect(data['role'], 'manager');
       expect(data['companyId'], 'c2');
+      expect(data['companyIds'], ['c2', 'c3']);
       expect(data['displayName'], 'New');
       // Untouched fields preserved.
       expect(data['email'], 'keep@acme.com');
       expect(data['themeMode'], 'dark');
       expect(data['accentId'], 'sunset');
       expect(data['photoUrl'], 'http://img');
+    });
+  });
+
+  group('legacy compatibility', () {
+    test('a doc without companyIds parses via AppUser.fromMap', () async {
+      await db.collection('users').doc('legacy').set({
+        'role': 'incharge',
+        'companyId': 'c1',
+        'displayName': 'Old',
+        'email': 'old@acme.com',
+      });
+      final repo = FirestoreUserAdminRepository(db);
+      final list = await repo.watchAll().first;
+      final legacy = list.firstWhere((u) => u.uid == 'legacy');
+      expect(legacy.companyIds, const <String>[]);
+      // Backward-compat: membership resolves to the single primary company.
+      expect(legacy.companyMemberships, ['c1']);
     });
   });
 

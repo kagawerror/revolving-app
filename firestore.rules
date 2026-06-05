@@ -6,10 +6,19 @@ service cloud.firestore {
     function myProfile() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
-    function myCompany() { return myProfile().companyId; }
+    // Membership-aware company set. Multi-company users carry `companyIds`;
+    // legacy docs (no `companyIds`, or an empty list) fall back to their single
+    // primary `companyId` so they behave exactly as before this migration.
+    function myCompanyIds() {
+      return myProfile().get('companyIds', []).size() > 0
+        ? myProfile().get('companyIds', [])
+        : [myProfile().companyId];
+    }
     function myRole() { return myProfile().role; }
     function isAdmin() { return signedIn() && myRole() == 'admin'; }
-    function sameCompany(companyId) { return signedIn() && companyId == myCompany(); }
+    function sameCompany(companyId) {
+      return signedIn() && companyId in myCompanyIds();
+    }
     function isIncharge() { return signedIn() && myRole() == 'incharge'; }
     function isApprover() {
       return signedIn() && (myRole() in ['superior', 'manager', 'ceo']);
@@ -103,7 +112,7 @@ service cloud.firestore {
       // Admin superuser may create in ANY company (non-empty companyId), still
       // owning the doc and attaching a proof image.
       allow create: if (isIncharge()
-          && request.resource.data.companyId == myCompany()
+          && request.resource.data.companyId in myCompanyIds()
           && request.resource.data.createdByUid == request.auth.uid
           && request.resource.data.proofImageUrl is string
           && request.resource.data.proofImageUrl.size() > 0)
@@ -143,7 +152,7 @@ service cloud.firestore {
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
       // Incharge creates in their own company; admin superuser in any company.
       allow create: if (isIncharge()
-          && request.resource.data.companyId == myCompany()
+          && request.resource.data.companyId in myCompanyIds()
           && request.resource.data.status == 'draft')
         || (isAdmin()
           && request.resource.data.companyId is string
@@ -165,8 +174,8 @@ service cloud.firestore {
     match /notifications/{notifId} {
       allow read: if sameCompany(resource.data.companyId)
         && (myRole() in resource.data.recipientRoles);
-      // Admin's post-commit notif writes target other companies (admin
-      // myCompany()==''), so allow them explicitly.
+      // Admin's post-commit notif writes target other companies (admins have
+      // no company membership), so allow them explicitly.
       allow create: if sameCompany(request.resource.data.companyId) || isAdmin();
       allow update: if (sameCompany(resource.data.companyId) || isAdmin())
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);

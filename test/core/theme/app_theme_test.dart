@@ -77,4 +77,40 @@ void main() {
     expect(t.useMaterial3, isTrue);
     expect(t.colorScheme.brightness, Brightness.dark);
   });
+
+  // Regression: the FilledButton theme must impose a comfortable *height* floor
+  // without forcing an infinite *min-width*. Size.fromHeight(h) is
+  // Size(double.infinity, h) — baking that into the global theme made every
+  // un-overridden FilledButton demand infinite width, which crashes the moment
+  // a button lands in a width-unbounded parent (a Row/Wrap without Expanded,
+  // e.g. AppListTile's trailing slot).
+  test('filledButton theme keeps a finite min-width and a 52 height floor', () {
+    final ButtonStyle? style = AppTheme.light(seed).filledButtonTheme.style;
+    final Size? min = style?.minimumSize?.resolve(<WidgetState>{});
+    expect(min, isNotNull);
+    expect(min!.width.isFinite, isTrue,
+        reason: 'global theme must not force infinite button width');
+    expect(min.height, 52);
+  });
+
+  testWidgets(
+      'FilledButton in an unbounded-width parent lays out without crashing',
+      (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light(seed),
+        home: Scaffold(
+          // A bare Row child receives unbounded width on the main axis — the
+          // same constraint AppListTile hands its `trailing` widget.
+          body: Row(
+            children: [
+              FilledButton(onPressed: () {}, child: const Text('Act')),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(tester.takeException(), isNull);
+  });
 }

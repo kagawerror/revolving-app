@@ -19,6 +19,7 @@ abstract interface class UserAdminRepository {
     required String uid,
     required UserRole role,
     required String companyId,
+    required List<String> companyIds,
     required String displayName,
   });
 }

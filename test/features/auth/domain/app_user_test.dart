@@ -66,6 +66,43 @@ void main() {
     });
   });
 
+  group('companyMemberships', () {
+    test('admin has no memberships regardless of companyIds', () {
+      const admin = AppUser(
+        uid: 'a',
+        companyId: '',
+        role: UserRole.admin,
+        displayName: 'Admin',
+        email: 'admin@x.com',
+        companyIds: ['c1', 'c2'],
+      );
+      expect(admin.companyMemberships, const <String>[]);
+    });
+
+    test('non-admin with companyIds returns the list', () {
+      const u = AppUser(
+        uid: 'u',
+        companyId: 'c1',
+        role: UserRole.incharge,
+        displayName: 'I',
+        email: 'i@x.com',
+        companyIds: ['c1', 'c2'],
+      );
+      expect(u.companyMemberships, ['c1', 'c2']);
+    });
+
+    test('non-admin legacy (empty companyIds) falls back to [companyId]', () {
+      const u = AppUser(
+        uid: 'u',
+        companyId: 'c1',
+        role: UserRole.incharge,
+        displayName: 'I',
+        email: 'i@x.com',
+      );
+      expect(u.companyMemberships, ['c1']);
+    });
+  });
+
   test('fromMap builds an AppUser', () {
     final u = AppUser.fromMap('uid1', {
       'companyId': 'c1',
@@ -104,6 +141,36 @@ void main() {
       expect(u.themeMode, ThemeMode.system);
       expect(u.accentId, 'forest');
     });
+    test('fromMap reads companyIds and defaults to empty for legacy docs', () {
+      final withIds = AppUser.fromMap('u1', {
+        'companyId': 'c1',
+        'role': 'incharge',
+        'displayName': 'Ana',
+        'email': 'ana@x.com',
+        'companyIds': ['c1', 'c2'],
+      });
+      expect(withIds.companyIds, ['c1', 'c2']);
+      final legacy = AppUser.fromMap('u1', {
+        'companyId': 'c1',
+        'role': 'incharge',
+        'displayName': 'Ana',
+        'email': 'ana@x.com',
+      });
+      expect(legacy.companyIds, const <String>[]);
+    });
+
+    test('toMap includes companyIds', () {
+      const u = AppUser(
+        uid: 'u1',
+        companyId: 'c1',
+        role: UserRole.incharge,
+        displayName: 'Ana',
+        email: 'ana@x.com',
+        companyIds: ['c1', 'c2'],
+      );
+      expect(u.toMap()['companyIds'], ['c1', 'c2']);
+    });
+
     test('toMap round-trips themeMode as a string', () {
       final u = AppUser.fromMap('u1', {
         'companyId': 'c1',

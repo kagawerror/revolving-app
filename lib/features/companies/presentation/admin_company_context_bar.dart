@@ -3,9 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/skeleton.dart';
+import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../domain/company.dart';
-import 'admin_providers.dart';
+import 'switchable_companies.dart';
 
 /// Holds the company an admin is currently "operating in" while inside the
 /// incharge / approval shells. `null` until the admin explicitly picks one.
@@ -20,55 +21,82 @@ import 'admin_providers.dart';
 /// providers.
 final adminActiveCompanyProvider = StateProvider<String?>((ref) => null);
 
-/// A role-gated header bar that lets an **admin** choose which company's data
-/// the incharge / approval shell should show. For every non-admin role it
-/// renders nothing (`SizedBox.shrink`), so those screens are visually
-/// unchanged.
+/// A context header bar that lets the current user choose which company's data
+/// the incharge / approval shell should operate in. It serves two audiences off
+/// one [switchableCompaniesProvider] (admin => all companies; multi-company
+/// non-admin => only their memberships):
 ///
-/// Reuse on both [InchargeHomeScreen] and [ApproverHomeScreen]: drop it in as
-/// the first child above the scrolling content. It owns its own loading / error
-/// states for [companiesProvider] so callers don't have to special-case admin.
-class AdminCompanyContextBar extends ConsumerWidget {
-  const AdminCompanyContextBar({super.key});
+///  * **Admin** — drives an all-companies selection and may sit in an
+///    *unselected* prompt state (`activeId == null`), exactly as before.
+///  * **Multi-company non-admin** — switches within their bounded membership.
+///    When the provider is null we default the shown selection to their primary
+///    `companyId`, so the bar never looks empty for them (the "choose a company"
+///    empty prompt stays ADMIN-ONLY).
+///
+/// It renders nothing (`SizedBox.shrink`) for a non-admin with a single company
+/// — there's nothing to switch, so no switcher noise. Drops in as the first
+/// child above the scrolling content; owns its own loading / error states.
+class CompanyContextBar extends ConsumerWidget {
+  const CompanyContextBar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAdmin =
-        ref.watch(currentUserProvider).valueOrNull?.role.isAdmin ?? false;
-    // Non-admins never see the bar — their company is fixed by their profile.
-    if (!isAdmin) return const SizedBox.shrink();
+    final me = ref.watch(currentUserProvider).valueOrNull;
+    final isAdmin = me?.role.isAdmin ?? false;
 
-    final companies = ref.watch(companiesProvider);
+    final companiesAsync = ref.watch(switchableCompaniesProvider);
     final activeId = ref.watch(adminActiveCompanyProvider);
 
-    return companies.when(
+    return companiesAsync.when(
       loading: () => const _ContextBarShell(child: _ContextBarLoading()),
       error: (_, _) => _ContextBarShell(
         tone: _BarTone.error,
         child: _ContextBarError(
-          onRetry: () => ref.invalidate(companiesProvider),
+          onRetry: () => ref.invalidate(switchableCompaniesProvider),
         ),
       ),
       data: (list) {
+        // Non-admin with exactly one (or zero) switchable company: their context
+        // is fixed by their profile — hide the bar entirely.
+        if (!isAdmin && list.length <= 1) return const SizedBox.shrink();
+
         if (list.isEmpty) {
+          // Only reachable for an admin (non-admins with 0 are hidden above).
           return const _ContextBarShell(
-            child: _ContextBarMessage(
-              text: 'No companies provisioned yet.',
-            ),
+            child: _ContextBarMessage(text: 'No companies provisioned yet.'),
           );
         }
-        // Guard against a stale selection (company deleted under us).
-        final selected = list.where((c) => c.id == activeId).firstOrNull;
+
+        // Resolve the shown selection. Admins may legitimately have none yet
+        // (prompt state). A multi-company non-admin falls back to their primary
+        // companyId so the bar always reads as "Acting in: <their company>".
+        final fallbackId = isAdmin ? null : _primaryFor(me, list);
+        final effectiveId = activeId ?? fallbackId;
+        final selected =
+            list.where((c) => c.id == effectiveId).firstOrNull;
+
         return _ContextBarShell(
           child: _CompanyDropdown(
             companies: list,
             selected: selected,
+            // Admin sees the all-companies framing + may be unselected; a
+            // non-admin sees a bounded "Acting in" set that's always resolved.
+            isAdmin: isAdmin,
             onChanged: (id) =>
                 ref.read(adminActiveCompanyProvider.notifier).state = id,
           ),
         );
       },
     );
+  }
+
+  /// Best-effort primary company for a non-admin: their `companyId` if it's in
+  /// the switchable set, else the first switchable company so the bar is never
+  /// blank for someone who has memberships.
+  static String? _primaryFor(AppUser? me, List<Company> list) {
+    final primary = me?.companyId ?? '';
+    if (primary.isNotEmpty && list.any((c) => c.id == primary)) return primary;
+    return list.firstOrNull?.id;
   }
 }
 
@@ -134,11 +162,17 @@ class _CompanyDropdown extends StatelessWidget {
   const _CompanyDropdown({
     required this.companies,
     required this.selected,
+    required this.isAdmin,
     required this.onChanged,
   });
 
   final List<Company> companies;
   final Company? selected;
+
+  /// Drives the framing: admins get an "Operating in" all-companies eyebrow and
+  /// may sit unselected (with a prompt); a multi-company non-admin gets a
+  /// bounded "Acting in" eyebrow and is always resolved to a company.
+  final bool isAdmin;
   final ValueChanged<String> onChanged;
 
   @override
@@ -152,7 +186,7 @@ class _CompanyDropdown extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          'Operating in',
+          isAdmin ? 'Operating in' : 'Acting in',
           style: textTheme.labelSmall?.copyWith(
             color: scheme.onPrimaryContainer.withValues(alpha: 0.75),
             fontWeight: FontWeight.w700,
@@ -231,7 +265,9 @@ class _CompanyDropdown extends StatelessWidget {
             },
           ),
         ),
-        if (!hasSelection)
+        // The "choose a company" prompt is ADMIN-ONLY — a multi-company
+        // non-admin is always resolved to their primary, so it never shows.
+        if (isAdmin && !hasSelection)
           Padding(
             padding: const EdgeInsets.only(bottom: 2),
             child: Text(

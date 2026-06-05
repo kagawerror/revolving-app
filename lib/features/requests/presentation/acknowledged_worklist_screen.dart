@@ -21,7 +21,7 @@ import 'request_providers.dart';
 ///
 /// A deliberate sibling of [InchargeHomeScreen]: same list-card visual language
 /// ([SurfaceCard] + [AppListTile]), same tabular money emphasis, same
-/// [AdminCompanyContextBar] at the top, and the same three async surfaces
+/// [CompanyContextBar] at the top, and the same three async surfaces
 /// (shimmer skeleton / friendly empty / error-with-retry). It narrows that
 /// screen's per-fund browsing down to the single "ready to release" action so a
 /// custodian clearing the day's queue never hunts across funds.
@@ -39,7 +39,7 @@ class AcknowledgedWorklistScreen extends ConsumerWidget {
           // Admin-only operating-company picker; renders nothing for non-admins,
           // so their layout is unchanged. The provider keys off the same
           // effective company this bar drives.
-          const AdminCompanyContextBar(),
+          const CompanyContextBar(),
           Expanded(
             child: asyncRequests.when(
               loading: () => const _WorklistLoading(),

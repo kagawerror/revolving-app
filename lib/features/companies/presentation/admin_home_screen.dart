@@ -570,7 +570,7 @@ class _FundsInlineError extends StatelessWidget {
 
 /// Superuser entry into the operational shells. An admin isn't scoped to a
 /// company, so these push the incharge / approval homes where an
-/// [AdminCompanyContextBar] lets them pick which company to operate in. Two
+/// [CompanyContextBar] lets them pick which company to operate in. Two
 /// tappable rows, same card/tile rhythm as Users, so the landing stays scannable.
 class _OperationsSection extends StatelessWidget {
   const _OperationsSection({

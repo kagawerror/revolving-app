@@ -38,6 +38,7 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
       await ref.set({
         'role': user.role.name,
         'companyId': user.companyId,
+        'companyIds': user.companyIds,
         'displayName': user.displayName,
         'email': user.email,
         'themeMode': 'system',
@@ -57,14 +58,16 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
     required String uid,
     required UserRole role,
     required String companyId,
+    required List<String> companyIds,
     required String displayName,
   }) async {
     try {
-      // ONLY the three mutable assignment fields; email/theme/accent are left
+      // ONLY the mutable assignment fields; email/theme/accent are left
       // untouched (identity + self-service presentation).
       await _col.doc(uid).update({
         'role': role.name,
         'companyId': companyId,
+        'companyIds': companyIds,
         'displayName': displayName,
       });
       return const Ok(null);

@@ -85,27 +85,27 @@ final routerProvider = Provider<GoRouter>((ref) {
       location: state.matchedLocation,
     ),
     routes: [
-      GoRoute(path: '/login', builder: (_, __) => const LoginScreen()),
+      GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/setup', builder: (context, _) => const BootstrapScreen()),
-      GoRoute(path: '/admin', builder: (_, __) => const AdminHomeScreen()),
+      GoRoute(path: '/admin', builder: (_, _) => const AdminHomeScreen()),
       GoRoute(
         path: '/admin/create-fund',
-        builder: (_, __) => const CreateFundScreen(),
+        builder: (_, _) => const CreateFundScreen(),
       ),
       GoRoute(
         path: '/admin/users',
-        builder: (_, __) => const UserAdminScreen(),
+        builder: (_, _) => const UserAdminScreen(),
       ),
-      GoRoute(path: '/incharge', builder: (_, __) => const InchargeHomeScreen()),
+      GoRoute(path: '/incharge', builder: (_, _) => const InchargeHomeScreen()),
       GoRoute(
         path: '/incharge/create',
-        builder: (_, __) => const CreateRequestScreen(),
+        builder: (_, _) => const CreateRequestScreen(),
       ),
       GoRoute(
         path: '/incharge/acknowledged',
-        builder: (_, __) => const AcknowledgedWorklistScreen(),
+        builder: (_, _) => const AcknowledgedWorklistScreen(),
       ),
-      GoRoute(path: '/approvals', builder: (_, __) => const ApproverHomeScreen()),
+      GoRoute(path: '/approvals', builder: (_, _) => const ApproverHomeScreen()),
       GoRoute(
           path: '/profile',
           builder: (context, state) => const ProfileScreen()),

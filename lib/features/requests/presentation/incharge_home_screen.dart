@@ -84,7 +84,7 @@ class InchargeHomeScreen extends ConsumerWidget {
               children: [
                 // Admin-only operating-company picker; SizedBox.shrink for
                 // everyone else, so non-admin layout is unchanged.
-                const AdminCompanyContextBar(),
+                const CompanyContextBar(),
                 Expanded(
                   child: _InchargeBody(user: user),
                 ),

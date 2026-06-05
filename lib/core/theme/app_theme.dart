@@ -32,7 +32,14 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size.fromHeight(52),
+          // Height-only floor for a comfortable tap target. Do NOT use
+          // Size.fromHeight here: that is Size(double.infinity, h), which forces
+          // an infinite *min-width* on every FilledButton app-wide and crashes
+          // the moment one lands in a width-unbounded parent (a Row/Wrap without
+          // Expanded — e.g. AppListTile's trailing slot). Buttons that want to
+          // be full-width opt in explicitly via Size.fromHeight(52) or a
+          // stretching parent (Column.stretch / ListView).
+          minimumSize: const Size(64, 52),
           shape: const RoundedRectangleBorder(borderRadius: AppTokens.brField),
           textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
         ),

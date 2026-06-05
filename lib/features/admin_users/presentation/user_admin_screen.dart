@@ -54,6 +54,7 @@ class UserAdminScreen extends ConsumerWidget {
           email: s.email,
           role: s.role,
           companyId: s.companyId,
+          companyIds: s.companyIds,
           existingCompanyIds: {for (final c in companies) c.id},
           validateEmail: isCreate,
         );
@@ -65,6 +66,7 @@ class UserAdminScreen extends ConsumerWidget {
                 AppUser(
                   uid: s.uid,
                   companyId: s.companyId,
+                  companyIds: s.companyIds,
                   role: s.role,
                   displayName: s.displayName,
                   email: s.email,
@@ -74,6 +76,7 @@ class UserAdminScreen extends ConsumerWidget {
                 uid: s.uid,
                 role: s.role,
                 companyId: s.companyId,
+                companyIds: s.companyIds,
                 displayName: s.displayName,
               );
         return res.failureOrNull?.message; // null == success
@@ -146,10 +149,7 @@ class UserAdminScreen extends ConsumerWidget {
                         ),
                       _UserTile(
                         user: list[i],
-                        companyName: list[i].companyId.isEmpty
-                            ? null
-                            : companyNames[list[i].companyId] ??
-                                'Unknown company',
+                        companyNames: companyNames,
                         onTap: () =>
                             _openForm(context, ref, existing: list[i]),
                       ),
@@ -169,12 +169,32 @@ class UserAdminScreen extends ConsumerWidget {
 class _UserTile extends StatelessWidget {
   const _UserTile({
     required this.user,
-    required this.companyName,
+    required this.companyNames,
     required this.onTap,
   });
   final AppUser user;
-  final String? companyName;
+
+  /// Company id -> display name, shared across the list.
+  final Map<String, String> companyNames;
   final VoidCallback onTap;
+
+  /// Full membership in primary-first order. Built from the real
+  /// [AppUser.companyMemberships] (which already resolves legacy `companyId`-only
+  /// docs to a single-company membership), with the primary `companyId` forced
+  /// first so the star lands on the right company. Returns ids (not names) so
+  /// the caller can resolve + label "Unknown company" consistently.
+  List<String> get _membershipIds {
+    final ordered = <String>[];
+    final primary = user.companyId.trim();
+    if (primary.isNotEmpty) ordered.add(primary);
+    for (final raw in user.companyMemberships) {
+      final id = raw.trim();
+      if (id.isNotEmpty && !ordered.contains(id)) ordered.add(id);
+    }
+    return ordered;
+  }
+
+  String _nameFor(String id) => companyNames[id] ?? 'Unknown company';
 
   @override
   Widget build(BuildContext context) {
@@ -182,6 +202,10 @@ class _UserTile extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
     final initial =
         (user.displayName.isNotEmpty ? user.displayName[0] : '?').toUpperCase();
+
+    final ids = _membershipIds;
+    final primaryName = ids.isEmpty ? null : _nameFor(ids.first);
+    final extra = ids.length - 1; // companies beyond the primary
 
     return AppListTile(
       onTap: onTap,
@@ -200,7 +224,7 @@ class _UserTile extends StatelessWidget {
       title: user.displayName.isEmpty ? '(no name)' : user.displayName,
       subtitle: user.email,
       trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 150),
+        constraints: const BoxConstraints(maxWidth: 160),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisAlignment: MainAxisAlignment.center,
@@ -210,15 +234,92 @@ class _UserTile extends StatelessWidget {
               label: userRoleLabel(user.role),
               tone: user.role.isAdmin ? StatusTone.info : StatusTone.neutral,
             ),
-            if (companyName != null) ...[
+            if (primaryName != null) ...[
               const SizedBox(height: AppTokens.xs),
-              Text(
-                companyName!,
+              _CompanyMembershipLabel(
+                primaryName: primaryName,
+                extraCount: extra,
+                // The full list powers the tooltip/semantics so an admin can
+                // read every company without opening the editor.
+                allNames: [for (final id in ids) _nameFor(id)],
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Trailing membership summary for a user row: the primary company name with a
+/// leading star, plus a compact "+N" pill when the user belongs to more
+/// companies. Stays scannable in a dense list — one line, primary first — while
+/// exposing the full set via tooltip + semantics for discoverability/a11y.
+class _CompanyMembershipLabel extends StatelessWidget {
+  const _CompanyMembershipLabel({
+    required this.primaryName,
+    required this.extraCount,
+    required this.allNames,
+  });
+
+  final String primaryName;
+  final int extraCount;
+  final List<String> allNames;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final hasExtra = extraCount > 0;
+
+    final semanticLabel = hasExtra
+        ? 'Companies: ${allNames.join(', ')}. Primary: $primaryName.'
+        : 'Company: $primaryName';
+
+    return Tooltip(
+      message: allNames.join('\n'),
+      child: Semantics(
+        label: semanticLabel,
+        container: true,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Icon(
+              Icons.star_rounded,
+              size: 14,
+              color: scheme.primary,
+            ),
+            const SizedBox(width: 2),
+            Flexible(
+              child: Text(
+                primaryName,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 textAlign: TextAlign.right,
                 style: textTheme.bodySmall?.copyWith(
-                  color: scheme.onSurfaceVariant,
+                  color: scheme.onSurface,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            if (hasExtra) ...[
+              const SizedBox(width: AppTokens.xs),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTokens.sm,
+                  vertical: 1,
+                ),
+                decoration: BoxDecoration(
+                  color: scheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(AppTokens.rPill),
+                ),
+                child: Text(
+                  '+$extraCount',
+                  style: textTheme.labelSmall?.copyWith(
+                    color: scheme.onSecondaryContainer,
+                    fontWeight: FontWeight.w800,
+                  ),
                 ),
               ),
             ],

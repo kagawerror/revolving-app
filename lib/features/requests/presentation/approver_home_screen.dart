@@ -45,7 +45,7 @@ class ApproverHomeScreen extends ConsumerWidget {
       body: Column(
         children: [
           // Admin-only operating-company picker; SizedBox.shrink otherwise.
-          const AdminCompanyContextBar(),
+          const CompanyContextBar(),
           // Admin with no company picked: prompt instead of empty inboxes.
           if (companyId.isEmpty)
             const Expanded(child: AdminSelectCompanyPrompt())

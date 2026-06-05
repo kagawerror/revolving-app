@@ -36,6 +36,12 @@ enum UserRole {
 class AppUser extends Equatable {
   final String uid;
   final String companyId;
+
+  /// Full company membership for non-admin users. The **primary** company is
+  /// [companyId] (also the first element by convention). Empty for admins and
+  /// for legacy (pre-migration) docs — see [companyMemberships] for the
+  /// fallback that makes legacy docs behave as single-company members.
+  final List<String> companyIds;
   final UserRole role;
   final String displayName;
   final String email;
@@ -49,6 +55,7 @@ class AppUser extends Equatable {
     required this.role,
     required this.displayName,
     required this.email,
+    this.companyIds = const [],
     this.photoUrl,
     this.themeMode = ThemeMode.system,
     this.accentId = 'forest',
@@ -57,6 +64,7 @@ class AppUser extends Equatable {
   factory AppUser.fromMap(String uid, Map<String, dynamic> map) => AppUser(
         uid: uid,
         companyId: (map['companyId'] ?? '') as String,
+        companyIds: (map['companyIds'] as List?)?.cast<String>() ?? const [],
         role: UserRole.fromName(map['role'] as String?),
         displayName: (map['displayName'] ?? '') as String,
         email: (map['email'] ?? '') as String,
@@ -65,10 +73,22 @@ class AppUser extends Equatable {
         accentId: (map['accentId'] ?? 'forest') as String,
       );
 
+  /// The companies this user may operate in, resolved with backward-compat:
+  ///   * **admin** => `const []` (admins are superusers, not tied to a company).
+  ///   * **non-admin with [companyIds]** => that list.
+  ///   * **non-admin legacy doc** (empty [companyIds]) => `[companyId]`.
+  List<String> get companyMemberships => role.isAdmin
+      ? const []
+      : (companyIds.isEmpty ? [companyId] : companyIds);
+
   /// Serializes the self-service profile fields. `themeMode` is stored as a
   /// stable string so the doc stays human-readable and migration-free.
   Map<String, dynamic> toMap() => {
         'companyId': companyId,
+        // Admin-controlled membership only: this is NOT the self-service write
+        // path (self-service writes a scoped field map in
+        // firebase_auth_repository.dart), so companyIds is never user-mutable.
+        'companyIds': companyIds,
         'role': role.name,
         'displayName': displayName,
         'email': email,
@@ -91,6 +111,15 @@ class AppUser extends Equatable {
       };
 
   @override
-  List<Object?> get props =>
-      [uid, companyId, role, displayName, email, photoUrl, themeMode, accentId];
+  List<Object?> get props => [
+        uid,
+        companyId,
+        companyIds,
+        role,
+        displayName,
+        email,
+        photoUrl,
+        themeMode,
+        accentId,
+      ];
 }

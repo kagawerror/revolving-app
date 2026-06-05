@@ -80,15 +80,22 @@ class _State extends ConsumerState<CreateRequestScreen> {
         ? ''
         : effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
 
-    // Admin with no company picked: show a friendly "choose a company" state
-    // instead of an empty, un-submittable form. This screen has no context bar,
-    // so we point them back to the home shell. Non-admins never hit this.
+    // Admin with no company picked: show the context bar so they can choose a
+    // company here, plus a friendly prompt instead of an empty, un-submittable
+    // form. Non-admins never hit this (they always resolve to a company).
     if (user != null && companyId.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('New request')),
-        body: const AdminSelectCompanyPrompt(
-          message: 'Choose a company from the home screen before creating a '
-              'request.',
+        body: const Column(
+          children: [
+            CompanyContextBar(),
+            Expanded(
+              child: AdminSelectCompanyPrompt(
+                message: 'Choose a company in the bar above before creating a '
+                    'request.',
+              ),
+            ),
+          ],
         ),
       );
     }
@@ -102,10 +109,17 @@ class _State extends ConsumerState<CreateRequestScreen> {
       appBar: AppBar(title: const Text('New request')),
       body: Form(
         key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(
-              AppTokens.lg, AppTokens.lg, AppTokens.lg, AppTokens.xxl),
+        child: Column(
           children: [
+            // Lets a multi-company incharge (or admin superuser) switch the
+            // operating company before filling the form. Renders nothing for a
+            // single-company non-admin.
+            const CompanyContextBar(),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.fromLTRB(
+                    AppTokens.lg, AppTokens.lg, AppTokens.lg, AppTokens.xxl),
+                children: [
             // --- Details card ---
             SurfaceCard(
               child: Column(
@@ -183,6 +197,12 @@ class _State extends ConsumerState<CreateRequestScreen> {
             const SizedBox(height: AppTokens.xl),
             FilledButton.icon(
               onPressed: submitting ? null : _submit,
+              // Full-width primary submit. The parent Column is start-aligned
+              // (loose width), so opt in to full width explicitly now that the
+              // global theme no longer forces it.
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
               icon: submitting
                   ? const SizedBox(
                       height: 18,
@@ -193,6 +213,9 @@ class _State extends ConsumerState<CreateRequestScreen> {
               label: Text(submitting
                   ? 'Uploading…'
                   : 'Send for acknowledgement'),
+            ),
+                ],
+              ),
             ),
           ],
         ),
