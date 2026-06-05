@@ -16,13 +16,17 @@ import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
+import '../../../core/money/money.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
 import '../../replenishment/presentation/replenish_select_dialog.dart';
+import '../../replenishment/presentation/replenishment_providers.dart';
 import '../domain/fund_request.dart';
+import '../domain/request_breakdown.dart';
 import '../domain/request_status.dart';
 import 'request_detail_screen.dart';
 import 'request_providers.dart';
 import 'request_status_visual.dart';
+import 'widgets/request_breakdown_view.dart';
 
 /// Requests under a single fund. Keyed by (companyId, fundId) so the query is
 /// company-scoped for the sameCompany read rule — a fundId-only query is
@@ -149,6 +153,10 @@ class _FundSectionState extends ConsumerState<_FundSection> {
     final fund = widget.fund;
     final requests =
         ref.watch(_fundRequestsProvider((fund.companyId, fund.id)));
+    // Submitted-but-not-approved partial totals per request, derived from the
+    // existing pending-replenishments stream (no extra Firestore read). Watched
+    // once here, then the per-request Money is passed down to each row.
+    final pendingByRequest = ref.watch(pendingPartialByRequestProvider);
     final user = ref.read(currentUserProvider).valueOrNull;
     final canReplenish = (user?.role.canManageFundOrAdmin ?? false) &&
         fund.status != FundStatus.replenishing;
@@ -239,25 +247,14 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                             crossAxisAlignment: CrossAxisAlignment.end,
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Text(
-                                (r.status == RequestStatus.released
-                                        ? r.remaining
-                                        : r.amount)
-                                    .format(),
-                                style: textTheme.titleMedium?.copyWith(
-                                  fontWeight: FontWeight.w800,
-                                  fontFeatures: const [
-                                    FontFeature.tabularFigures()
-                                  ],
+                              RequestBreakdownView(
+                                breakdown: computeRequestBreakdown(
+                                  r,
+                                  pendingPartial: pendingByRequest[r.id] ??
+                                      Money.zero,
                                 ),
+                                compact: true,
                               ),
-                              if (r.status == RequestStatus.released &&
-                                  r.replenishedCentavos > 0)
-                                Text(
-                                  '${r.replenished.format()} of ${r.amount.format()} replenished',
-                                  style: textTheme.bodySmall?.copyWith(
-                                      color: scheme.onSurfaceVariant),
-                                ),
                               const SizedBox(height: AppTokens.xs),
                               _RequestAction(request: r),
                             ],

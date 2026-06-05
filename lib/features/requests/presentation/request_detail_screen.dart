@@ -4,14 +4,18 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure_ui.dart';
+import '../../../core/money/money.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../replenishment/presentation/replenishment_providers.dart';
 import '../domain/fund_request.dart';
+import '../domain/request_breakdown.dart';
 import '../domain/request_status.dart';
 import 'request_providers.dart';
 import 'request_status_visual.dart';
+import 'widgets/request_breakdown_view.dart';
 
 class RequestDetailScreen extends ConsumerWidget {
   final FundRequest request;
@@ -40,6 +44,11 @@ class RequestDetailScreen extends ConsumerWidget {
     final visual = requestStatusVisual(request.status);
     final canDecide =
         canApprove && request.status == RequestStatus.pendingAck;
+    final breakdown = computeRequestBreakdown(
+      request,
+      pendingPartial:
+          ref.watch(pendingPartialByRequestProvider)[request.id] ?? Money.zero,
+    );
 
     return Scaffold(
       appBar: AppBar(title: const Text('Request')),
@@ -107,6 +116,19 @@ class RequestDetailScreen extends ConsumerWidget {
               ],
             ),
           ).animate().fadeIn(delay: 60.ms, duration: 280.ms),
+
+          // Amount breakdown — only when this request has any partial
+          // replenishment (approved and/or submitted-for-approval). Plain
+          // requests skip this card entirely, leaving the screen unchanged.
+          if (breakdown.hasAnyPartial) ...[
+            const SizedBox(height: AppTokens.lg),
+            SurfaceCard(
+              child: RequestBreakdownView(
+                breakdown: breakdown,
+                compact: false,
+              ),
+            ).animate().fadeIn(delay: 90.ms, duration: 280.ms),
+          ],
 
           const SizedBox(height: AppTokens.lg),
 

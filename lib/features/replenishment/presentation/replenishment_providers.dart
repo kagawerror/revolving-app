@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/money/money.dart';
 import '../../../services/firebase/firebase_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/presentation/admin_active_company.dart';
@@ -47,3 +48,24 @@ final allPendingReplenishmentsProvider =
     StreamProvider.autoDispose<List<Replenishment>>((ref) =>
         ref.watch(replenishmentRepositoryProvider)
             .watchByStatusAll(ReplenishmentStatus.submitted.name));
+
+/// requestId → total submitted-but-not-yet-approved amount, summed across the
+/// PARTIAL items of every submitted replenishment. Full items are excluded —
+/// this figure feeds the request breakdown's "pending partial · for approval"
+/// line, which is specifically about partial replenishments. Derived purely
+/// from the existing [pendingReplenishmentsProvider] stream — adds no
+/// Firestore read.
+final pendingPartialByRequestProvider =
+    Provider.autoDispose<Map<String, Money>>((ref) {
+  final reps = ref.watch(pendingReplenishmentsProvider).valueOrNull ??
+      const <Replenishment>[];
+  final acc = <String, int>{};
+  for (final rep in reps) {
+    for (final item in rep.items) {
+      if (!item.isPartial) continue;
+      acc.update(item.requestId, (v) => v + item.amount.centavos,
+          ifAbsent: () => item.amount.centavos);
+    }
+  }
+  return acc.map((k, v) => MapEntry(k, Money.fromCentavos(v)));
+});
