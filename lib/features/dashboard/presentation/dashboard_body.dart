@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/money/money.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/theme/theme_controller.dart';
 import '../../../core/widgets/app_list_tile.dart';
@@ -14,7 +15,9 @@ import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../companies/domain/fund.dart';
 import '../../requests/domain/fund_request.dart';
+import '../../requests/domain/request_breakdown.dart';
 import '../../requests/presentation/request_status_visual.dart';
+import '../../requests/presentation/widgets/request_breakdown_view.dart';
 import '../domain/dashboard_summary.dart';
 import 'dashboard_providers.dart';
 
@@ -322,13 +325,18 @@ class _FundCard extends ConsumerWidget {
   }
 }
 
-class _RecentSection extends StatelessWidget {
+class _RecentSection extends ConsumerWidget {
   const _RecentSection({required this.recent});
 
   final AsyncValue<List<FundRequest>> recent;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Watch the role-scoped pending-partial map once here and pass each row its
+    // own amount, rather than letting every tile watch the provider (which would
+    // cause a rebuild storm on every replenishment stream tick).
+    final pendingPartials = ref.watch(dashboardPendingPartialByRequestProvider);
+
     return recent.when(
       loading: () => const SurfaceCard(child: SkeletonList(count: 4)),
       error: (_, _) => const SurfaceCard(
@@ -348,9 +356,11 @@ class _RecentSection extends StatelessWidget {
           child: Column(
             children: [
               for (var i = 0; i < list.length; i++)
-                _RecentTile(request: list[i])
-                    .animate()
-                    .fadeIn(duration: 220.ms, delay: (40 * i).ms),
+                _RecentTile(
+                  request: list[i],
+                  pendingPartial:
+                      pendingPartials[list[i].id] ?? Money.fromCentavos(0),
+                ).animate().fadeIn(duration: 220.ms, delay: (40 * i).ms),
             ],
           ),
         );
@@ -360,14 +370,13 @@ class _RecentSection extends StatelessWidget {
 }
 
 class _RecentTile extends StatelessWidget {
-  const _RecentTile({required this.request});
+  const _RecentTile({required this.request, required this.pendingPartial});
 
   final FundRequest request;
+  final Money pendingPartial;
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
     final visual = requestStatusVisual(request.status);
 
     return AppListTile(
@@ -378,13 +387,10 @@ class _RecentTile extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            request.amount.format(),
-            style: textTheme.bodyLarge?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: scheme.onSurface,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
+          RequestBreakdownView(
+            breakdown: computeRequestBreakdown(request,
+                pendingPartial: pendingPartial),
+            compact: true,
           ),
           const SizedBox(height: AppTokens.xs),
           StatusPill(label: visual.label, tone: visual.tone),

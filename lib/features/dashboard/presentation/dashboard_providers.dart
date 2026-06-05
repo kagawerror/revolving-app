@@ -1,11 +1,13 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/money/money.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/company.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
+import '../../replenishment/domain/pending_partials.dart';
 import '../../replenishment/domain/replenishment.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
 import '../../requests/domain/fund_request.dart';
@@ -59,6 +61,16 @@ final dashboardPendingReplenishmentsProvider =
   return user.role.isAdmin
       ? ref.watch(allPendingReplenishmentsProvider)
       : ref.watch(pendingReplenishmentsProvider);
+});
+
+/// requestId → submitted partial amount, scoped like the dashboard (admin = all
+/// companies via [dashboardPendingReplenishmentsProvider], others = their
+/// company). Pure derivation, no extra Firestore read.
+final dashboardPendingPartialByRequestProvider =
+    Provider.autoDispose<Map<String, Money>>((ref) {
+  final reps = ref.watch(dashboardPendingReplenishmentsProvider).valueOrNull ??
+      const <Replenishment>[];
+  return partialAmountByRequest(reps);
 });
 
 final recentRequestsProvider =

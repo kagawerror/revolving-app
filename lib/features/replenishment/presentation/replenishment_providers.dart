@@ -7,6 +7,7 @@ import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import '../data/firestore_replenishment_repository.dart';
+import '../domain/pending_partials.dart';
 import '../domain/replenishment.dart';
 import '../domain/replenishment_repository.dart';
 import '../domain/replenishment_status.dart';
@@ -59,13 +60,5 @@ final pendingPartialByRequestProvider =
     Provider.autoDispose<Map<String, Money>>((ref) {
   final reps = ref.watch(pendingReplenishmentsProvider).valueOrNull ??
       const <Replenishment>[];
-  final acc = <String, int>{};
-  for (final rep in reps) {
-    for (final item in rep.items) {
-      if (!item.isPartial) continue;
-      acc.update(item.requestId, (v) => v + item.amount.centavos,
-          ifAbsent: () => item.amount.centavos);
-    }
-  }
-  return acc.map((k, v) => MapEntry(k, Money.fromCentavos(v)));
+  return partialAmountByRequest(reps);
 });
