@@ -20,6 +20,8 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
 
   CollectionReference<Map<String, dynamic>> get _reps => _db.collection('replenishments');
   CollectionReference<Map<String, dynamic>> get _requests => _db.collection('requests');
+  CollectionReference<Map<String, dynamic>> get _partials =>
+      _db.collection('partialReplenishments');
   DocumentReference<Map<String, dynamic>> _fundRef(String id) => _db.collection('funds').doc(id);
 
   @override
@@ -50,52 +52,76 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
   @override
   Future<Result<Replenishment>> createDraft({
     required String fundId,
-    required List<String> requestIds,
+    required List<ReplenishmentItem> items,
     required String createdByUid,
   }) async {
     try {
-      if (requestIds.isEmpty) {
+      if (items.isEmpty) {
         return const Err(ValidationFailure('Select at least one request to replenish.'));
       }
-      // Read the fund first to learn its companyId. A single-doc get is allowed
-      // by the sameCompany read rule.
+      // Reject duplicate requestIds (a request may appear at most once).
+      final ids = items.map((i) => i.requestId).toList();
+      if (ids.toSet().length != ids.length) {
+        return const Err(ValidationFailure('A request was selected more than once.'));
+      }
+      if (items.length > 200) {
+        return const Err(ValidationFailure(
+            'Too many requests to replenish at once (max 200). Replenish in smaller batches.'));
+      }
+      // Read the fund first to learn its companyId (single-doc get is allowed by
+      // the sameCompany read rule).
       final fundSnap0 = await _fundRef(fundId).get();
       if (!fundSnap0.exists) {
         return const Err(ValidationFailure('Fund not found.'));
       }
       final companyId = (fundSnap0.data()!['companyId'] ?? '') as String;
-      // COMPANY-SCOPED query (the permission-denied fix): a fundId+status-only
-      // query is rejected on device because the sameCompany read rule cannot be
-      // proven. The released-unreplenished filter is applied client-side
-      // (equality-on-null is unsupported by the fake test double, and a
-      // `replenished` request leaves the `released` set anyway).
+      // COMPANY-SCOPED query (permission-denied fix). Released requests with a
+      // positive remaining balance are replenishable.
       final snap = await _requests
           .where('companyId', isEqualTo: companyId)
           .where('fundId', isEqualTo: fundId)
           .where('status', isEqualTo: RequestStatus.released.name)
           .get();
-      final releasable = <String, Map<String, dynamic>>{
-        for (final d in snap.docs)
-          if (d.data()['replenishmentId'] == null) d.id: d.data(),
-      };
-      // Dedup the incoming ids so a repeated id cannot double-count `total`
-      // and so the "no longer available" guard below compares like with like.
-      final requested = requestIds.toSet();
-      final selected = requested.where(releasable.containsKey).toList();
-      if (selected.isEmpty) {
-        return const Err(ValidationFailure('No released requests to replenish.'));
+      final remainingById = <String, int>{};
+      for (final d in snap.docs) {
+        if (d.data()['replenishmentId'] != null) continue;
+        final amount = (d.data()['amountCentavos'] ?? 0) as int;
+        final repl = (d.data()['replenishedCentavos'] ?? 0) as int;
+        final remaining = amount - repl;
+        if (remaining > 0) remainingById[d.id] = remaining;
       }
-      if (selected.length != requested.length) {
-        return const Err(ValidationFailure(
-            'Some selected requests are no longer available to replenish.'));
-      }
-      if (selected.length > 450) {
-        return const Err(ValidationFailure(
-            'Too many requests to replenish at once (max 450). Replenish in smaller batches.'));
-      }
+      // Validate each item and recompute amounts.
+      final resolved = <ReplenishmentItem>[];
       var total = Money.zero;
-      for (final id in selected) {
-        total += Money.fromCentavos((releasable[id]!['amountCentavos'] ?? 0) as int);
+      for (final item in items) {
+        final remaining = remainingById[item.requestId];
+        if (remaining == null) {
+          return const Err(ValidationFailure(
+              'Some selected requests are no longer available to replenish.'));
+        }
+        if (item.isPartial) {
+          final c = item.amount.centavos;
+          if (c <= 0 || c >= remaining) {
+            return const Err(ValidationFailure(
+                'A partial amount must be more than zero and less than the remaining balance.'));
+          }
+          if (item.remarks.trim().isEmpty) {
+            return const Err(ValidationFailure('A partial replenishment needs remarks.'));
+          }
+          resolved.add(ReplenishmentItem(
+              requestId: item.requestId,
+              isPartial: true,
+              amount: Money.fromCentavos(c),
+              remarks: item.remarks.trim()));
+          total += Money.fromCentavos(c);
+        } else {
+          // Full: server authority = current remaining (ignore client amount).
+          resolved.add(ReplenishmentItem(
+              requestId: item.requestId,
+              isPartial: false,
+              amount: Money.fromCentavos(remaining)));
+          total += Money.fromCentavos(remaining);
+        }
       }
       final newRef = _reps.doc();
       await _db.runTransaction((tx) async {
@@ -109,7 +135,8 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
           'companyId': companyId,
           'fundId': fundId,
           'status': ReplenishmentStatus.draft.name,
-          'requestIds': selected,
+          'requestIds': resolved.map((i) => i.requestId).toList(),
+          'items': resolved.map((i) => i.toMap()).toList(),
           'totalCentavos': total.centavos,
           'reportNotes': '',
           'createdByUid': createdByUid,
@@ -124,10 +151,11 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         companyId: companyId,
         fundId: fundId,
         status: ReplenishmentStatus.draft,
-        requestIds: selected,
+        requestIds: resolved.map((i) => i.requestId).toList(),
         total: total,
         reportNotes: '',
         createdByUid: createdByUid,
+        items: resolved,
       ));
     } on StateError catch (e) {
       return Err(ValidationFailure(e.message));
@@ -140,12 +168,12 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
   @override
   Future<Result<void>> createAndSubmit({
     required String fundId,
-    required List<String> requestIds,
+    required List<ReplenishmentItem> items,
     required String actorUid,
     required String notes,
   }) async {
     final draftRes =
-        await createDraft(fundId: fundId, requestIds: requestIds, createdByUid: actorUid);
+        await createDraft(fundId: fundId, items: items, createdByUid: actorUid);
     final draft = draftRes.valueOrNull;
     if (draft == null) return Err(draftRes.failureOrNull!);
     final submitRes = await submit(replenishment: draft, actorUid: actorUid, notes: notes);
@@ -202,9 +230,13 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         final fundSnap = await tx.get(_fundRef(replenishment.fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
-        // Writes (all reads done above). ADD BACK exactly the bundled total
-        // (the inverse of the releases that deducted it); derive status from the
-        // new balance so a partial replenishment can still read as `low`.
+        // Read every line-item's request BEFORE any write (tx reads-before-writes).
+        final reqData = <String, Map<String, dynamic>>{};
+        for (final item in replenishment.items) {
+          final rs = await tx.get(_requests.doc(item.requestId));
+          if (rs.exists) reqData[item.requestId] = rs.data()!;
+        }
+        // --- writes ---
         final newBalance = fund.availableBalance + replenishment.total;
         final replenished = Fund(
           id: fund.id,
@@ -219,11 +251,30 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
           'availableBalanceCentavos': newBalance.centavos,
           'status': _restoredStatus(replenished).name,
         });
-        for (final rid in replenishment.requestIds) {
-          tx.update(_requests.doc(rid), {
-            'status': RequestStatus.replenished.name,
-            'replenishmentId': replenishment.id,
-          });
+        for (final item in replenishment.items) {
+          final reqRef = _requests.doc(item.requestId);
+          final prior = (reqData[item.requestId]?['replenishedCentavos'] ?? 0) as int;
+          final nextReplenished = prior + item.amount.centavos;
+          if (item.isPartial) {
+            tx.set(_partials.doc(), {
+              'companyId': replenishment.companyId,
+              'fundId': replenishment.fundId,
+              'requestId': item.requestId,
+              'replenishmentId': replenishment.id,
+              'amountCentavos': item.amount.centavos,
+              'remarks': item.remarks,
+              'createdByUid': replenishment.createdByUid,
+              'approvedByUid': actorUid,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            tx.update(reqRef, {'replenishedCentavos': nextReplenished});
+          } else {
+            tx.update(reqRef, {
+              'status': RequestStatus.replenished.name,
+              'replenishmentId': replenishment.id,
+              'replenishedCentavos': nextReplenished,
+            });
+          }
         }
         tx.update(repRef, {
           'status': ReplenishmentStatus.approved.name,

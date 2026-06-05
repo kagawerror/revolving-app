@@ -9,6 +9,15 @@ import 'package:rev_app/features/requests/data/firestore_request_repository.dart
 import 'package:rev_app/features/requests/domain/fund_request.dart';
 
 void main() {
+  ReplenishmentItem full(String id) =>
+      ReplenishmentItem(requestId: id, isPartial: false, amount: Money.zero);
+  ReplenishmentItem partial(String id, int centavos, String remarks) =>
+      ReplenishmentItem(
+          requestId: id,
+          isPartial: true,
+          amount: Money.fromCentavos(centavos),
+          remarks: remarks);
+
   late FakeFirebaseFirestore db;
   setUp(() async {
     db = FakeFirebaseFirestore();
@@ -29,7 +38,7 @@ void main() {
   test('createDraft compiles the selected released requests and flips fund to replenishing', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createDraft(
-        fundId: 'f1', requestIds: const ['r1', 'r2'], createdByUid: 'inc');
+        fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc');
     expect(res.isOk, isTrue);
     final rp = await db.collection('replenishments').doc(res.valueOrNull!.id).get();
     expect((rp.data()!['requestIds'] as List).length, 2);
@@ -42,14 +51,14 @@ void main() {
     await db.collection('funds').doc('f1').update({'status': 'replenishing'});
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createDraft(
-        fundId: 'f1', requestIds: const ['r1', 'r2'], createdByUid: 'inc');
+        fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc');
     expect(res.failureOrNull, isA<ValidationFailure>());
   });
 
   test('approve adds the bundled total back to the balance, tags requests replenished', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final id = (await repo.createDraft(
-            fundId: 'f1', requestIds: const ['r1', 'r2'], createdByUid: 'inc'))
+            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
         .valueOrNull!
         .id;
     final draft = Replenishment.fromMap(id,
@@ -74,7 +83,7 @@ void main() {
   test('double-approval of a stale submitted object is rejected in-tx', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final id = (await repo.createDraft(
-            fundId: 'f1', requestIds: const ['r1', 'r2'], createdByUid: 'inc'))
+            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
         .valueOrNull!
         .id;
     final draft = Replenishment.fromMap(id,
@@ -94,7 +103,7 @@ void main() {
   test('reject restores status to low and leaves requests released', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final id = (await repo.createDraft(
-            fundId: 'f1', requestIds: const ['r1', 'r2'], createdByUid: 'inc'))
+            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
         .valueOrNull!
         .id;
     final draft = Replenishment.fromMap(id,
@@ -165,10 +174,10 @@ void main() {
     });
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createDraft(
-        fundId: 'f2', requestIds: const ['rX'], createdByUid: 'inc');
+        fundId: 'f2', items: [full('rX')], createdByUid: 'inc');
     expect(res.failureOrNull, isA<ValidationFailure>());
     expect((res.failureOrNull as ValidationFailure).message,
-        'No released requests to replenish.');
+        'Some selected requests are no longer available to replenish.');
   });
 
   // End-to-end money loop driven through the REAL repositories (not a
@@ -212,7 +221,7 @@ void main() {
 
     // 2. Compile the draft from released-unreplenished requests.
     final draftRes = await replenishRepo.createDraft(
-        fundId: 'f1', requestIds: const ['r1'], createdByUid: 'inc');
+        fundId: 'f1', items: [full('r1')], createdByUid: 'inc');
     expect(draftRes.isOk, isTrue);
     final draft = draftRes.valueOrNull!;
     expect(draft.requestIds, contains('r1'));
@@ -242,7 +251,7 @@ void main() {
   test('createDraft sums only the selected requests', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createDraft(
-        fundId: 'f1', requestIds: const ['r1'], createdByUid: 'inc');
+        fundId: 'f1', items: [full('r1')], createdByUid: 'inc');
     expect(res.isOk, isTrue);
     expect(res.valueOrNull!.requestIds, const ['r1']);
     expect(res.valueOrNull!.total.centavos, 400000); // not 800000
@@ -251,7 +260,7 @@ void main() {
   test('createDraft rejects an empty selection without touching the fund', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createDraft(
-        fundId: 'f1', requestIds: const [], createdByUid: 'inc');
+        fundId: 'f1', items: const <ReplenishmentItem>[], createdByUid: 'inc');
     expect(res.failureOrNull, isA<ValidationFailure>());
     final fund = await db.collection('funds').doc('f1').get();
     expect(fund.data()!['status'], 'low'); // unchanged
@@ -260,7 +269,7 @@ void main() {
   test('createDraft rejects a selection that includes a non-releasable id', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createDraft(
-        fundId: 'f1', requestIds: const ['r1', 'ghost'], createdByUid: 'inc');
+        fundId: 'f1', items: [full('r1'), full('ghost')], createdByUid: 'inc');
     expect(res.failureOrNull, isA<ValidationFailure>());
     expect((res.failureOrNull as ValidationFailure).message,
         'Some selected requests are no longer available to replenish.');
@@ -269,7 +278,7 @@ void main() {
   test('createAndSubmit creates a submitted report and locks the fund', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createAndSubmit(
-        fundId: 'f1', requestIds: const ['r1', 'r2'], actorUid: 'inc', notes: 'June');
+        fundId: 'f1', items: [full('r1'), full('r2')], actorUid: 'inc', notes: 'June');
     expect(res.isOk, isTrue);
     final reps = await db
         .collection('replenishments')
@@ -285,9 +294,123 @@ void main() {
   test('createAndSubmit propagates a createDraft failure and creates nothing', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createAndSubmit(
-        fundId: 'f1', requestIds: const [], actorUid: 'inc', notes: '');
+        fundId: 'f1', items: const <ReplenishmentItem>[], actorUid: 'inc', notes: '');
     expect(res.failureOrNull, isA<ValidationFailure>());
     final reps = await db.collection('replenishments').get();
     expect(reps.docs, isEmpty);
+  });
+
+  test('createDraft: a full item ignores client amount and uses remaining', () async {
+    // r1 already partly replenished: amount 400000, replenished 150000 -> remaining 250000.
+    await db.collection('requests').doc('r1').update({'replenishedCentavos': 150000});
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1',
+        // pass a bogus client amount on the full item; server must override.
+        items: [full('r1').copyWithAmount(999999)],
+        createdByUid: 'inc');
+    expect(res.isOk, isTrue);
+    expect(res.valueOrNull!.items.single.isPartial, isFalse);
+    expect(res.valueOrNull!.items.single.amount.centavos, 250000); // remaining, not 999999
+    expect(res.valueOrNull!.total.centavos, 250000);
+  });
+
+  test('createDraft: partial must be > 0 and < remaining', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    // r1 remaining is 400000.
+    final tooBig = await repo.createDraft(
+        fundId: 'f1', items: [partial('r1', 400000, 'x')], createdByUid: 'inc');
+    expect(tooBig.failureOrNull, isA<ValidationFailure>());
+    final zero = await repo.createDraft(
+        fundId: 'f1', items: [partial('r1', 0, 'x')], createdByUid: 'inc');
+    expect(zero.failureOrNull, isA<ValidationFailure>());
+  });
+
+  test('createDraft: partial requires remarks', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1', items: [partial('r1', 100000, '')], createdByUid: 'inc');
+    expect(res.failureOrNull, isA<ValidationFailure>());
+  });
+
+  test('approve: a partial credits the fund, keeps the request released, writes a partial record', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final draft = (await repo.createDraft(
+            fundId: 'f1',
+            items: [partial('r1', 100000, 'first installment')],
+            createdByUid: 'inc'))
+        .valueOrNull!;
+    await repo.submit(replenishment: draft, actorUid: 'inc', notes: '');
+    final submitted = Replenishment.fromMap(draft.id,
+        (await db.collection('replenishments').doc(draft.id).get()).data()!);
+    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
+    expect(res.isOk, isTrue);
+
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 300000); // 200000 + 100000
+
+    final r1 = await db.collection('requests').doc('r1').get();
+    expect(r1.data()!['status'], 'released'); // stays released
+    expect(r1.data()!['replenishedCentavos'], 100000);
+    expect(r1.data()!['replenishmentId'], isNull);
+
+    final partials = await db
+        .collection('partialReplenishments')
+        .where('requestId', isEqualTo: 'r1')
+        .get();
+    expect(partials.docs.length, 1);
+    expect(partials.docs.single.data()['amountCentavos'], 100000);
+    expect(partials.docs.single.data()['remarks'], 'first installment');
+    expect(partials.docs.single.data()['replenishmentId'], draft.id);
+  });
+
+  test('installments: two partials then a full closes the request; fund fully restored', () async {
+    // Fresh fund at full budget, one released request of 400000 (fund debited).
+    db = FakeFirebaseFirestore();
+    await db.collection('funds').doc('f1').set({
+      'companyId': 'c1', 'name': 'PC',
+      'originalBudgetCentavos': 10000000, 'availableBalanceCentavos': 9600000,
+      'lowBalanceThresholdPct': 3, 'status': 'active',
+    });
+    await db.collection('requests').doc('r1').set({
+      'companyId': 'c1', 'fundId': 'f1', 'createdByUid': 'inc',
+      'beneficiaryName': 'B', 'amountCentavos': 400000, 'purpose': 'x',
+      'proofImageUrl': 'http://img', 'status': 'released',
+      'replenishmentId': null, 'replenishedCentavos': 0,
+    });
+    final repo = FirestoreReplenishmentRepository(db);
+
+    Future<void> approvePartial(int c) async {
+      final d = (await repo.createDraft(
+              fundId: 'f1', items: [partial('r1', c, 'inst')], createdByUid: 'inc'))
+          .valueOrNull!;
+      await repo.submit(replenishment: d, actorUid: 'inc', notes: '');
+      final s = Replenishment.fromMap(
+          d.id, (await db.collection('replenishments').doc(d.id).get()).data()!);
+      expect((await repo.approve(replenishment: s, actorUid: 'mgr')).isOk, isTrue);
+    }
+
+    await approvePartial(100000); // remaining 300000
+    await approvePartial(150000); // remaining 150000
+    // Full on the remainder closes it.
+    final d = (await repo.createDraft(
+            fundId: 'f1', items: [full('r1')], createdByUid: 'inc'))
+        .valueOrNull!;
+    expect(d.items.single.amount.centavos, 150000); // remaining
+    await repo.submit(replenishment: d, actorUid: 'inc', notes: '');
+    final s = Replenishment.fromMap(
+        d.id, (await db.collection('replenishments').doc(d.id).get()).data()!);
+    expect((await repo.approve(replenishment: s, actorUid: 'mgr')).isOk, isTrue);
+
+    final r1 = await db.collection('requests').doc('r1').get();
+    expect(r1.data()!['status'], 'replenished');
+    expect(r1.data()!['replenishedCentavos'], 400000);
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 10000000); // fully restored
+    final partials = await db
+        .collection('partialReplenishments')
+        .where('requestId', isEqualTo: 'r1')
+        .get();
+    expect(partials.docs.length, 2);
   });
 }

@@ -11,24 +11,26 @@ abstract interface class ReplenishmentRepository {
   /// Admin-only: every company's replenishments with the given status (unscoped).
   Stream<List<Replenishment>> watchByStatusAll(String status);
 
-  /// Compiles the SELECTED released-unreplenished requests for the fund into a
-  /// DRAFT and flips the fund to `replenishing`. Fails if the fund is already
-  /// replenishing, the selection is empty, or any selected request is no longer
-  /// released-and-unreplenished.
+  /// Compiles the SELECTED released requests for the fund into a DRAFT report
+  /// of line [items] (each Full or Partial) and flips the fund to `replenishing`.
+  /// Full items' amounts are recomputed server-side from each request's
+  /// remaining; partial items must satisfy 0 < amount < remaining and carry
+  /// remarks. Fails if the fund is already replenishing, the selection is empty,
+  /// or any item is invalid / no longer releasable.
   Future<Result<Replenishment>> createDraft({
     required String fundId,
-    required List<String> requestIds,
+    required List<ReplenishmentItem> items,
     required String createdByUid,
   });
 
   Future<Result<void>> submit({required Replenishment replenishment, required String actorUid, required String notes});
 
   /// One-tap selection→submit for the incharge popup: creates the draft from
-  /// [requestIds], then submits it for approval. Rolls the draft back (so the
-  /// fund is not left locked in `replenishing`) if the submit step fails.
+  /// [items], then submits it for approval. Rolls the draft back (so the fund is
+  /// not left locked in `replenishing`) if the submit step fails.
   Future<Result<void>> createAndSubmit({
     required String fundId,
-    required List<String> requestIds,
+    required List<ReplenishmentItem> items,
     required String actorUid,
     required String notes,
   });

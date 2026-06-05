@@ -168,13 +168,13 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
   @override
   Future<Result<Replenishment>> createDraft(
           {required String fundId,
-          required List<String> requestIds,
+          required List<ReplenishmentItem> items,
           required String createdByUid}) async =>
       const Err(ValidationFailure('unused'));
   @override
   Future<Result<void>> createAndSubmit(
           {required String fundId,
-          required List<String> requestIds,
+          required List<ReplenishmentItem> items,
           required String actorUid,
           required String notes}) async =>
       const Ok(null);

@@ -7,6 +7,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../requests/domain/fund_request.dart';
+import '../domain/replenishment.dart';
 import 'replenishment_providers.dart';
 
 /// Popup for the incharge to pick which released requests to replenish, then
@@ -50,9 +51,13 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
     final user = ref.read(currentUserProvider).valueOrNull;
     if (user == null || _selected.isEmpty) return;
     setState(() => _busy = true);
+    final items = _selected
+        .map((id) => ReplenishmentItem(
+            requestId: id, isPartial: false, amount: Money.zero))
+        .toList();
     final res = await ref.read(replenishmentRepositoryProvider).createAndSubmit(
           fundId: widget.fund.id,
-          requestIds: _selected.toList(),
+          items: items,
           actorUid: user.uid,
           notes: _notes.text.trim(),
         );
