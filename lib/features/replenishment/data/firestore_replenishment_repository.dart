@@ -48,46 +48,68 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
 
   @override
-  Future<Result<Replenishment>> createDraft({required String fundId, required String createdByUid}) async {
+  Future<Result<Replenishment>> createDraft({
+    required String fundId,
+    required List<String> requestIds,
+    required String createdByUid,
+  }) async {
     try {
-      // Query released requests for the fund OUTSIDE the transaction (client SDK
-      // transactions cannot run queries). The released-unreplenished filter is
-      // applied client-side: equality-on-null queries are not supported by the
-      // fake_cloud_firestore test double, and once a request is `replenished` it
-      // leaves the `released` set anyway, so this is equivalent in production.
+      if (requestIds.isEmpty) {
+        return const Err(ValidationFailure('Select at least one request to replenish.'));
+      }
+      // Read the fund first to learn its companyId. A single-doc get is allowed
+      // by the sameCompany read rule.
+      final fundSnap0 = await _fundRef(fundId).get();
+      if (!fundSnap0.exists) {
+        return const Err(ValidationFailure('Fund not found.'));
+      }
+      final companyId = (fundSnap0.data()!['companyId'] ?? '') as String;
+      // COMPANY-SCOPED query (the permission-denied fix): a fundId+status-only
+      // query is rejected on device because the sameCompany read rule cannot be
+      // proven. The released-unreplenished filter is applied client-side
+      // (equality-on-null is unsupported by the fake test double, and a
+      // `replenished` request leaves the `released` set anyway).
       final snap = await _requests
+          .where('companyId', isEqualTo: companyId)
           .where('fundId', isEqualTo: fundId)
           .where('status', isEqualTo: RequestStatus.released.name)
           .get();
-      final unreplenished =
-          snap.docs.where((d) => d.data()['replenishmentId'] == null).toList();
-      if (unreplenished.isEmpty) {
+      final releasable = <String, Map<String, dynamic>>{
+        for (final d in snap.docs)
+          if (d.data()['replenishmentId'] == null) d.id: d.data(),
+      };
+      // Dedup the incoming ids so a repeated id cannot double-count `total`
+      // and so the "no longer available" guard below compares like with like.
+      final requested = requestIds.toSet();
+      final selected = requested.where(releasable.containsKey).toList();
+      if (selected.isEmpty) {
         return const Err(ValidationFailure('No released requests to replenish.'));
       }
-      final ids = unreplenished.map((d) => d.id).toList();
-      if (ids.length > 450) {
+      if (selected.length != requested.length) {
+        return const Err(ValidationFailure(
+            'Some selected requests are no longer available to replenish.'));
+      }
+      if (selected.length > 450) {
         return const Err(ValidationFailure(
             'Too many requests to replenish at once (max 450). Replenish in smaller batches.'));
       }
       var total = Money.zero;
-      for (final d in unreplenished) {
-        total += Money.fromCentavos((d.data()['amountCentavos'] ?? 0) as int);
+      for (final id in selected) {
+        total += Money.fromCentavos((releasable[id]!['amountCentavos'] ?? 0) as int);
       }
       final newRef = _reps.doc();
-      late String companyId;
       await _db.runTransaction((tx) async {
         final fundSnap = await tx.get(_fundRef(fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
-        companyId = fund.companyId;
         if (fund.status == FundStatus.replenishing) {
           throw StateError('This fund is already being replenished.');
         }
         tx.set(newRef, {
-          'companyId': fund.companyId,
+          'companyId': companyId,
           'fundId': fundId,
           'status': ReplenishmentStatus.draft.name,
-          'requestIds': ids,
+          'requestIds': selected,
           'totalCentavos': total.centavos,
           'reportNotes': '',
           'createdByUid': createdByUid,
@@ -102,7 +124,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         companyId: companyId,
         fundId: fundId,
         status: ReplenishmentStatus.draft,
-        requestIds: ids,
+        requestIds: selected,
         total: total,
         reportNotes: '',
         createdByUid: createdByUid,
@@ -113,6 +135,26 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       developer.log('createDraft failed', name: 'replenishment', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Could not start a replenishment.'));
     }
+  }
+
+  @override
+  Future<Result<void>> createAndSubmit({
+    required String fundId,
+    required List<String> requestIds,
+    required String actorUid,
+    required String notes,
+  }) async {
+    final draftRes =
+        await createDraft(fundId: fundId, requestIds: requestIds, createdByUid: actorUid);
+    final draft = draftRes.valueOrNull;
+    if (draft == null) return Err(draftRes.failureOrNull!);
+    final submitRes = await submit(replenishment: draft, actorUid: actorUid, notes: notes);
+    if (submitRes.failureOrNull != null) {
+      // Roll the draft back so the fund isn't left locked in `replenishing`.
+      await discardDraft(replenishment: draft);
+      return submitRes;
+    }
+    return const Ok(null);
   }
 
   @override
@@ -160,10 +202,22 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         final fundSnap = await tx.get(_fundRef(replenishment.fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
-        // Writes (all reads done above):
+        // Writes (all reads done above). ADD BACK exactly the bundled total
+        // (the inverse of the releases that deducted it); derive status from the
+        // new balance so a partial replenishment can still read as `low`.
+        final newBalance = fund.availableBalance + replenishment.total;
+        final replenished = Fund(
+          id: fund.id,
+          companyId: fund.companyId,
+          name: fund.name,
+          originalBudget: fund.originalBudget,
+          availableBalance: newBalance,
+          lowBalanceThresholdPct: fund.lowBalanceThresholdPct,
+          status: fund.status,
+        );
         tx.update(_fundRef(replenishment.fundId), {
-          'availableBalanceCentavos': fund.originalBudget.centavos,
-          'status': FundStatus.active.name,
+          'availableBalanceCentavos': newBalance.centavos,
+          'status': _restoredStatus(replenished).name,
         });
         for (final rid in replenishment.requestIds) {
           tx.update(_requests.doc(rid), {
@@ -261,9 +315,11 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     }
   }
 
-  /// Recomputes fund status from its CURRENT (unchanged) balance — used when a
-  /// replenishment is rejected/discarded. The prior status is not preserved verbatim;
-  /// it is derived from balance, which is self-consistent with FundStatus semantics.
+  /// Derives fund status (active/low) from the given fund's balance. Used when a
+  /// replenishment is rejected/discarded (unchanged balance) and on approval
+  /// (a fund carrying the new, added-back balance). The prior status is not
+  /// preserved verbatim; it is derived from balance, which is self-consistent
+  /// with FundStatus semantics.
   FundStatus _restoredStatus(Fund fund) =>
       fund.isLow ? FundStatus.low : FundStatus.active;
 

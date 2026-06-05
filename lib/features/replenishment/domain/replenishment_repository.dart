@@ -11,14 +11,30 @@ abstract interface class ReplenishmentRepository {
   /// Admin-only: every company's replenishments with the given status (unscoped).
   Stream<List<Replenishment>> watchByStatusAll(String status);
 
-  /// Compiles released-unreplenished requests for the fund into a DRAFT and flips
-  /// the fund to `replenishing`. Fails if the fund is already replenishing or has
-  /// no released-unreplenished requests.
-  Future<Result<Replenishment>> createDraft({required String fundId, required String createdByUid});
+  /// Compiles the SELECTED released-unreplenished requests for the fund into a
+  /// DRAFT and flips the fund to `replenishing`. Fails if the fund is already
+  /// replenishing, the selection is empty, or any selected request is no longer
+  /// released-and-unreplenished.
+  Future<Result<Replenishment>> createDraft({
+    required String fundId,
+    required List<String> requestIds,
+    required String createdByUid,
+  });
 
   Future<Result<void>> submit({required Replenishment replenishment, required String actorUid, required String notes});
 
-  /// Atomic: tag requests replenished, reset fund balance to original ceiling, fund→active.
+  /// One-tap selection→submit for the incharge popup: creates the draft from
+  /// [requestIds], then submits it for approval. Rolls the draft back (so the
+  /// fund is not left locked in `replenishing`) if the submit step fails.
+  Future<Result<void>> createAndSubmit({
+    required String fundId,
+    required List<String> requestIds,
+    required String actorUid,
+    required String notes,
+  });
+
+  /// Atomic: tag the bundled requests `replenished`, ADD their total back to the
+  /// fund balance, and set fund status from the new balance (active/low).
   Future<Result<void>> approve({required Replenishment replenishment, required String actorUid});
 
   Future<Result<void>> reject({required Replenishment replenishment, required String actorUid});

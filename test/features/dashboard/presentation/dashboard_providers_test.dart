@@ -167,8 +167,17 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
       const Stream.empty();
   @override
   Future<Result<Replenishment>> createDraft(
-          {required String fundId, required String createdByUid}) async =>
+          {required String fundId,
+          required List<String> requestIds,
+          required String createdByUid}) async =>
       const Err(ValidationFailure('unused'));
+  @override
+  Future<Result<void>> createAndSubmit(
+          {required String fundId,
+          required List<String> requestIds,
+          required String actorUid,
+          required String notes}) async =>
+      const Ok(null);
   @override
   Future<Result<void>> submit(
           {required Replenishment replenishment,
