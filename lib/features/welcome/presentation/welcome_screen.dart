@@ -13,7 +13,7 @@ class WelcomeScreen extends StatelessWidget {
   /// Fired when the user taps the primary "Let's Go" button.
   final VoidCallback onContinue;
 
-  static const String _mascotAsset = 'assets/images/revvy.jpg';
+  static const String _mascotAsset = 'assets/images/revvy.gif';
 
   @override
   Widget build(BuildContext context) {

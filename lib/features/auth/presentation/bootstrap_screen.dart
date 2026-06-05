@@ -180,7 +180,7 @@ class _BootstrapScreenState extends ConsumerState<BootstrapScreen> {
 class _SetupHeader extends StatelessWidget {
   const _SetupHeader({required this.colorScheme, required this.textTheme});
 
-  static const String _mascotAsset = 'assets/images/revvy.jpg';
+  static const String _mascotAsset = 'assets/images/revvy.gif';
 
   final ColorScheme colorScheme;
   final TextTheme textTheme;

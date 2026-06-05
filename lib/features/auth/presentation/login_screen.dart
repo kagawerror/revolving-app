@@ -138,7 +138,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 class _LoginHeader extends StatelessWidget {
   const _LoginHeader();
 
-  static const String _mascotAsset = 'assets/images/revvy.jpg';
+  static const String _mascotAsset = 'assets/images/revvy.gif';
 
   @override
   Widget build(BuildContext context) {

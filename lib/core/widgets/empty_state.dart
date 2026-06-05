@@ -16,7 +16,7 @@ class EmptyState extends StatelessWidget {
 
   /// Same asset the welcome splash uses; declared via `assets/images/` in
   /// pubspec.yaml.
-  static const String mascotAsset = 'assets/images/revvy.jpg';
+  static const String mascotAsset = 'assets/images/revvy.gif';
 
   final String title;
   final String? message;
