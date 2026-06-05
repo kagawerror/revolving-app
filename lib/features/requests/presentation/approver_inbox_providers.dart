@@ -7,7 +7,12 @@ import '../domain/fund_request.dart';
 import '../domain/request_status.dart';
 import 'request_providers.dart';
 
-final pendingRequestsProvider = StreamProvider<List<FundRequest>>((ref) {
+/// Cap on the approver "Approved" tab revisit lists — the most recent acted
+/// items, newest-first. Read-only history; a bounded window keeps it light.
+const kApprovedTabLimit = 25;
+
+final pendingRequestsProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const Stream.empty();
   // Admin operates a chosen company; everyone else is pinned to their own.
@@ -19,10 +24,26 @@ final pendingRequestsProvider = StreamProvider<List<FundRequest>>((ref) {
       .watchByStatus(companyId, RequestStatus.pendingAck);
 });
 
+/// The approver "Approved" tab: this company's acted requests (acknowledged /
+/// readyForRelease / released), newest-first, capped. Resolves the company
+/// exactly like [pendingRequestsProvider].
+final recentApprovedRequestsProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return const Stream.empty();
+  final companyId =
+      effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+  if (companyId.isEmpty) return const Stream.empty();
+  return ref
+      .watch(requestRepositoryProvider)
+      .watchApproverActedRecent(companyId, kApprovedTabLimit);
+});
+
 /// The incharge release worklist: acknowledged + readyForRelease requests for
 /// the effective company. Released items drop off automatically (filter-only).
 /// Resolves the company exactly like [pendingRequestsProvider].
-final acknowledgedWorklistProvider = StreamProvider<List<FundRequest>>((ref) {
+final acknowledgedWorklistProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const Stream.empty();
   final companyId =
@@ -34,5 +55,7 @@ final acknowledgedWorklistProvider = StreamProvider<List<FundRequest>>((ref) {
 });
 
 /// Admin-only: pending-ack requests across every company.
-final allPendingRequestsProvider = StreamProvider<List<FundRequest>>((ref) =>
-    ref.watch(requestRepositoryProvider).watchByStatusAll(RequestStatus.pendingAck));
+final allPendingRequestsProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) => ref
+        .watch(requestRepositoryProvider)
+        .watchByStatusAll(RequestStatus.pendingAck));

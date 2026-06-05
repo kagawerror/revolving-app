@@ -56,6 +56,7 @@ class Replenishment extends Equatable {
   final String? submittedByUid;
   final String? approvedByUid;
   final List<ReplenishmentItem> items;
+  final DateTime? createdAt;
 
   const Replenishment({
     required this.id,
@@ -69,6 +70,7 @@ class Replenishment extends Equatable {
     this.submittedByUid,
     this.approvedByUid,
     this.items = const [],
+    this.createdAt,
   });
 
   int get itemCount => requestIds.length;
@@ -88,6 +90,7 @@ class Replenishment extends Equatable {
             .map((e) => ReplenishmentItem.fromMap(
                 Map<String, dynamic>.from(e as Map)))
             .toList(),
+        createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
       );
 
   Map<String, dynamic> toCreateMap() => {
@@ -107,5 +110,5 @@ class Replenishment extends Equatable {
   @override
   List<Object?> get props =>
       [id, companyId, fundId, status, requestIds, total, reportNotes, createdByUid,
-       submittedByUid, approvedByUid, items];
+       submittedByUid, approvedByUid, items, createdAt];
 }

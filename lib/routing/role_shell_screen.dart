@@ -16,6 +16,7 @@ import '../features/profile/presentation/profile_body.dart';
 import '../features/requests/presentation/acknowledged_worklist_body.dart';
 import '../features/requests/presentation/admin_aging_body.dart';
 import '../features/requests/presentation/aging_body.dart';
+import '../features/requests/presentation/approver_approved_body.dart';
 import '../features/requests/presentation/approver_home_body.dart';
 import '../features/requests/presentation/incharge_home_body.dart';
 
@@ -54,6 +55,8 @@ class _RoleShellScreenState extends ConsumerState<RoleShellScreen> {
         if (widget.role.isAdmin) return const AdminHomeBody();
         if (widget.role.canApprove) return const ApproverHomeBody();
         return const InchargeHomeBody();
+      case ShellTab.approved:
+        return const ApproverApprovedBody();
       case ShellTab.acknowledged:
         return const AcknowledgedWorklistBody();
       case ShellTab.aging:

@@ -121,6 +121,10 @@ class _FakeRequestRepo implements RequestRepository {
   Stream<List<FundRequest>> watchAcknowledgedWorklist(String companyId) =>
       const Stream.empty();
   @override
+  Stream<List<FundRequest>> watchApproverActedRecent(
+          String companyId, int limit) =>
+      const Stream.empty();
+  @override
   Stream<List<FundRequest>> watchByFund(String companyId, String fundId) =>
       const Stream.empty();
   @override
@@ -161,6 +165,11 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
   @override
   Stream<List<Replenishment>> watchByStatusAll(String status) =>
       Stream.value(allPending);
+
+  @override
+  Stream<List<Replenishment>> watchByCompanyAndStatusRecent(
+          String companyId, String status, int limit) =>
+      const Stream.empty();
 
   @override
   Stream<List<Replenishment>> watchByFund(String companyId, String fundId) =>

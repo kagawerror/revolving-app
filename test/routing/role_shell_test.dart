@@ -75,6 +75,11 @@ void main() {
               .overrideWith((ref) => Stream.value(const [])),
           pendingReplenishmentsProvider
               .overrideWith((ref) => Stream.value(const [])),
+          // Approver "Approved" tab revisit lists, settled empty.
+          recentApprovedRequestsProvider
+              .overrideWith((ref) => Stream.value(const [])),
+          recentApprovedReplenishmentsProvider
+              .overrideWith((ref) => Stream.value(const [])),
           // Aging bodies: incharge flat list + admin cross-company feed, both
           // settled empty so their empty states render and pumpAndSettle ends.
           agingRequestsProvider
@@ -127,11 +132,14 @@ void main() {
       expect(find.widgetWithText(NavigationDestination, 'Aging'), findsNothing);
     });
 
-    testWidgets('approver shell: 3 destinations, no FAB', (tester) async {
+    testWidgets('approver shell: 4 destinations (incl. Approved), no FAB',
+        (tester) async {
       await tester.pumpWidget(harness(_approver, role: UserRole.ceo));
       await tester.pumpAndSettle();
 
-      expect(find.byType(NavigationDestination), findsNWidgets(3));
+      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(
+          find.widgetWithText(NavigationDestination, 'Approved'), findsOneWidget);
       expect(find.byType(FloatingActionButton), findsNothing);
     });
   });

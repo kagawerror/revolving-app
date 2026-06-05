@@ -8,6 +8,11 @@ abstract interface class ReplenishmentRepository {
   Stream<List<Replenishment>> watchByFund(String companyId, String fundId);
   Stream<List<Replenishment>> watchByCompanyAndStatus(String companyId, String status);
 
+  /// The approver "Approved" tab revisit list: a company's replenishments with
+  /// the given [status] (e.g. `approved`), newest-first, capped at [limit].
+  Stream<List<Replenishment>> watchByCompanyAndStatusRecent(
+      String companyId, String status, int limit);
+
   /// Admin-only: every company's replenishments with the given status (unscoped).
   Stream<List<Replenishment>> watchByStatusAll(String status);
 

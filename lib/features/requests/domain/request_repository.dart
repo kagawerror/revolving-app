@@ -15,6 +15,11 @@ abstract interface class RequestRepository {
   /// Released items drop off automatically since the query filters by status.
   Stream<List<FundRequest>> watchAcknowledgedWorklist(String companyId);
 
+  /// The approver "Approved" tab revisit list: the company's requests that have
+  /// been acted on (`acknowledged` / `readyForRelease` / `released`),
+  /// newest-first, capped at [limit]. Read-only — no inline actions.
+  Stream<List<FundRequest>> watchApproverActedRecent(String companyId, int limit);
+
   /// Admin-only: every company's requests with the given status (unscoped).
   Stream<List<FundRequest>> watchByStatusAll(RequestStatus status);
 

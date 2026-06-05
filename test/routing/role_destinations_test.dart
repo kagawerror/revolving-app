@@ -105,18 +105,41 @@ void main() {
       expect(dests.any((d) => d.tab == ShellTab.aging), isFalse);
     });
 
-    test('approver => Home, Dashboard, Profile with NO Home FAB', () {
+    test('approver => Home, Approved, Dashboard, Profile with NO Home FAB', () {
       for (final role in [UserRole.superior, UserRole.manager, UserRole.ceo]) {
         final dests = destinationsForRole(role, showAcknowledged: false);
 
-        expect(dests.map((d) => d.tab).toList(),
-            [ShellTab.home, ShellTab.dashboard, ShellTab.profile],
+        expect(
+            dests.map((d) => d.tab).toList(),
+            [
+              ShellTab.home,
+              ShellTab.approved,
+              ShellTab.dashboard,
+              ShellTab.profile,
+            ],
             reason: '$role tab set');
         expect(dests.first.title, 'Approvals', reason: '$role home title');
+        // Approved sits directly after Home.
+        expect(dests[1].tab, ShellTab.approved, reason: '$role Approved order');
+        final approved = dests.firstWhere((d) => d.tab == ShellTab.approved);
+        expect(approved.label, 'Approved');
+        expect(approved.title, 'Approved');
         // Approvers don't create funds/requests — zero FABs anywhere.
         expect(dests.where((d) => d.fab != null), isEmpty,
             reason: '$role has no FAB');
       }
+    });
+
+    test('admin/incharge branches do NOT include the Approved tab', () {
+      final admin = destinationsForRole(UserRole.admin, showAcknowledged: false);
+      expect(admin.any((d) => d.tab == ShellTab.approved), isFalse);
+
+      final incharge = destinationsForRole(
+        UserRole.incharge,
+        showAcknowledged: true,
+        showAging: true,
+      );
+      expect(incharge.any((d) => d.tab == ShellTab.approved), isFalse);
     });
   });
 }

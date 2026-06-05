@@ -77,6 +77,21 @@ class FirestoreRequestRepository implements RequestRepository {
           s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
+  Stream<List<FundRequest>> watchApproverActedRecent(String companyId, int limit) =>
+      _requests
+          .where('companyId', isEqualTo: companyId)
+          .where('status', whereIn: [
+            RequestStatus.acknowledged.name,
+            RequestStatus.readyForRelease.name,
+            RequestStatus.released.name,
+          ])
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map((s) =>
+              s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
+
+  @override
   Stream<List<FundRequest>> watchRecentByCompany(String companyId, int limit) => _requests
       .where('companyId', isEqualTo: companyId)
       .orderBy('createdAt', descending: true)

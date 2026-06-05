@@ -27,7 +27,8 @@ final dashboardCompanyIdProvider = Provider<String>((ref) {
 /// instead see every company's funds. Company-scoped roles see the company
 /// currently selected in the picker (their sole membership when single-company),
 /// resolved via [dashboardCompanyIdProvider].
-final dashboardFundsProvider = Provider<AsyncValue<List<Fund>>>((ref) {
+final dashboardFundsProvider =
+    Provider.autoDispose<AsyncValue<List<Fund>>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const AsyncValue.loading();
   final companyId = ref.watch(dashboardCompanyIdProvider);
@@ -41,7 +42,7 @@ final dashboardFundsProvider = Provider<AsyncValue<List<Fund>>>((ref) {
 /// [dashboardFundsProvider]. Distinct from the shared [pendingRequestsProvider],
 /// which stays company-scoped for the approver inbox/home screens.
 final dashboardPendingRequestsProvider =
-    Provider<AsyncValue<List<FundRequest>>>((ref) {
+    Provider.autoDispose<AsyncValue<List<FundRequest>>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const AsyncValue.loading();
   return user.role.isAdmin
@@ -52,7 +53,7 @@ final dashboardPendingRequestsProvider =
 /// Submitted replenishments feeding the dashboard, scoped by role. See
 /// [dashboardPendingRequestsProvider] for the admin-vs-company rationale.
 final dashboardPendingReplenishmentsProvider =
-    Provider<AsyncValue<List<Replenishment>>>((ref) {
+    Provider.autoDispose<AsyncValue<List<Replenishment>>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const AsyncValue.loading();
   return user.role.isAdmin
@@ -60,7 +61,8 @@ final dashboardPendingReplenishmentsProvider =
       : ref.watch(pendingReplenishmentsProvider);
 });
 
-final recentRequestsProvider = StreamProvider<List<FundRequest>>((ref) {
+final recentRequestsProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return Stream.value(const <FundRequest>[]);
   final repo = ref.watch(requestRepositoryProvider);
@@ -74,13 +76,14 @@ final recentRequestsProvider = StreamProvider<List<FundRequest>>((ref) {
 /// already-streamed [companiesProvider]; resolves to an empty map while
 /// companies are still loading (the dashboard renders funds without the company
 /// line rather than blocking the list).
-final companyNamesProvider = Provider<Map<String, String>>((ref) {
+final companyNamesProvider = Provider.autoDispose<Map<String, String>>((ref) {
   final companies =
       ref.watch(companiesProvider).valueOrNull ?? const <Company>[];
   return {for (final c in companies) c.id: c.name};
 });
 
-final dashboardSummaryProvider = Provider<AsyncValue<DashboardSummary>>((ref) {
+final dashboardSummaryProvider =
+    Provider.autoDispose<AsyncValue<DashboardSummary>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const AsyncValue.loading();
   final funds = ref.watch(dashboardFundsProvider);

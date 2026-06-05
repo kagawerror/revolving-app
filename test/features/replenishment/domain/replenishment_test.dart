@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
@@ -14,6 +15,23 @@ void main() {
     expect(r.status, ReplenishmentStatus.submitted);
     expect(r.requestIds, ['a', 'b']);
     expect(r.total, Money.fromCentavos(300000));
+  });
+  test('fromMap parses a Timestamp createdAt', () {
+    final ts = DateTime(2026, 6, 5, 14, 30);
+    final r = Replenishment.fromMap('rp1', {
+      'companyId': 'c1', 'fundId': 'f1', 'status': 'approved',
+      'requestIds': ['a'], 'totalCentavos': 1000, 'reportNotes': '',
+      'createdByUid': 'u1', 'createdAt': Timestamp.fromDate(ts),
+    });
+    expect(r.createdAt, ts);
+  });
+  test('fromMap tolerates a missing createdAt (null)', () {
+    final r = Replenishment.fromMap('rp1', {
+      'companyId': 'c1', 'fundId': 'f1', 'status': 'approved',
+      'requestIds': ['a'], 'totalCentavos': 1000, 'reportNotes': '',
+      'createdByUid': 'u1',
+    });
+    expect(r.createdAt, isNull);
   });
   test('toCreateMap seeds draft fields and omits id', () {
     final r = Replenishment(

@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:fake_cloud_firestore/fake_cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rev_app/core/error/failure.dart';
@@ -164,6 +165,52 @@ void main() {
     final ids = list.map((r) => r.id).toSet();
     expect(ids, {'a', 'b'});
     expect(list.every((r) => r.status == ReplenishmentStatus.submitted), isTrue);
+  });
+
+  group('watchByCompanyAndStatusRecent', () {
+    // Explicit Timestamps (NOT serverTimestamp): the fake resolves
+    // serverTimestamp lazily, which makes orderBy on createdAt unreliable.
+    Future<void> seedRep(
+      String id, {
+      required String companyId,
+      required String status,
+      required DateTime createdAt,
+    }) =>
+        db.collection('replenishments').doc(id).set({
+          'companyId': companyId, 'fundId': 'f', 'status': status,
+          'requestIds': const ['r'], 'totalCentavos': 100, 'reportNotes': '',
+          'createdByUid': 'inc',
+          'createdAt': Timestamp.fromDate(createdAt),
+        });
+
+    test('returns only approved for the company, newest-first', () async {
+      db = FakeFirebaseFirestore();
+      final repo = FirestoreReplenishmentRepository(db);
+      await seedRep('old', companyId: 'c1', status: 'approved', createdAt: DateTime(2026, 1, 1));
+      await seedRep('new', companyId: 'c1', status: 'approved', createdAt: DateTime(2026, 1, 5));
+      await seedRep('sub', companyId: 'c1', status: 'submitted', createdAt: DateTime(2026, 1, 9));
+      await seedRep('other', companyId: 'c2', status: 'approved', createdAt: DateTime(2026, 1, 7));
+
+      final list =
+          await repo.watchByCompanyAndStatusRecent('c1', 'approved', 25).first;
+
+      expect(list.map((r) => r.id).toList(), ['new', 'old']);
+      expect(list.every((r) => r.companyId == 'c1'), isTrue);
+      expect(list.every((r) => r.status == ReplenishmentStatus.approved), isTrue);
+    });
+
+    test('respects the limit, keeping the newest', () async {
+      db = FakeFirebaseFirestore();
+      final repo = FirestoreReplenishmentRepository(db);
+      await seedRep('a', companyId: 'c1', status: 'approved', createdAt: DateTime(2026, 1, 1));
+      await seedRep('b', companyId: 'c1', status: 'approved', createdAt: DateTime(2026, 1, 3));
+      await seedRep('c', companyId: 'c1', status: 'approved', createdAt: DateTime(2026, 1, 2));
+
+      final list =
+          await repo.watchByCompanyAndStatusRecent('c1', 'approved', 2).first;
+
+      expect(list.map((r) => r.id).toList(), ['b', 'c']);
+    });
   });
 
   test('createDraft fails with no released requests for the fund', () async {

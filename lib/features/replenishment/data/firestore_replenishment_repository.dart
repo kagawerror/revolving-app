@@ -44,6 +44,18 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
 
   @override
+  Stream<List<Replenishment>> watchByCompanyAndStatusRecent(
+          String companyId, String status, int limit) =>
+      _reps
+          .where('companyId', isEqualTo: companyId)
+          .where('status', isEqualTo: status)
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .snapshots()
+          .map((s) =>
+              s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
+
+  @override
   Stream<List<Replenishment>> watchByStatusAll(String status) => _reps
       .where('status', isEqualTo: status)
       .snapshots()

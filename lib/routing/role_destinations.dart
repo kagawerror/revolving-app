@@ -5,7 +5,7 @@ import '../features/auth/domain/app_user.dart';
 /// The logical tabs a role shell can expose. The shell maps each tab to a body
 /// widget (per role for [ShellTab.home]); this config stays body-free so it is
 /// pure and trivially unit-testable.
-enum ShellTab { home, acknowledged, aging, dashboard, profile }
+enum ShellTab { home, approved, acknowledged, aging, dashboard, profile }
 
 /// The primary create action for a shell. Shown ONLY on the Home tab and pushed
 /// via GoRouter. Kept as a tiny value object so [ShellDestination] (and thus the
@@ -77,6 +77,14 @@ const _ackDestination = ShellDestination(
   title: 'Acknowledged',
 );
 
+const _approvedDestination = ShellDestination(
+  tab: ShellTab.approved,
+  icon: Icons.task_alt_outlined,
+  selectedIcon: Icons.task_alt_rounded,
+  label: 'Approved',
+  title: 'Approved',
+);
+
 const _agingDestination = ShellDestination(
   tab: ShellTab.aging,
   icon: Icons.hourglass_bottom_outlined,
@@ -140,7 +148,7 @@ const _approverHome = ShellDestination(
 ///
 ///   * **admin**    => Home, Aging, Dashboard, Profile
 ///   * **incharge** => Home, Worklist (acknowledged), Aging, Dashboard, Profile
-///   * **approver** => Home, Dashboard, Profile
+///   * **approver** => Home, Approved, Dashboard, Profile
 ///   * **employee** (shares the incharge shell) => Home, Dashboard, Profile
 ///     (no Worklist — gate via [showAcknowledged]; no Aging — gate via
 ///     [showAging]).
@@ -166,7 +174,12 @@ List<ShellDestination> destinationsForRole(
     ];
   }
   if (role.canApprove) {
-    return const [_approverHome, _dashboardDestination, _profileDestination];
+    return const [
+      _approverHome,
+      _approvedDestination,
+      _dashboardDestination,
+      _profileDestination,
+    ];
   }
   // incharge + employee share the incharge home/shell. Only fund-managers
   // (incharge, or an admin operating the shell) get the acknowledged worklist;
