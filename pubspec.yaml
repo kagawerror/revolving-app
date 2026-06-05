@@ -56,6 +56,16 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   mocktail: ^1.0.4
   fake_cloud_firestore: ^3.1.0
+  flutter_launcher_icons: ^0.14.4
+
+# App launcher icon: revvy mascot padded to a square with the brand-green
+# (#0B6E4F "forest" accent) bars. Source PNG is a build input only — regenerate
+# the platform icons with: dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
