@@ -16,6 +16,8 @@ class UserFormSubmission {
     required this.email,
     required this.password,
     required this.confirmPassword,
+    required this.newPassword,
+    required this.newConfirmPassword,
     required this.role,
     required this.companyId,
     required this.companyIds,
@@ -32,6 +34,17 @@ class UserFormSubmission {
   /// Confirmation of [password] for typo-protection. Same transient, never-log,
   /// never-persist contract as [password]. Empty on EDIT.
   final String confirmPassword;
+
+  /// EDIT-only optional password reset. **Transient** — never persisted to
+  /// Firestore and never logged. Empty means "leave the current password
+  /// unchanged"; a non-empty value is handed to the admin-relay Worker (after a
+  /// successful profile update) to reset the target user's sign-in password.
+  /// Always empty on CREATE.
+  final String newPassword;
+
+  /// Confirmation of [newPassword]. Same transient, never-log, never-persist
+  /// contract. Empty on CREATE and when no reset is requested on EDIT.
+  final String newConfirmPassword;
 
   final UserRole role;
 
@@ -83,6 +96,7 @@ Future<UserFormSubmission?> showUserFormDialog(
   required List<Company> companies,
   AppUser? existing,
   required Future<String?> Function(UserFormSubmission submission) onSubmit,
+  bool showPasswordReset = false,
 }) {
   return showDialog<UserFormSubmission>(
     context: context,
@@ -91,6 +105,7 @@ Future<UserFormSubmission?> showUserFormDialog(
       companies: companies,
       existing: existing,
       onSubmit: onSubmit,
+      showPasswordReset: showPasswordReset,
     ),
   );
 }
@@ -100,10 +115,16 @@ class _UserFormDialog extends StatefulWidget {
     required this.companies,
     required this.existing,
     required this.onSubmit,
+    required this.showPasswordReset,
   });
   final List<Company> companies;
   final AppUser? existing;
   final Future<String?> Function(UserFormSubmission submission) onSubmit;
+
+  /// Whether to surface the EDIT-only "New password (optional)" pair. The caller
+  /// passes `AppSecrets.hasAdminRelay`, so the field is hidden entirely until
+  /// the admin relay is configured (graceful degradation).
+  final bool showPasswordReset;
   @override
   State<_UserFormDialog> createState() => _UserFormDialogState();
 }
@@ -116,12 +137,20 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   // must never be logged. Always disposed below.
   final TextEditingController _password = TextEditingController();
   final TextEditingController _confirmPassword = TextEditingController();
+  // EDIT-only optional password-reset controllers. Their text is the new
+  // account password and must never be logged. Always disposed below.
+  final TextEditingController _newPassword = TextEditingController();
+  final TextEditingController _newConfirmPassword = TextEditingController();
   late UserRole _role;
 
   /// Visibility toggles for the two CREATE-only password fields. Default to
   /// obscured; the eye icon reveals on demand.
   bool _obscurePassword = true;
   bool _obscureConfirm = true;
+
+  /// Visibility toggles for the two EDIT-only reset fields. Same default.
+  bool _obscureNewPassword = true;
+  bool _obscureNewConfirm = true;
 
   /// Selected company ids in **primary-first** order: element 0 is the primary
   /// company, the rest are additional memberships. Empty == nothing selected.
@@ -170,10 +199,16 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     _email.dispose();
     _password.dispose();
     _confirmPassword.dispose();
+    _newPassword.dispose();
+    _newConfirmPassword.dispose();
     super.dispose();
   }
 
   bool get _isAdminRole => _role == UserRole.admin;
+
+  /// Show the EDIT-only optional reset pair only on the edit path AND when the
+  /// admin relay is configured (graceful degradation when it isn't).
+  bool get _showPasswordReset => !_isCreate && widget.showPasswordReset;
 
   /// At least one company is required for every non-admin role; admins must
   /// have none. Mirrors the dialog's existing pre-flight validity gate.
@@ -203,6 +238,11 @@ class _UserFormDialogState extends State<_UserFormDialog> {
       // spaces are legal in a password); empty on the EDIT path.
       password: _isCreate ? _password.text : '',
       confirmPassword: _isCreate ? _confirmPassword.text : '',
+      // EDIT-only optional reset; empty unless the admin typed a new password.
+      // Like the CREATE password, intentionally NOT trimmed. Always empty on
+      // create. Empty means "leave the current password unchanged".
+      newPassword: _showPasswordReset ? _newPassword.text : '',
+      newConfirmPassword: _showPasswordReset ? _newConfirmPassword.text : '',
       role: _role,
       companyId: ids.isEmpty ? '' : ids.first,
       companyIds: ids,
@@ -371,6 +411,88 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                     final s = v ?? '';
                     if (s.isEmpty) return 'Required';
                     if (s != _password.text) return 'Passwords do not match';
+                    return null;
+                  },
+                ),
+              ],
+              // EDIT-only optional password reset. Hidden entirely unless the
+              // admin relay is configured (graceful degradation). Leaving both
+              // blank keeps the current password; if either is filled we enforce
+              // the same min-length + match rules as the create path.
+              if (_showPasswordReset) ...[
+                const SizedBox(height: AppTokens.lg),
+                TextFormField(
+                  controller: _newPassword,
+                  enabled: !_saving,
+                  obscureText: _obscureNewPassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: 'New password (optional)',
+                    helperText: 'Leave blank to keep the current password.',
+                    prefixIcon: const Icon(Icons.password_rounded),
+                    suffixIcon: IconButton(
+                      onPressed: _saving
+                          ? null
+                          : () => setState(
+                                () => _obscureNewPassword = !_obscureNewPassword,
+                              ),
+                      icon: Icon(
+                        _obscureNewPassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      tooltip: _obscureNewPassword
+                          ? 'Show new password'
+                          : 'Hide new password',
+                    ),
+                  ),
+                  validator: (v) {
+                    final s = v ?? '';
+                    // Both blank == no reset requested; valid (do not block save).
+                    if (s.isEmpty && _newConfirmPassword.text.isEmpty) {
+                      return null;
+                    }
+                    if (s.length < kBootstrapMinPasswordLength) {
+                      return 'At least $kBootstrapMinPasswordLength characters';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: AppTokens.lg),
+                TextFormField(
+                  controller: _newConfirmPassword,
+                  enabled: !_saving,
+                  obscureText: _obscureNewConfirm,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _saving ? null : _save(),
+                  decoration: InputDecoration(
+                    labelText: 'Confirm new password',
+                    prefixIcon: const Icon(Icons.password_rounded),
+                    suffixIcon: IconButton(
+                      onPressed: _saving
+                          ? null
+                          : () => setState(
+                                () => _obscureNewConfirm = !_obscureNewConfirm,
+                              ),
+                      icon: Icon(
+                        _obscureNewConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      tooltip: _obscureNewConfirm
+                          ? 'Show confirm new password'
+                          : 'Hide confirm new password',
+                    ),
+                  ),
+                  validator: (v) {
+                    final s = v ?? '';
+                    // Both blank == no reset requested; valid.
+                    if (s.isEmpty && _newPassword.text.isEmpty) return null;
+                    if (s != _newPassword.text) return 'Passwords do not match';
                     return null;
                   },
                 ),

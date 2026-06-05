@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/config/app_secrets.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
@@ -14,7 +15,7 @@ import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/company.dart';
 import '../../companies/presentation/admin_providers.dart';
-import '../domain/user_assignment.dart';
+import 'submit_user_form.dart';
 import 'user_admin_providers.dart';
 import 'user_form_dialog.dart';
 
@@ -46,47 +47,18 @@ class UserAdminScreen extends ConsumerWidget {
       context,
       companies: companies,
       existing: existing,
-      onSubmit: (s) async {
-        // Pure validation first; surface its message inline (dialog stays open).
-        // Email is immutable on edit, so only validate it on the create path.
-        // Passwords are CREATE-only (null on edit, which skips that branch).
-        final invalid = validateUserAssignment(
-          displayName: s.displayName,
-          email: s.email,
-          role: s.role,
-          companyId: s.companyId,
-          companyIds: s.companyIds,
-          existingCompanyIds: {for (final c in companies) c.id},
-          password: isCreate ? s.password : null,
-          confirmPassword: isCreate ? s.confirmPassword : null,
-          validateEmail: isCreate,
-        );
-        if (invalid != null) return invalid.message;
-
-        final repo = ref.read(userAdminRepositoryProvider);
-        if (isCreate) {
-          // The app provisions the real Firebase Auth sign-in (on a secondary
-          // app, so this admin's session is untouched) then writes the profile.
-          // The password is handed to the repo and never persisted/logged here.
-          final res = await repo.createUserWithAccount(
-            email: s.email,
-            password: s.password,
-            displayName: s.displayName,
-            role: s.role,
-            companyId: s.companyId,
-            companyIds: s.companyIds,
-          );
-          return res.failureOrNull?.message; // null == success
-        }
-        final res = await repo.updateAssignment(
-          uid: existing.uid,
-          role: s.role,
-          companyId: s.companyId,
-          companyIds: s.companyIds,
-          displayName: s.displayName,
-        );
-        return res.failureOrNull?.message; // null == success
-      },
+      // EDIT-only reset pair appears only when the admin relay is configured.
+      showPasswordReset: AppSecrets.hasAdminRelay,
+      // Orchestration (create/edit + the profile-first, password-second
+      // partial-failure contract) lives in the provider-injected
+      // [submitUserForm] so it is unit-testable without pumping the dialog.
+      onSubmit: (s) => submitUserForm(
+        submission: s,
+        existing: existing,
+        companies: companies,
+        userAdminRepository: ref.read(userAdminRepositoryProvider),
+        adminPasswordRepository: ref.read(adminPasswordRepositoryProvider),
+      ),
     );
 
     if (result != null && context.mounted) {

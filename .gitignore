@@ -53,3 +53,9 @@ app.*.map.json
 .env
 .env.*
 !.env.example
+# Firebase service-account keys for the relay Worker (loaded via `wrangler
+# secret put`, NEVER committed). Covers relay/ and any nested location.
+service-account*.json
+**/service-account*.json
+relay/node_modules/
+relay/.wrangler/

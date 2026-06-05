@@ -1,0 +1,15 @@
+# Node / Wrangler
+node_modules/
+.wrangler/
+dist/
+
+# Service-account key (NEVER commit). Mint via Firebase console and load with
+# `wrangler secret put` — see README "Admin set-password endpoint".
+service-account*.json
+**/service-account*.json
+
+# Local env
+.env
+.env.*
+!.env.example
+.dev.vars

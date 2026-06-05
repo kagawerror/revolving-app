@@ -21,6 +21,10 @@ class AppSecrets {
   static const String pushRelayToken =
       String.fromEnvironment('PUSH_RELAY_TOKEN');
 
+  static const String adminRelayUrl =
+      String.fromEnvironment('ADMIN_RELAY_URL');
+
   static bool get hasOneSignal => oneSignalAppId.isNotEmpty;
   static bool get hasPushRelay => pushRelayUrl.isNotEmpty;
+  static bool get hasAdminRelay => adminRelayUrl.isNotEmpty;
 }
