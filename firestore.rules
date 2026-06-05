@@ -137,6 +137,14 @@ service cloud.firestore {
           && resource.data.status == 'released'
           && request.resource.data.status == 'replenished'
           && request.resource.data.replenishmentId is string)
+        // Partial replenishment: the request stays `released` while only
+        // replenishedCentavos grows; the original amount is immutable.
+        || ((isApprover() || isAdmin())
+          && resource.data.status == 'released'
+          && request.resource.data.status == 'released'
+          && request.resource.data.replenishedCentavos
+              > resource.data.get('replenishedCentavos', 0)
+          && request.resource.data.amountCentavos == resource.data.amountCentavos)
       );
 
       allow delete: if false;
@@ -169,6 +177,16 @@ service cloud.firestore {
           && request.resource.data.status in ['approved', 'rejected'])
       );
       allow delete: if false;
+    }
+
+    match /partialReplenishments/{partialId} {
+      // Audit rows written when a replenishment with partial line items is
+      // approved. Created by the approving approver (or admin superuser);
+      // immutable thereafter.
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
+      allow create: if (isApprover() || isAdmin())
+        && (sameCompany(request.resource.data.companyId) || isAdmin());
+      allow update, delete: if false;
     }
 
     match /notifications/{notifId} {
