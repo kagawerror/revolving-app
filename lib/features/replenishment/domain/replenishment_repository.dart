@@ -2,7 +2,10 @@ import '../../../core/error/result.dart';
 import 'replenishment.dart';
 
 abstract interface class ReplenishmentRepository {
-  Stream<List<Replenishment>> watchByFund(String fundId);
+  /// Replenishments for one fund, scoped to its company. companyId is required
+  /// (not just fundId) so the list is provably company-scoped for the
+  /// sameCompany read rule — Firestore rejects an unscoped query otherwise.
+  Stream<List<Replenishment>> watchByFund(String companyId, String fundId);
   Stream<List<Replenishment>> watchByCompanyAndStatus(String companyId, String status);
 
   /// Admin-only: every company's replenishments with the given status (unscoped).

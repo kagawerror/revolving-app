@@ -28,9 +28,12 @@ import 'request_detail_screen.dart';
 import 'request_providers.dart';
 import 'request_status_visual.dart';
 
-/// Requests under a single fund.
-final _fundRequestsProvider = StreamProvider.family((ref, String fundId) =>
-    ref.watch(requestRepositoryProvider).watchByFund(fundId));
+/// Requests under a single fund. Keyed by (companyId, fundId) so the query is
+/// company-scoped for the sameCompany read rule — a fundId-only query is
+/// rejected with permission-denied on the device.
+final _fundRequestsProvider =
+    StreamProvider.family((ref, (String, String) key) =>
+        ref.watch(requestRepositoryProvider).watchByFund(key.$1, key.$2));
 
 /// Compiles a replenishment draft for [fundId], then opens the review screen.
 Future<void> _startReplenish(
@@ -173,7 +176,8 @@ class _FundSectionState extends ConsumerState<_FundSection> {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final fund = widget.fund;
-    final requests = ref.watch(_fundRequestsProvider(fund.id));
+    final requests =
+        ref.watch(_fundRequestsProvider((fund.companyId, fund.id)));
     final user = ref.read(currentUserProvider).valueOrNull;
     final canReplenish = (user?.role.canManageFundOrAdmin ?? false) &&
         fund.status != FundStatus.replenishing;

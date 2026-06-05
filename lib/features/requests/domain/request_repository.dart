@@ -3,7 +3,10 @@ import 'fund_request.dart';
 import 'request_status.dart';
 
 abstract interface class RequestRepository {
-  Stream<List<FundRequest>> watchByFund(String fundId);
+  /// Requests for one fund, scoped to its company. The companyId is required
+  /// (not just fundId) so the query is provably company-scoped for the
+  /// sameCompany read rule — Firestore rejects an unscoped list otherwise.
+  Stream<List<FundRequest>> watchByFund(String companyId, String fundId);
   Stream<List<FundRequest>> watchByStatus(String companyId, RequestStatus status);
   Stream<List<FundRequest>> watchRecentByCompany(String companyId, int limit);
 

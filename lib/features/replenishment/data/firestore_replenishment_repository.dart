@@ -23,10 +23,16 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
   DocumentReference<Map<String, dynamic>> _fundRef(String id) => _db.collection('funds').doc(id);
 
   @override
-  Stream<List<Replenishment>> watchByFund(String fundId) => _reps
-      .where('fundId', isEqualTo: fundId)
-      .snapshots()
-      .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
+  Stream<List<Replenishment>> watchByFund(String companyId, String fundId) =>
+      _reps
+          // Company-scoped for the sameCompany read rule; a fundId-only list is
+          // rejected with permission-denied. Equality-only on both fields, so
+          // no composite index is required.
+          .where('companyId', isEqualTo: companyId)
+          .where('fundId', isEqualTo: fundId)
+          .snapshots()
+          .map((s) =>
+              s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
 
   @override
   Stream<List<Replenishment>> watchByCompanyAndStatus(String companyId, String status) => _reps

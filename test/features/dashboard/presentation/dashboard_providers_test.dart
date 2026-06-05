@@ -100,7 +100,8 @@ class _FakeRequestRepo implements RequestRepository {
   Stream<List<FundRequest>> watchAcknowledgedWorklist(String companyId) =>
       const Stream.empty();
   @override
-  Stream<List<FundRequest>> watchByFund(String fundId) => const Stream.empty();
+  Stream<List<FundRequest>> watchByFund(String companyId, String fundId) =>
+      const Stream.empty();
   @override
   Future<Result<String>> create(FundRequest request) async => const Ok('');
   @override
@@ -141,7 +142,8 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
       Stream.value(allPending);
 
   @override
-  Stream<List<Replenishment>> watchByFund(String fundId) => const Stream.empty();
+  Stream<List<Replenishment>> watchByFund(String companyId, String fundId) =>
+      const Stream.empty();
   @override
   Future<Result<Replenishment>> createDraft(
           {required String fundId, required String createdByUid}) async =>

@@ -43,10 +43,17 @@ class FirestoreRequestRepository implements RequestRepository {
       _db.collection('funds').doc(id);
 
   @override
-  Stream<List<FundRequest>> watchByFund(String fundId) => _requests
-      .where('fundId', isEqualTo: fundId)
-      .snapshots()
-      .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
+  Stream<List<FundRequest>> watchByFund(String companyId, String fundId) =>
+      _requests
+          // companyId is required, not just fundId: the read rule is
+          // sameCompany(resource.data.companyId) and Firestore rejects any list
+          // query it can't prove is company-scoped. Equality-only on both
+          // fields → served by single-field indexes, no composite index needed.
+          .where('companyId', isEqualTo: companyId)
+          .where('fundId', isEqualTo: fundId)
+          .snapshots()
+          .map((s) =>
+              s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
   Stream<List<FundRequest>> watchByStatus(String companyId, RequestStatus status) =>
