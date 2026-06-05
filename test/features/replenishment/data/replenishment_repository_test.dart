@@ -238,4 +238,56 @@ void main() {
     expect(r1Final.data()!['status'], 'replenished');
     expect(r1Final.data()!['replenishmentId'], draft.id);
   });
+
+  test('createDraft sums only the selected requests', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1', requestIds: const ['r1'], createdByUid: 'inc');
+    expect(res.isOk, isTrue);
+    expect(res.valueOrNull!.requestIds, const ['r1']);
+    expect(res.valueOrNull!.total.centavos, 400000); // not 800000
+  });
+
+  test('createDraft rejects an empty selection without touching the fund', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1', requestIds: const [], createdByUid: 'inc');
+    expect(res.failureOrNull, isA<ValidationFailure>());
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['status'], 'low'); // unchanged
+  });
+
+  test('createDraft rejects a selection that includes a non-releasable id', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1', requestIds: const ['r1', 'ghost'], createdByUid: 'inc');
+    expect(res.failureOrNull, isA<ValidationFailure>());
+    expect((res.failureOrNull as ValidationFailure).message,
+        'Some selected requests are no longer available to replenish.');
+  });
+
+  test('createAndSubmit creates a submitted report and locks the fund', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createAndSubmit(
+        fundId: 'f1', requestIds: const ['r1', 'r2'], actorUid: 'inc', notes: 'June');
+    expect(res.isOk, isTrue);
+    final reps = await db
+        .collection('replenishments')
+        .where('fundId', isEqualTo: 'f1')
+        .get();
+    expect(reps.docs.length, 1);
+    expect(reps.docs.single.data()['status'], 'submitted');
+    expect(reps.docs.single.data()['reportNotes'], 'June');
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['status'], 'replenishing');
+  });
+
+  test('createAndSubmit propagates a createDraft failure and creates nothing', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createAndSubmit(
+        fundId: 'f1', requestIds: const [], actorUid: 'inc', notes: '');
+    expect(res.failureOrNull, isA<ValidationFailure>());
+    final reps = await db.collection('replenishments').get();
+    expect(reps.docs, isEmpty);
+  });
 }
