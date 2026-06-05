@@ -1,15 +1,16 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/config/app_secrets.dart';
 import '../../../services/cloudinary/cloudinary_uploader.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../config/presentation/config_providers.dart';
 import 'profile_controller.dart';
 
 /// Uploads avatars to a dedicated Cloudinary folder, reusing the proof uploader.
 final avatarUploaderProvider = Provider<CloudinaryUploader>((ref) {
+  final cfg = ref.watch(effectiveCloudinaryConfigProvider);
   return CloudinaryUploader(
-    cloudName: AppSecrets.cloudinaryCloudName,
-    uploadPreset: AppSecrets.cloudinaryUploadPreset,
+    cloudName: cfg.cloudName,
+    uploadPreset: cfg.uploadPreset,
     folder: 'avatars',
   );
 });

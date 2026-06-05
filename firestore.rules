@@ -67,6 +67,14 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // Global app configuration (e.g. cloudinary). Any signed-in user may read so
+    // uploaders can resolve the active config; only an admin may write. Stores
+    // NON-SECRET fields only — the Cloudinary API secret is never persisted.
+    match /appConfig/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
     match /funds/{fundId} {
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
       allow create: if isAdmin();

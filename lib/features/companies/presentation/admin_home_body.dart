@@ -128,6 +128,7 @@ class AdminHomeBody extends ConsumerWidget {
         onEditCompany: (c) => _handleEditCompany(context, ref, c),
         onEditFund: (f) => _handleEditFund(context, ref, f),
         onManageUsers: () => context.push('/admin/users'),
+        onConfigureCloudinary: () => context.push('/admin/cloudinary'),
         onOperateIncharge: () => context.push('/incharge'),
         onOpenApprovals: () => context.push('/approvals'),
       ),
@@ -145,6 +146,7 @@ class _AdminBody extends StatelessWidget {
     required this.onEditCompany,
     required this.onEditFund,
     required this.onManageUsers,
+    required this.onConfigureCloudinary,
     required this.onOperateIncharge,
     required this.onOpenApprovals,
   });
@@ -160,6 +162,7 @@ class _AdminBody extends StatelessWidget {
   final ValueChanged<Company> onEditCompany;
   final ValueChanged<Fund> onEditFund;
   final VoidCallback onManageUsers;
+  final VoidCallback onConfigureCloudinary;
   final VoidCallback onOperateIncharge;
   final VoidCallback onOpenApprovals;
 
@@ -241,6 +244,8 @@ class _AdminBody extends StatelessWidget {
         ),
         const SizedBox(height: AppTokens.lg),
         _UsersSection(onManage: onManageUsers),
+        const SizedBox(height: AppTokens.lg),
+        _SystemSection(onConfigureCloudinary: onConfigureCloudinary),
         // Bottom breathing room so the FAB + bottom nav never cover the last row.
         const SizedBox(height: AppTokens.bottomNavContentInset),
       ],
@@ -661,6 +666,49 @@ class _UsersSection extends StatelessWidget {
             ),
             title: 'Manage users',
             subtitle: 'Assign roles and companies',
+            trailing: const Icon(Icons.chevron_right_rounded),
+          ),
+        ),
+      ],
+    ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
+  }
+}
+
+/// System-level configuration entry points. Currently the Cloudinary media
+/// settings (`/admin/cloudinary`); same card/tile rhythm as Users.
+class _SystemSection extends StatelessWidget {
+  const _SystemSection({required this.onConfigureCloudinary});
+  final VoidCallback onConfigureCloudinary;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHeader(title: 'System'),
+        SurfaceCard(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppTokens.sm,
+            vertical: AppTokens.xs,
+          ),
+          child: AppListTile(
+            onTap: onConfigureCloudinary,
+            leading: Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: scheme.tertiaryContainer,
+                borderRadius: AppTokens.brField,
+              ),
+              child: Icon(
+                Icons.cloud_upload_rounded,
+                color: scheme.onTertiaryContainer,
+                semanticLabel: 'Cloudinary',
+              ),
+            ),
+            title: 'Cloudinary',
+            subtitle: 'Configure media uploads (cloud name, presets, folders)',
             trailing: const Icon(Icons.chevron_right_rounded),
           ),
         ),

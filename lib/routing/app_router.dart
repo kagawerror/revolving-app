@@ -9,6 +9,7 @@ import '../features/auth/presentation/bootstrap_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/admin_users/presentation/user_admin_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
+import '../features/config/presentation/cloudinary_config_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/requests/presentation/acknowledged_worklist_screen.dart';
 import '../features/requests/presentation/create_request_screen.dart';
@@ -96,6 +97,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/admin/users',
         builder: (_, _) => const UserAdminScreen(),
+      ),
+      GoRoute(
+        path: '/admin/cloudinary',
+        builder: (_, _) => const CloudinaryConfigScreen(),
       ),
       GoRoute(
         path: '/incharge',
