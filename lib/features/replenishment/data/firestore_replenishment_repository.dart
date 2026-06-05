@@ -230,11 +230,25 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         final fundSnap = await tx.get(_fundRef(replenishment.fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
-        // Read every line-item's request BEFORE any write (tx reads-before-writes).
+        // Read every line-item's request BEFORE any write (tx reads-before-writes)
+        // and re-validate each against current server state. A stale report must
+        // never replenish a request beyond its original amount (and the fund
+        // credit equals the sum of these per-item amounts, so this guards the
+        // fund too). Validating here — before any write is staged — keeps the
+        // whole transaction atomic on rejection.
         final reqData = <String, Map<String, dynamic>>{};
         for (final item in replenishment.items) {
           final rs = await tx.get(_requests.doc(item.requestId));
-          if (rs.exists) reqData[item.requestId] = rs.data()!;
+          if (!rs.exists) {
+            throw StateError('A request in this report no longer exists.');
+          }
+          final data = rs.data()!;
+          reqData[item.requestId] = data;
+          final amount = (data['amountCentavos'] ?? 0) as int;
+          final prior = (data['replenishedCentavos'] ?? 0) as int;
+          if (prior + item.amount.centavos > amount) {
+            throw StateError('A request in this report was already replenished.');
+          }
         }
         // --- writes ---
         final newBalance = fund.availableBalance + replenishment.total;

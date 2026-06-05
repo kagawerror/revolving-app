@@ -364,6 +364,33 @@ void main() {
     expect(partials.docs.single.data()['replenishmentId'], draft.id);
   });
 
+  test('approve rejects a stale report that would over-replenish a request', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final draft = (await repo.createDraft(
+            fundId: 'f1', items: [full('r1')], createdByUid: 'inc'))
+        .valueOrNull!; // full item amount = 400000 (remaining at draft)
+    await repo.submit(replenishment: draft, actorUid: 'inc', notes: '');
+    final submitted = Replenishment.fromMap(draft.id,
+        (await db.collection('replenishments').doc(draft.id).get()).data()!);
+    // Simulate the request being partly replenished by some other path between
+    // submit and approve: now remaining is only 300000, so applying the stale
+    // 400000 would push replenishedCentavos (100000+400000) past amount (400000).
+    await db.collection('requests').doc('r1').update({'replenishedCentavos': 100000});
+    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
+    expect(res.failureOrNull, isA<ValidationFailure>());
+    // Fund untouched (the whole tx aborted).
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 200000);
+  });
+
+  test('createDraft accepts a partial of exactly remaining-1', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1', items: [partial('r1', 399999, 'almost')], createdByUid: 'inc');
+    expect(res.isOk, isTrue);
+    expect(res.valueOrNull!.items.single.amount.centavos, 399999);
+  });
+
   test('installments: two partials then a full closes the request; fund fully restored', () async {
     // Fresh fund at full budget, one released request of 400000 (fund debited).
     db = FakeFirebaseFirestore();
