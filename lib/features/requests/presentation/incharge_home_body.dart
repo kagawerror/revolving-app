@@ -121,7 +121,7 @@ class _FundSectionState extends ConsumerState<_FundSection> {
           const <FundRequest>[];
       final releasable = all
           .where((r) =>
-              r.status == RequestStatus.released && r.replenishmentId == null)
+              r.status == RequestStatus.released && r.remaining.centavos > 0)
           .toList();
       if (!mounted) return;
       final ok = await showDialog<bool>(
@@ -237,7 +237,10 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
-                                r.amount.format(),
+                                (r.status == RequestStatus.released
+                                        ? r.remaining
+                                        : r.amount)
+                                    .format(),
                                 style: textTheme.titleMedium?.copyWith(
                                   fontWeight: FontWeight.w800,
                                   fontFeatures: const [
@@ -245,6 +248,13 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                                   ],
                                 ),
                               ),
+                              if (r.status == RequestStatus.released &&
+                                  r.replenishedCentavos > 0)
+                                Text(
+                                  '${r.replenished.format()} of ${r.amount.format()} replenished',
+                                  style: textTheme.bodySmall?.copyWith(
+                                      color: scheme.onSurfaceVariant),
+                                ),
                               const SizedBox(height: AppTokens.xs),
                               _RequestAction(request: r),
                             ],
