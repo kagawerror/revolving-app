@@ -32,8 +32,10 @@ import 'dashboard_providers.dart';
   }
 }
 
-class DashboardScreen extends ConsumerWidget {
-  const DashboardScreen({super.key});
+/// Body of the dashboard tab: role-scoped balance hero, stats, funds, and recent
+/// activity. Body-only — the [RoleShellScreen] owns the Scaffold and AppBar.
+class DashboardBody extends ConsumerWidget {
+  const DashboardBody({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -41,24 +43,25 @@ class DashboardScreen extends ConsumerWidget {
     final funds = ref.watch(dashboardFundsProvider);
     final recent = ref.watch(recentRequestsProvider);
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Dashboard')),
-      body: summary.when(
-        loading: () => const _DashboardSkeleton(),
-        error: (e, _) => _DashboardError(message: 'Error: $e'),
-        data: (s) => ListView(
-          padding: const EdgeInsets.all(AppTokens.lg),
-          children: [
-            _HeroSection(summary: s),
-            const SizedBox(height: AppTokens.lg),
-            _StatsSection(summary: s),
-            const SectionHeader(title: 'Funds'),
-            _FundsSection(funds: funds),
-            const SectionHeader(title: 'Recent activity'),
-            _RecentSection(recent: recent),
-            const SizedBox(height: AppTokens.lg),
-          ],
+    return summary.when(
+      loading: () => const _DashboardSkeleton(),
+      error: (e, _) => _DashboardError(message: 'Error: $e'),
+      data: (s) => ListView(
+        padding: const EdgeInsets.fromLTRB(
+          AppTokens.lg,
+          AppTokens.lg,
+          AppTokens.lg,
+          AppTokens.bottomNavContentInset,
         ),
+        children: [
+          _HeroSection(summary: s),
+          const SizedBox(height: AppTokens.lg),
+          _StatsSection(summary: s),
+          const SectionHeader(title: 'Funds'),
+          _FundsSection(funds: funds),
+          const SectionHeader(title: 'Recent activity'),
+          _RecentSection(recent: recent),
+        ],
       ),
     );
   }

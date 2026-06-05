@@ -7,26 +7,25 @@ import '../../../core/error/failure_ui.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/profile_menu_button.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/surface_card.dart';
-import '../../companies/domain/company.dart';
-import '../../companies/domain/fund.dart';
 import '../../auth/presentation/auth_providers.dart';
-import '../../dashboard/presentation/dashboard_screen.dart';
+import '../domain/company.dart';
+import '../domain/fund.dart';
 import 'add_company_dialog.dart';
 import 'admin_providers.dart';
 import 'edit_company_dialog.dart';
 import 'edit_fund_dialog.dart';
 import 'fund_grouping.dart';
 
-/// Admin landing screen: provisioned companies + the entry point to create a
-/// fund. Presentation-only redesign — the data source (`companiesProvider`),
-/// sign-out action, dashboard navigation, profile entry, and create-fund route
-/// are all preserved exactly.
-class AdminHomeScreen extends ConsumerWidget {
-  const AdminHomeScreen({super.key});
+/// Body of the admin landing tab: provisioned companies, funds, users, and the
+/// operational entry points. Body-only — the [RoleShellScreen] owns the
+/// Scaffold, AppBar (title + AlertsBell), bottom navigation, and the "New fund"
+/// FAB. The data source (`companiesProvider`), dialog/callback logic, and routes
+/// are preserved exactly from the former AdminHomeScreen.
+class AdminHomeBody extends ConsumerWidget {
+  const AdminHomeBody({super.key});
 
   Future<void> _handleAddCompany(BuildContext context, WidgetRef ref) async {
     final added = await showAddCompanyDialog(
@@ -112,45 +111,25 @@ class AdminHomeScreen extends ConsumerWidget {
     final companies = ref.watch(companiesProvider);
     final fundsAsync = ref.watch(allFundsProvider);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Admin'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.dashboard_outlined),
-            tooltip: 'Dashboard',
-            onPressed: () => Navigator.of(
-              context,
-            ).push(MaterialPageRoute(builder: (_) => const DashboardScreen())),
-          ),
-          const ProfileMenuButton(),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/admin/create-fund'),
-        label: const Text('New fund'),
-        icon: const Icon(Icons.add),
-      ),
-      body: companies.when(
-        loading: () => const _AdminSkeleton(),
-        error: (e, _) => _AdminError(message: 'Error: $e'),
-        data: (list) => _AdminBody(
-          companies: list,
-          funds: fundsAsync.whenData(
-            (funds) => groupFundsByCompany(funds, list),
-          ),
-          totalFundCount: fundsAsync.maybeWhen(
-            data: (f) => f.length,
-            orElse: () => 0,
-          ),
-          onRetryFunds: () => ref.invalidate(allFundsProvider),
-          onAddCompany: () => _handleAddCompany(context, ref),
-          onEditCompany: (c) => _handleEditCompany(context, ref, c),
-          onEditFund: (f) => _handleEditFund(context, ref, f),
-          onManageUsers: () => context.push('/admin/users'),
-          onOperateIncharge: () => context.push('/incharge'),
-          onOpenApprovals: () => context.push('/approvals'),
+    return companies.when(
+      loading: () => const _AdminSkeleton(),
+      error: (e, _) => _AdminError(message: 'Error: $e'),
+      data: (list) => _AdminBody(
+        companies: list,
+        funds: fundsAsync.whenData(
+          (funds) => groupFundsByCompany(funds, list),
         ),
+        totalFundCount: fundsAsync.maybeWhen(
+          data: (f) => f.length,
+          orElse: () => 0,
+        ),
+        onRetryFunds: () => ref.invalidate(allFundsProvider),
+        onAddCompany: () => _handleAddCompany(context, ref),
+        onEditCompany: (c) => _handleEditCompany(context, ref, c),
+        onEditFund: (f) => _handleEditFund(context, ref, f),
+        onManageUsers: () => context.push('/admin/users'),
+        onOperateIncharge: () => context.push('/incharge'),
+        onOpenApprovals: () => context.push('/approvals'),
       ),
     );
   }
@@ -262,8 +241,8 @@ class _AdminBody extends StatelessWidget {
         ),
         const SizedBox(height: AppTokens.lg),
         _UsersSection(onManage: onManageUsers),
-        // Bottom breathing room so the FAB never covers the last row.
-        const SizedBox(height: 80),
+        // Bottom breathing room so the FAB + bottom nav never cover the last row.
+        const SizedBox(height: AppTokens.bottomNavContentInset),
       ],
     ).animate().fadeIn(duration: 220.ms).slideY(begin: 0.04, end: 0);
   }

@@ -1,13 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/error/failure_ui.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/profile_menu_button.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
@@ -17,8 +15,6 @@ import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
-import '../../dashboard/presentation/dashboard_screen.dart';
-import '../../notifications/presentation/alerts_bell.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
 import '../../replenishment/presentation/replenish_review_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
@@ -51,49 +47,18 @@ Future<void> _startReplenish(
       builder: (_) => ReplenishReviewScreen(draft: draft)));
 }
 
-class InchargeHomeScreen extends ConsumerWidget {
-  const InchargeHomeScreen({super.key});
+/// Body of the incharge landing tab: the scrolling per-fund request list for the
+/// resolved company. Body-only — the [RoleShellScreen] owns the Scaffold,
+/// AppBar, [CompanyContextBar], bottom navigation, and the "New request" FAB.
+class InchargeHomeBody extends ConsumerWidget {
+  const InchargeHomeBody({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider).valueOrNull;
-    return Scaffold(
-      appBar: AppBar(title: const Text('Incharge'), actions: [
-        // Acknowledged worklist is view-restricted to incharge + admin; hide the
-        // entry point for an employee sharing this shell (router also guards it).
-        if (user?.role.canManageFundOrAdmin ?? false)
-          IconButton(
-            icon: const Icon(Icons.checklist_rounded),
-            tooltip: 'Acknowledged requests',
-            onPressed: () => context.push('/incharge/acknowledged'),
-          ),
-        IconButton(
-          icon: const Icon(Icons.dashboard_outlined),
-          tooltip: 'Dashboard',
-          onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const DashboardScreen())),
-        ),
-        const AlertsBell(),
-        const ProfileMenuButton(),
-      ]),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => context.push('/incharge/create'),
-        label: const Text('New request'),
-        icon: const Icon(Icons.add),
-      ),
-      body: user == null
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Admin-only operating-company picker; SizedBox.shrink for
-                // everyone else, so non-admin layout is unchanged.
-                const CompanyContextBar(),
-                Expanded(
-                  child: _InchargeBody(user: user),
-                ),
-              ],
-            ),
-    );
+    return user == null
+        ? const Center(child: CircularProgressIndicator())
+        : _InchargeBody(user: user);
   }
 }
 
@@ -133,7 +98,7 @@ class _InchargeBody extends ConsumerWidget {
                           AppTokens.lg,
                           AppTokens.md,
                           AppTokens.lg,
-                          AppTokens.xxl + AppTokens.xl,
+                          AppTokens.bottomNavContentInset,
                         ),
                         children: [
                           for (final f in funds)

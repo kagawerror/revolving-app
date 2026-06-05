@@ -59,6 +59,33 @@ class AppTheme {
       navigationBarTheme: NavigationBarThemeData(
         backgroundColor: scheme.surface,
         indicatorColor: scheme.primaryContainer,
+        // Flat app, but the bottom bar needs to read as a distinct surface from
+        // the body it sits under. A hair of surfaceTint elevation gives that
+        // separation without a hard divider.
+        elevation: 1,
+        surfaceTintColor: scheme.surfaceTint,
+        // ≤4 tabs with short labels: always show labels. The custodian should
+        // never have to select a tab to learn what it is — "Worklist" vs
+        // "Dashboard" must be legible at rest when real money is involved.
+        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+        height: 64,
+        // Bold the selected label; tint the unselected one down so the active
+        // tab is unmistakable (status/clarity over subtlety).
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            size: 24,
+            color: selected ? scheme.onPrimaryContainer : scheme.onSurfaceVariant,
+          );
+        }),
       ),
     );
   }

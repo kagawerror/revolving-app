@@ -36,7 +36,7 @@ class EditFundSubmission {
 /// re-enable for retry). Returns the new name on success, or `null` if
 /// cancelled.
 ///
-/// INTEGRATION (caller, in admin_home_screen):
+/// INTEGRATION (caller, in admin_home_body):
 ///   onSubmit: (s) async {
 ///     if (s.touchesBudget) {
 ///       final r = await ref.read(fundRepositoryProvider).adjustBudget(

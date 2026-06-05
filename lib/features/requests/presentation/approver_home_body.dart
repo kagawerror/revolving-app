@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
-import '../../../core/widgets/profile_menu_button.dart';
 import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
@@ -13,16 +12,17 @@ import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
-import '../../dashboard/presentation/dashboard_screen.dart';
-import '../../notifications/presentation/alerts_bell.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
 import 'approver_inbox_providers.dart';
 import 'request_detail_screen.dart';
 import 'request_status_visual.dart';
 
-class ApproverHomeScreen extends ConsumerWidget {
-  const ApproverHomeScreen({super.key});
+/// Body of the approver landing tab: the pending replenishments + requests
+/// inbox for the resolved company. Body-only — the [RoleShellScreen] owns the
+/// Scaffold, AppBar, and [CompanyContextBar].
+class ApproverHomeBody extends ConsumerWidget {
+  const ApproverHomeBody({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -31,29 +31,9 @@ class ApproverHomeScreen extends ConsumerWidget {
         ? ''
         : effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Approvals'), actions: [
-        IconButton(
-          icon: const Icon(Icons.dashboard_outlined),
-          tooltip: 'Dashboard',
-          onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const DashboardScreen())),
-        ),
-        const AlertsBell(),
-        const ProfileMenuButton(),
-      ]),
-      body: Column(
-        children: [
-          // Admin-only operating-company picker; SizedBox.shrink otherwise.
-          const CompanyContextBar(),
-          // Admin with no company picked: prompt instead of empty inboxes.
-          if (companyId.isEmpty)
-            const Expanded(child: AdminSelectCompanyPrompt())
-          else
-            const Expanded(child: _ApproverInbox()),
-        ],
-      ),
-    );
+    // Admin with no company picked: prompt instead of empty inboxes.
+    if (companyId.isEmpty) return const AdminSelectCompanyPrompt();
+    return const _ApproverInbox();
   }
 }
 
@@ -66,8 +46,8 @@ class _ApproverInbox extends ConsumerWidget {
     final replenishments = ref.watch(pendingReplenishmentsProvider);
 
     return ListView(
-        padding: const EdgeInsets.fromLTRB(
-            AppTokens.lg, AppTokens.sm, AppTokens.lg, AppTokens.xxl),
+        padding: const EdgeInsets.fromLTRB(AppTokens.lg, AppTokens.sm,
+            AppTokens.lg, AppTokens.bottomNavContentInset),
         children: [
           SectionHeader(
             title: 'Pending replenishments',

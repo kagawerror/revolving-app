@@ -10,7 +10,7 @@ import 'package:rev_app/features/auth/presentation/auth_providers.dart';
 import 'package:rev_app/features/companies/domain/company.dart';
 import 'package:rev_app/features/companies/domain/company_repository.dart';
 import 'package:rev_app/features/companies/domain/fund.dart';
-import 'package:rev_app/features/companies/presentation/admin_home_screen.dart';
+import 'package:rev_app/features/companies/presentation/admin_home_body.dart';
 import 'package:rev_app/features/companies/presentation/admin_providers.dart';
 import 'package:rev_app/features/messaging/presentation/messaging_providers.dart';
 
@@ -43,7 +43,9 @@ void main() {
           currentUserProvider.overrideWith((ref) => Stream.value(_admin)),
           signOutProvider.overrideWithValue(() async {}),
         ],
-        child: const MaterialApp(home: AdminHomeScreen()),
+        // AdminHomeBody is body-only; the shell normally provides the Scaffold,
+        // so wrap it here for the ScaffoldMessenger the dialogs/snackbars need.
+        child: const MaterialApp(home: Scaffold(body: AdminHomeBody())),
       );
 
   Fund fund({

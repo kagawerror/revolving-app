@@ -8,13 +8,11 @@ import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/bootstrap_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/admin_users/presentation/user_admin_screen.dart';
-import '../features/companies/presentation/admin_home_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/requests/presentation/acknowledged_worklist_screen.dart';
-import '../features/requests/presentation/approver_home_screen.dart';
 import '../features/requests/presentation/create_request_screen.dart';
-import '../features/requests/presentation/incharge_home_screen.dart';
+import 'role_shell_screen.dart';
 
 @visibleForTesting
 String homeFor(UserRole role) => switch (role) {
@@ -87,7 +85,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/setup', builder: (context, _) => const BootstrapScreen()),
-      GoRoute(path: '/admin', builder: (_, _) => const AdminHomeScreen()),
+      GoRoute(
+        path: '/admin',
+        builder: (_, _) => const RoleShellScreen(role: UserRole.admin),
+      ),
       GoRoute(
         path: '/admin/create-fund',
         builder: (_, _) => const CreateFundScreen(),
@@ -96,7 +97,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/admin/users',
         builder: (_, _) => const UserAdminScreen(),
       ),
-      GoRoute(path: '/incharge', builder: (_, _) => const InchargeHomeScreen()),
+      GoRoute(
+        path: '/incharge',
+        // The shell computes showAcknowledged from currentUserProvider
+        // (role.canManageFundOrAdmin), so an employee sharing this route gets no
+        // Worklist tab even though the route role is incharge.
+        builder: (_, _) => const RoleShellScreen(role: UserRole.incharge),
+      ),
       GoRoute(
         path: '/incharge/create',
         builder: (_, _) => const CreateRequestScreen(),
@@ -105,7 +112,12 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/incharge/acknowledged',
         builder: (_, _) => const AcknowledgedWorklistScreen(),
       ),
-      GoRoute(path: '/approvals', builder: (_, _) => const ApproverHomeScreen()),
+      GoRoute(
+        path: '/approvals',
+        // ceo maps to the approver shell (role.canApprove); the shell only needs
+        // to know this is the "approvals" shell, not the exact approver role.
+        builder: (_, _) => const RoleShellScreen(role: UserRole.ceo),
+      ),
       GoRoute(
           path: '/profile',
           builder: (context, state) => const ProfileScreen()),

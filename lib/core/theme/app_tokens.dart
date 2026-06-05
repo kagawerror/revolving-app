@@ -7,6 +7,11 @@ class AppTokens {
 
   static const double xs = 4, sm = 8, md = 12, lg = 16, xl = 24, xxl = 32;
 
+  /// Bottom padding for scrollable bodies under the bottom-nav shell so the
+  /// last row clears the NavigationBar (height 64, set in app_theme.dart
+  /// navigationBarTheme) plus the extended FAB above it.
+  static const double bottomNavContentInset = 80;
+
   static const double rCard = 22, rField = 14, rPill = 999;
   static const BorderRadius brCard = BorderRadius.all(Radius.circular(rCard));
   static const BorderRadius brField = BorderRadius.all(Radius.circular(rField));
