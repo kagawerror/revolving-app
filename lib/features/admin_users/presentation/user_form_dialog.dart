@@ -3,24 +3,36 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/user_role_label.dart';
 import '../../auth/domain/app_user.dart';
+import '../../auth/domain/bootstrap_rules.dart';
 import '../../companies/domain/company.dart';
 
-/// What the form hands back to the caller. For CREATE, all fields are present.
-/// For EDIT, [uid] and [email] are immutable (the dialog shows them read-only)
-/// but are still passed through so the caller has the full identity.
+/// What the form hands back to the caller. For CREATE, all fields are present
+/// (including [password]/[confirmPassword], which the caller uses to provision
+/// the Firebase Auth account). For EDIT, [email] is immutable (the dialog shows
+/// it read-only) and the password fields are empty.
 class UserFormSubmission {
   const UserFormSubmission({
-    required this.uid,
     required this.displayName,
     required this.email,
+    required this.password,
+    required this.confirmPassword,
     required this.role,
     required this.companyId,
     required this.companyIds,
   });
 
-  final String uid;
   final String displayName;
   final String email;
+
+  /// The new account's password. **CREATE-only and transient** — empty on EDIT.
+  /// This value is never persisted to Firestore and must never be logged; the
+  /// caller hands it straight to Firebase Auth account creation and drops it.
+  final String password;
+
+  /// Confirmation of [password] for typo-protection. Same transient, never-log,
+  /// never-persist contract as [password]. Empty on EDIT.
+  final String confirmPassword;
+
   final UserRole role;
 
   /// The **primary** (default) company. Empty string for admins (admins belong
@@ -49,17 +61,20 @@ class UserFormSubmission {
 ///   onSubmit: (s) async {
 ///     // s.companyId is the primary; s.companyIds is the full membership
 ///     // (companyId first). Pass both through to validation + persistence.
+///     // On CREATE, s.password/s.confirmPassword carry the new account's
+///     // credentials — hand them to Auth account creation, never persist/log.
 ///     final invalid = validateUserAssignment(
-///       role: s.role, companyId: s.companyId /*, companyIds: s.companyIds */);
+///       role: s.role, companyId: s.companyId,
+///       password: s.password, confirmPassword: s.confirmPassword);
 ///     if (invalid != null) return invalid.message;
 ///     final repo = ref.read(userAdminRepositoryProvider);
 ///     final res = isCreate
-///       ? await repo.createProfile(AppUser(
-///           uid: s.uid, displayName: s.displayName, email: s.email,
-///           role: s.role, companyId: s.companyId,
-///           companyIds: s.companyIds))
+///       ? await repo.createUserWithAccount(
+///           email: s.email, password: s.password,
+///           displayName: s.displayName, role: s.role,
+///           companyId: s.companyId, companyIds: s.companyIds)
 ///       : await repo.updateAssignment(
-///           uid: s.uid, role: s.role, companyId: s.companyId,
+///           uid: existing.uid, role: s.role, companyId: s.companyId,
 ///           companyIds: s.companyIds, displayName: s.displayName);
 ///     return res.failureOrNull?.message; // null on success
 ///   }
@@ -95,10 +110,18 @@ class _UserFormDialog extends StatefulWidget {
 
 class _UserFormDialogState extends State<_UserFormDialog> {
   final _formKey = GlobalKey<FormState>();
-  late final TextEditingController _uid;
   late final TextEditingController _displayName;
   late final TextEditingController _email;
+  // CREATE-only credential controllers. Their text is the account password and
+  // must never be logged. Always disposed below.
+  final TextEditingController _password = TextEditingController();
+  final TextEditingController _confirmPassword = TextEditingController();
   late UserRole _role;
+
+  /// Visibility toggles for the two CREATE-only password fields. Default to
+  /// obscured; the eye icon reveals on demand.
+  bool _obscurePassword = true;
+  bool _obscureConfirm = true;
 
   /// Selected company ids in **primary-first** order: element 0 is the primary
   /// company, the rest are additional memberships. Empty == nothing selected.
@@ -121,7 +144,6 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   void initState() {
     super.initState();
     final e = widget.existing;
-    _uid = TextEditingController(text: e?.uid ?? '');
     _displayName = TextEditingController(text: e?.displayName ?? '');
     _email = TextEditingController(text: e?.email ?? '');
     _role = e?.role ?? UserRole.incharge;
@@ -144,9 +166,10 @@ class _UserFormDialogState extends State<_UserFormDialog> {
 
   @override
   void dispose() {
-    _uid.dispose();
     _displayName.dispose();
     _email.dispose();
+    _password.dispose();
+    _confirmPassword.dispose();
     super.dispose();
   }
 
@@ -174,9 +197,12 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     // first), so `companyId` is always a member of `companyIds`.
     final ids = _isAdminRole ? const <String>[] : List<String>.from(_companyIds);
     final submission = UserFormSubmission(
-      uid: _uid.text.trim(),
       displayName: _displayName.text.trim(),
       email: _email.text.trim(),
+      // Passwords are CREATE-only and intentionally NOT trimmed (leading/trailing
+      // spaces are legal in a password); empty on the EDIT path.
+      password: _isCreate ? _password.text : '',
+      confirmPassword: _isCreate ? _confirmPassword.text : '',
       role: _role,
       companyId: ids.isEmpty ? '' : ids.first,
       companyIds: ids,
@@ -222,33 +248,21 @@ class _UserFormDialogState extends State<_UserFormDialog> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // UID — CREATE-only and editable; EDIT shows it read-only so the
-              // admin can still confirm identity.
-              if (_isCreate)
-                TextFormField(
-                  controller: _uid,
-                  enabled: !_saving,
-                  autofocus: true,
-                  textInputAction: TextInputAction.next,
-                  decoration: const InputDecoration(
-                    labelText: 'User UID',
-                    helperText: 'Paste the UID from Firebase Console.',
-                    prefixIcon: Icon(Icons.fingerprint_rounded),
-                  ),
-                  validator: (v) =>
-                      (v == null || v.trim().isEmpty) ? 'Required' : null,
-                )
-              else
+              // UID is no longer an input — the app creates the auth account
+              // itself. On EDIT we still surface the existing uid read-only so
+              // the admin can confirm identity.
+              if (!_isCreate) ...[
                 _ReadOnlyField(
                   label: 'User UID',
                   value: widget.existing!.uid,
                   icon: Icons.fingerprint_rounded,
                 ),
-              const SizedBox(height: AppTokens.lg),
+                const SizedBox(height: AppTokens.lg),
+              ],
               TextFormField(
                 controller: _displayName,
                 enabled: !_saving,
-                autofocus: !_isCreate,
+                autofocus: true,
                 textCapitalization: TextCapitalization.words,
                 textInputAction: TextInputAction.next,
                 decoration: const InputDecoration(
@@ -285,6 +299,82 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                   value: widget.existing!.email,
                   icon: Icons.alternate_email_rounded,
                 ),
+              // Password + confirm — CREATE-only. The app provisions the sign-in
+              // account, so we collect (and confirm) the initial password here.
+              if (_isCreate) ...[
+                const SizedBox(height: AppTokens.lg),
+                TextFormField(
+                  controller: _password,
+                  enabled: !_saving,
+                  obscureText: _obscurePassword,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.next,
+                  decoration: InputDecoration(
+                    labelText: 'Password',
+                    helperText:
+                        'At least $kBootstrapMinPasswordLength characters.',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    suffixIcon: IconButton(
+                      onPressed: _saving
+                          ? null
+                          : () => setState(
+                                () => _obscurePassword = !_obscurePassword,
+                              ),
+                      icon: Icon(
+                        _obscurePassword
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      tooltip:
+                          _obscurePassword ? 'Show password' : 'Hide password',
+                    ),
+                  ),
+                  validator: (v) {
+                    final s = v ?? '';
+                    if (s.isEmpty) return 'Required';
+                    if (s.length < kBootstrapMinPasswordLength) {
+                      return 'At least $kBootstrapMinPasswordLength characters';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: AppTokens.lg),
+                TextFormField(
+                  controller: _confirmPassword,
+                  enabled: !_saving,
+                  obscureText: _obscureConfirm,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  textInputAction: TextInputAction.done,
+                  onFieldSubmitted: (_) => _saving ? null : _save(),
+                  decoration: InputDecoration(
+                    labelText: 'Confirm password',
+                    prefixIcon: const Icon(Icons.lock_outline_rounded),
+                    suffixIcon: IconButton(
+                      onPressed: _saving
+                          ? null
+                          : () => setState(
+                                () => _obscureConfirm = !_obscureConfirm,
+                              ),
+                      icon: Icon(
+                        _obscureConfirm
+                            ? Icons.visibility_outlined
+                            : Icons.visibility_off_outlined,
+                      ),
+                      tooltip: _obscureConfirm
+                          ? 'Show confirm password'
+                          : 'Hide confirm password',
+                    ),
+                  ),
+                  validator: (v) {
+                    final s = v ?? '';
+                    if (s.isEmpty) return 'Required';
+                    if (s != _password.text) return 'Passwords do not match';
+                    return null;
+                  },
+                ),
+              ],
               const SizedBox(height: AppTokens.lg),
               DropdownButtonFormField<UserRole>(
                 initialValue: _role,
@@ -354,11 +444,24 @@ class _UserFormDialogState extends State<_UserFormDialog> {
               ],
               if (_isCreate) ...[
                 const SizedBox(height: AppTokens.md),
-                Text(
-                  'Creating an account here only links a profile to an existing '
-                  'Firebase Auth user. Create the sign-in first in the console.',
-                  style: textTheme.bodySmall
-                      ?.copyWith(color: scheme.onSurfaceVariant),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.shield_outlined,
+                      size: 16,
+                      color: scheme.onSurfaceVariant,
+                      semanticLabel: 'Note',
+                    ),
+                    const SizedBox(width: AppTokens.sm),
+                    Expanded(
+                      child: Text(
+                        "The app will create this person's sign-in account.",
+                        style: textTheme.bodySmall
+                            ?.copyWith(color: scheme.onSurfaceVariant),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ],

@@ -7,47 +7,61 @@ void main() {
   const companies = {'c1', 'c2'};
 
   ValidationFailure? validate({
-    String uid = 'uid-1',
     String displayName = 'Jane',
     String email = 'jane@acme.com',
     UserRole role = UserRole.incharge,
     String companyId = 'c1',
     List<String> companyIds = const ['c1'],
+    String? password,
+    String? confirmPassword,
     bool validateEmail = true,
   }) =>
       validateUserAssignment(
-        uid: uid,
         displayName: displayName,
         email: email,
         role: role,
         companyId: companyId,
         companyIds: companyIds,
         existingCompanyIds: companies,
+        password: password,
+        confirmPassword: confirmPassword,
         validateEmail: validateEmail,
       );
 
-  test('valid non-admin assignment returns null', () {
-    expect(validate(), isNull);
+  test('valid non-admin CREATE (with matching passwords) returns null', () {
+    expect(
+      validate(password: 'secret1', confirmPassword: 'secret1'),
+      isNull,
+    );
   });
 
-  test('valid admin (no company, no memberships) returns null', () {
+  test('valid non-admin EDIT (no password fields) returns null', () {
+    expect(validate(validateEmail: false), isNull);
+  });
+
+  test('valid admin (no company, no memberships) CREATE returns null', () {
     expect(
-      validate(role: UserRole.admin, companyId: '', companyIds: const []),
+      validate(
+        role: UserRole.admin,
+        companyId: '',
+        companyIds: const [],
+        password: 'secret1',
+        confirmPassword: 'secret1',
+      ),
       isNull,
     );
   });
 
   test('valid multi-company non-admin returns null', () {
     expect(
-      validate(companyId: 'c1', companyIds: const ['c1', 'c2']),
+      validate(
+        companyId: 'c1',
+        companyIds: const ['c1', 'c2'],
+        password: 'secret1',
+        confirmPassword: 'secret1',
+      ),
       isNull,
     );
-  });
-
-  test('empty uid is rejected', () {
-    final f = validate(uid: '');
-    expect(f, isA<ValidationFailure>());
-    expect(f!.message, 'A Firebase user ID is required.');
   });
 
   test('empty display name is rejected', () {
@@ -70,8 +84,29 @@ void main() {
     expect(validate(email: '', validateEmail: false), isNull);
   });
 
+  test('short password is rejected on create path', () {
+    final f = validate(password: '12345', confirmPassword: '12345');
+    expect(f!.message, 'Use a password of at least 6 characters.');
+  });
+
+  test('mismatched passwords are rejected on create path', () {
+    final f = validate(password: 'secret1', confirmPassword: 'secret2');
+    expect(f!.message, 'Passwords do not match.');
+  });
+
+  test('password is not checked on edit path (password null)', () {
+    // EDIT never supplies a password; the password branch is skipped.
+    expect(validate(password: null, confirmPassword: null), isNull);
+  });
+
   test('admin with a companyId is rejected', () {
-    final f = validate(role: UserRole.admin, companyId: 'c1', companyIds: const []);
+    final f = validate(
+      role: UserRole.admin,
+      companyId: 'c1',
+      companyIds: const [],
+      password: 'secret1',
+      confirmPassword: 'secret1',
+    );
     expect(f!.message, 'Admins are not assigned to a company.');
   });
 
@@ -80,6 +115,8 @@ void main() {
       role: UserRole.admin,
       companyId: '',
       companyIds: const ['c1'],
+      password: 'secret1',
+      confirmPassword: 'secret1',
     );
     expect(f!.message, 'Admins are not assigned to a company.');
   });
@@ -102,5 +139,17 @@ void main() {
   test('non-admin with duplicate membership ids is rejected', () {
     final f = validate(companyId: 'c1', companyIds: const ['c1', 'c1']);
     expect(f!.message, 'Select an existing company.');
+  });
+
+  test('password check runs BEFORE role/company branching', () {
+    // A non-admin with a bad password AND no company still reports the
+    // password problem first (password is validated before the role branch).
+    final f = validate(
+      companyId: '',
+      companyIds: const [],
+      password: '123',
+      confirmPassword: '123',
+    );
+    expect(f!.message, 'Use a password of at least 6 characters.');
   });
 }

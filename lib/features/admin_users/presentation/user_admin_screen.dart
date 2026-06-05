@@ -19,7 +19,8 @@ import 'user_admin_providers.dart';
 import 'user_form_dialog.dart';
 
 /// Admin-only user maintenance: lists every user with role + company, supports
-/// add (paste-UID) and tap-to-edit. Three-state aware (loading/empty/error).
+/// add (the app creates the sign-in account) and tap-to-edit. Three-state aware
+/// (loading/empty/error).
 ///
 /// Route: `/admin/users` (add to app_router.dart — see notes). Role-gating is
 /// also enforced at the router level via the admin home subtree, but the screen
@@ -48,37 +49,42 @@ class UserAdminScreen extends ConsumerWidget {
       onSubmit: (s) async {
         // Pure validation first; surface its message inline (dialog stays open).
         // Email is immutable on edit, so only validate it on the create path.
+        // Passwords are CREATE-only (null on edit, which skips that branch).
         final invalid = validateUserAssignment(
-          uid: s.uid,
           displayName: s.displayName,
           email: s.email,
           role: s.role,
           companyId: s.companyId,
           companyIds: s.companyIds,
           existingCompanyIds: {for (final c in companies) c.id},
+          password: isCreate ? s.password : null,
+          confirmPassword: isCreate ? s.confirmPassword : null,
           validateEmail: isCreate,
         );
         if (invalid != null) return invalid.message;
 
         final repo = ref.read(userAdminRepositoryProvider);
-        final res = isCreate
-            ? await repo.createProfile(
-                AppUser(
-                  uid: s.uid,
-                  companyId: s.companyId,
-                  companyIds: s.companyIds,
-                  role: s.role,
-                  displayName: s.displayName,
-                  email: s.email,
-                ),
-              )
-            : await repo.updateAssignment(
-                uid: s.uid,
-                role: s.role,
-                companyId: s.companyId,
-                companyIds: s.companyIds,
-                displayName: s.displayName,
-              );
+        if (isCreate) {
+          // The app provisions the real Firebase Auth sign-in (on a secondary
+          // app, so this admin's session is untouched) then writes the profile.
+          // The password is handed to the repo and never persisted/logged here.
+          final res = await repo.createUserWithAccount(
+            email: s.email,
+            password: s.password,
+            displayName: s.displayName,
+            role: s.role,
+            companyId: s.companyId,
+            companyIds: s.companyIds,
+          );
+          return res.failureOrNull?.message; // null == success
+        }
+        final res = await repo.updateAssignment(
+          uid: existing.uid,
+          role: s.role,
+          companyId: s.companyId,
+          companyIds: s.companyIds,
+          displayName: s.displayName,
+        );
         return res.failureOrNull?.message; // null == success
       },
     );
@@ -378,8 +384,8 @@ class _UsersEmpty extends StatelessWidget {
   Widget build(BuildContext context) {
     return EmptyState(
       title: 'No users yet',
-      message: 'Add a user by pasting their UID from the Firebase Console, '
-          'then assign a role and company.',
+      message: 'Add a user — the app creates their sign-in account, then you '
+          'assign a role and company.',
       showMascot: false,
       action: FilledButton.icon(
         onPressed: onAdd,

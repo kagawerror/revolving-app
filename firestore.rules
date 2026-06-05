@@ -38,7 +38,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
       // Admin maintenance: this `write` covers admin create/update/delete of any
-      // profile doc, including creating a profile at an arbitrary (console-minted)
+      // profile doc, including creating a profile at an arbitrary (app-minted)
       // UID — required by the admin user console (no Cloud Functions on Spark).
       allow write: if isAdmin();
       // Owner self-service: a signed-in user may update ONLY their own
