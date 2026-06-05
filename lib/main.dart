@@ -5,7 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'app_keys.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
+import 'features/auth/domain/app_user.dart';
+import 'features/auth/presentation/auth_providers.dart';
 import 'features/messaging/presentation/messaging_initializer.dart';
+import 'features/welcome/domain/welcome_arming.dart';
 import 'features/welcome/presentation/welcome_gate.dart';
 import 'routing/app_router.dart';
 
@@ -25,6 +28,16 @@ class RevApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Re-arm the welcome greeting on every new signed-in identity (login or a
+    // user switch) so a fresh login shows the welcome before the app, not just
+    // cold start / sign-out. Re-emits of the same user and sign-out are inert
+    // (see shouldRearmWelcome); sign-out arming stays owned by signOutProvider.
+    ref.listen<AsyncValue<AppUser?>>(currentUserProvider, (prev, next) {
+      if (shouldRearmWelcome(prev?.valueOrNull, next.valueOrNull)) {
+        ref.read(welcomeDismissedProvider.notifier).state = false;
+      }
+    });
+
     final router = ref.watch(routerProvider);
     final theme = ref.watch(themeControllerProvider);
     return MaterialApp.router(
