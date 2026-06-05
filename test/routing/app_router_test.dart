@@ -19,6 +19,22 @@ const _incharge = AppUser(
   email: 'ina@acme.com',
 );
 
+const _approver = AppUser(
+  uid: 'm',
+  companyId: 'c1',
+  role: UserRole.manager,
+  displayName: 'Manny',
+  email: 'manny@acme.com',
+);
+
+const _employee = AppUser(
+  uid: 'e',
+  companyId: 'c1',
+  role: UserRole.employee,
+  displayName: 'Emma',
+  email: 'emma@acme.com',
+);
+
 void main() {
   test('homeFor routes each role to its shell', () {
     expect(homeFor(UserRole.admin), '/admin');
@@ -112,6 +128,48 @@ void main() {
       expect(
         redirectFor(auth: const AsyncData(_incharge), location: '/incharge'),
         isNull,
+      );
+    });
+
+    // /incharge/acknowledged is view-restricted: ONLY incharge + admin may see
+    // it. Approvers are already bounced by the prefix guard; an employee shares
+    // the /incharge shell yet must still be bounced by the targeted sub-path
+    // rule, since its home (/incharge) would otherwise admit it by prefix.
+    test('incharge may reach /incharge/acknowledged worklist', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_incharge),
+            location: '/incharge/acknowledged'),
+        isNull,
+      );
+    });
+
+    test('admin superuser may reach /incharge/acknowledged worklist', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_admin), location: '/incharge/acknowledged'),
+        isNull,
+      );
+    });
+
+    test('approver is bounced away from /incharge/acknowledged to /approvals', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_approver),
+            location: '/incharge/acknowledged'),
+        '/approvals',
+      );
+    });
+
+    test('employee is bounced away from /incharge/acknowledged to its home', () {
+      // Employee shares the /incharge shell (homeFor(employee) == /incharge), so
+      // the plain prefix guard would admit it. The targeted view-permission rule
+      // must bounce it back to its home instead.
+      expect(
+        redirectFor(
+            auth: const AsyncData(_employee),
+            location: '/incharge/acknowledged'),
+        homeFor(UserRole.employee),
       );
     });
   });

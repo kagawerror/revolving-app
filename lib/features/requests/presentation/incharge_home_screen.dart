@@ -56,6 +56,14 @@ class InchargeHomeScreen extends ConsumerWidget {
     final user = ref.watch(currentUserProvider).valueOrNull;
     return Scaffold(
       appBar: AppBar(title: const Text('Incharge'), actions: [
+        // Acknowledged worklist is view-restricted to incharge + admin; hide the
+        // entry point for an employee sharing this shell (router also guards it).
+        if (user?.role.canManageFundOrAdmin ?? false)
+          IconButton(
+            icon: const Icon(Icons.checklist_rounded),
+            tooltip: 'Acknowledged requests',
+            onPressed: () => context.push('/incharge/acknowledged'),
+          ),
         IconButton(
           icon: const Icon(Icons.dashboard_outlined),
           tooltip: 'Dashboard',

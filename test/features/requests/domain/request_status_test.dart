@@ -7,12 +7,17 @@ void main() {
     expect(RequestStatus.pendingAck.canTransitionTo(RequestStatus.acknowledged), isTrue);
     expect(RequestStatus.pendingAck.canTransitionTo(RequestStatus.rejected), isTrue);
     expect(RequestStatus.acknowledged.canTransitionTo(RequestStatus.readyForRelease), isTrue);
+    // One-tap release: acknowledged may move straight to released (the two-step
+    // acknowledged -> readyForRelease -> released path still works above).
+    expect(RequestStatus.acknowledged.canTransitionTo(RequestStatus.released), isTrue);
     expect(RequestStatus.readyForRelease.canTransitionTo(RequestStatus.released), isTrue);
     expect(RequestStatus.released.canTransitionTo(RequestStatus.replenished), isTrue);
   });
 
   test('illegal transitions are rejected', () {
     expect(RequestStatus.draft.canTransitionTo(RequestStatus.released), isFalse);
+    // Unlocking acknowledged -> released must NOT open earlier statuses.
+    expect(RequestStatus.pendingAck.canTransitionTo(RequestStatus.released), isFalse);
     expect(RequestStatus.released.canTransitionTo(RequestStatus.draft), isFalse);
     expect(RequestStatus.rejected.canTransitionTo(RequestStatus.acknowledged), isFalse);
   });

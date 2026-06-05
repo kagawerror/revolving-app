@@ -10,7 +10,7 @@ enum RequestStatus {
   static const Map<RequestStatus, Set<RequestStatus>> _allowed = {
     RequestStatus.draft: {RequestStatus.pendingAck},
     RequestStatus.pendingAck: {RequestStatus.acknowledged, RequestStatus.rejected},
-    RequestStatus.acknowledged: {RequestStatus.readyForRelease},
+    RequestStatus.acknowledged: {RequestStatus.readyForRelease, RequestStatus.released},
     RequestStatus.readyForRelease: {RequestStatus.released},
     RequestStatus.released: {RequestStatus.replenished},
     RequestStatus.rejected: {},

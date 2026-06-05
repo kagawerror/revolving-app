@@ -58,6 +58,18 @@ class FirestoreRequestRepository implements RequestRepository {
               s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
+  Stream<List<FundRequest>> watchAcknowledgedWorklist(String companyId) => _requests
+      .where('companyId', isEqualTo: companyId)
+      .where('status', whereIn: [
+        RequestStatus.acknowledged.name,
+        RequestStatus.readyForRelease.name,
+      ])
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map((s) =>
+          s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
+
+  @override
   Stream<List<FundRequest>> watchRecentByCompany(String companyId, int limit) => _requests
       .where('companyId', isEqualTo: companyId)
       .orderBy('createdAt', descending: true)
@@ -156,6 +168,20 @@ class FirestoreRequestRepository implements RequestRepository {
     String? lowBody;
     try {
       await _db.runTransaction((tx) async {
+        // ALL reads before ANY writes (Firestore transaction rule). Re-read the
+        // request against current server state so two users tapping RELEASE on
+        // the same acknowledged worklist row can't both deduct the fund.
+        final reqRef = _requests.doc(request.id);
+        final reqSnap = await tx.get(reqRef);
+        if (!reqSnap.exists) {
+          throw StateError('Request not found.');
+        }
+        final currentStatus =
+            RequestStatus.fromName(reqSnap.data()!['status'] as String?);
+        if (!currentStatus.canTransitionTo(RequestStatus.released)) {
+          // e.g. already 'released' by a concurrent tap — do NOT deduct again.
+          throw StateError('Request is no longer releasable.');
+        }
         final fundSnap = await tx.get(_fundRef(request.fundId));
         if (!fundSnap.exists) {
           throw StateError('Fund not found.');
@@ -167,16 +193,15 @@ class FirestoreRequestRepository implements RequestRepository {
           'availableBalanceCentavos': outcome.newBalance.centavos,
           'status': outcome.fundIsLow ? FundStatus.low.name : fund.status.name,
         });
-        tx.update(_requests.doc(request.id), {
+        tx.update(reqRef, {
           'status': RequestStatus.released.name,
           'releasedAt': FieldValue.serverTimestamp(),
         });
-        final historyRef =
-            _requests.doc(request.id).collection('history').doc();
+        final historyRef = reqRef.collection('history').doc();
         tx.set(historyRef, {
           'event': 'released',
           'actorUid': actorUid,
-          'from': request.status.name,
+          'from': currentStatus.name,
           'to': RequestStatus.released.name,
           'note': null,
           'at': FieldValue.serverTimestamp(),

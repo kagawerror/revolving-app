@@ -11,6 +11,7 @@ import '../features/admin_users/presentation/user_admin_screen.dart';
 import '../features/companies/presentation/admin_home_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
+import '../features/requests/presentation/acknowledged_worklist_screen.dart';
 import '../features/requests/presentation/approver_home_screen.dart';
 import '../features/requests/presentation/create_request_screen.dart';
 import '../features/requests/presentation/incharge_home_screen.dart';
@@ -45,6 +46,14 @@ String? redirectFor({
   // company on top of admin maintenance, so it may visit any signed-in route
   // without being bounced back to /admin (homeFor still lands it on /admin).
   if (user.role.isAdmin) return null;
+
+  // View-restricted worklist: ONLY incharge (and admin, already passed above)
+  // may see /incharge/acknowledged. An employee shares the /incharge shell, so
+  // the prefix guard below would admit it; bounce any non-incharge back home.
+  if (location.startsWith('/incharge/acknowledged') &&
+      user.role != UserRole.incharge) {
+    return home;
+  }
 
   // Shared routes (e.g. /profile) belong to no role shell, so the role-home
   // guard must let them through. Anything else: a signed-in user may only stay
@@ -91,6 +100,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/incharge/create',
         builder: (_, __) => const CreateRequestScreen(),
+      ),
+      GoRoute(
+        path: '/incharge/acknowledged',
+        builder: (_, __) => const AcknowledgedWorklistScreen(),
       ),
       GoRoute(path: '/approvals', builder: (_, __) => const ApproverHomeScreen()),
       GoRoute(

@@ -7,6 +7,11 @@ abstract interface class RequestRepository {
   Stream<List<FundRequest>> watchByStatus(String companyId, RequestStatus status);
   Stream<List<FundRequest>> watchRecentByCompany(String companyId, int limit);
 
+  /// Yields the company's requests with status `acknowledged` or
+  /// `readyForRelease` (the incharge release worklist), most-recent first.
+  /// Released items drop off automatically since the query filters by status.
+  Stream<List<FundRequest>> watchAcknowledgedWorklist(String companyId);
+
   /// Admin-only: every company's requests with the given status (unscoped).
   Stream<List<FundRequest>> watchByStatusAll(RequestStatus status);
 
