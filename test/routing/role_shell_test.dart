@@ -13,6 +13,7 @@ import 'package:rev_app/features/dashboard/presentation/dashboard_providers.dart
 import 'package:rev_app/features/notifications/presentation/alerts_bell.dart';
 import 'package:rev_app/features/notifications/presentation/notification_providers.dart';
 import 'package:rev_app/features/replenishment/presentation/replenishment_providers.dart';
+import 'package:rev_app/features/requests/presentation/aging_providers.dart';
 import 'package:rev_app/features/requests/presentation/approver_inbox_providers.dart';
 import 'package:rev_app/routing/role_shell_screen.dart';
 
@@ -74,17 +75,23 @@ void main() {
               .overrideWith((ref) => Stream.value(const [])),
           pendingReplenishmentsProvider
               .overrideWith((ref) => Stream.value(const [])),
+          // Aging bodies: incharge flat list + admin cross-company feed, both
+          // settled empty so their empty states render and pumpAndSettle ends.
+          agingRequestsProvider
+              .overrideWith((ref) => Stream.value(const [])),
+          allReleasedRequestsProvider
+              .overrideWith((ref) => Stream.value(const [])),
         ],
         child: MaterialApp(home: RoleShellScreen(role: role)),
       );
 
   group('RoleShellScreen chrome', () {
-    testWidgets('admin shell: 3 destinations, AlertsBell, New fund FAB, no '
+    testWidgets('admin shell: 4 destinations, AlertsBell, New fund FAB, no '
         'Worklist', (tester) async {
       await tester.pumpWidget(harness(_admin, role: UserRole.admin));
       await tester.pumpAndSettle();
 
-      expect(find.byType(NavigationDestination), findsNWidgets(3));
+      expect(find.byType(NavigationDestination), findsNWidgets(4));
       expect(find.byType(AlertsBell), findsOneWidget);
       expect(find.widgetWithText(FloatingActionButton, 'New fund'),
           findsOneWidget);
@@ -95,26 +102,29 @@ void main() {
       expect(find.byType(CompanyContextBar), findsNothing);
     });
 
-    testWidgets('incharge shell: 4 destinations incl. Worklist, New request FAB',
+    testWidgets('incharge shell: 5 destinations incl. Worklist, New request FAB',
         (tester) async {
       await tester.pumpWidget(harness(_incharge, role: UserRole.incharge));
       await tester.pumpAndSettle();
 
-      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(find.byType(NavigationDestination), findsNWidgets(5));
       expect(find.widgetWithText(NavigationDestination, 'Worklist'),
           findsOneWidget);
       expect(find.widgetWithText(FloatingActionButton, 'New request'),
           findsOneWidget);
     });
 
-    testWidgets('employee on the incharge shell: 3 destinations, no Worklist',
-        (tester) async {
+    testWidgets('employee on the incharge shell: 3 destinations, no Worklist, '
+        'no Aging', (tester) async {
       await tester.pumpWidget(harness(_employee, role: UserRole.incharge));
       await tester.pumpAndSettle();
 
       expect(find.byType(NavigationDestination), findsNWidgets(3));
       expect(find.widgetWithText(NavigationDestination, 'Worklist'),
           findsNothing);
+      // Aging is admin/incharge-only — the employee sharing the shell never
+      // sees it.
+      expect(find.widgetWithText(NavigationDestination, 'Aging'), findsNothing);
     });
 
     testWidgets('approver shell: 3 destinations, no FAB', (tester) async {
@@ -207,24 +217,30 @@ void main() {
                   .overrideWith((ref) => Stream.value(const [])),
               pendingReplenishmentsProvider
                   .overrideWith((ref) => Stream.value(const [])),
+              agingRequestsProvider
+                  .overrideWith((ref) => Stream.value(const [])),
+              allReleasedRequestsProvider
+                  .overrideWith((ref) => Stream.value(const [])),
             ],
             child: const MaterialApp(
                 home: RoleShellScreen(role: UserRole.incharge)),
           );
 
       await tester.pumpWidget(shrinkHarness());
-      // Start as an incharge: 4 tabs incl. Worklist.
+      // Start as an incharge: 5 tabs incl. Worklist (Home, Worklist, Aging,
+      // Dashboard, Profile).
       userController.add(_incharge);
       await tester.pumpAndSettle();
-      expect(find.byType(NavigationDestination), findsNWidgets(4));
+      expect(find.byType(NavigationDestination), findsNWidgets(5));
 
-      // Select the last tab (Profile, index 3) — only valid in the 4-tab set.
+      // Select the last tab (Profile, index 4) — only valid in the 5-tab set.
       await tester.tap(find.widgetWithText(NavigationDestination, 'Profile'));
       await tester.pumpAndSettle();
       expect(find.widgetWithText(AppBar, 'Profile'), findsOneWidget);
 
-      // The user resolves to an employee: Worklist drops, set shrinks to 3 and
-      // index 3 is now out of range. The shell must clamp without throwing.
+      // The user resolves to an employee: Worklist and Aging both drop, the set
+      // shrinks to 3 (Home, Dashboard, Profile) and index 4 is now out of
+      // range. The shell must clamp without throwing.
       userController.add(_employee);
       await tester.pumpAndSettle();
 

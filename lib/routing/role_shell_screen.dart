@@ -14,6 +14,8 @@ import '../features/companies/presentation/admin_home_body.dart';
 import '../features/dashboard/presentation/dashboard_body.dart';
 import '../features/profile/presentation/profile_body.dart';
 import '../features/requests/presentation/acknowledged_worklist_body.dart';
+import '../features/requests/presentation/admin_aging_body.dart';
+import '../features/requests/presentation/aging_body.dart';
 import '../features/requests/presentation/approver_home_body.dart';
 import '../features/requests/presentation/incharge_home_body.dart';
 
@@ -54,6 +56,10 @@ class _RoleShellScreenState extends ConsumerState<RoleShellScreen> {
         return const InchargeHomeBody();
       case ShellTab.acknowledged:
         return const AcknowledgedWorklistBody();
+      case ShellTab.aging:
+        return widget.role.isAdmin
+            ? const AdminAgingBody()
+            : const AgingBody();
       case ShellTab.dashboard:
         return const DashboardBody();
       case ShellTab.profile:
@@ -72,9 +78,18 @@ class _RoleShellScreenState extends ConsumerState<RoleShellScreen> {
         !widget.role.canApprove &&
         (me?.role.canManageFundOrAdmin ?? widget.role.canManageFundOrAdmin);
 
+    // Aging on the incharge shell is incharge-only: an employee shares this
+    // shell but must not see it. Gate on the real user's canManageFund (incharge
+    // only) exactly like the worklist, reading currentUser so the route's fixed
+    // role can't leak Aging to an employee. The admin shell lists Aging itself.
+    final showAging = !widget.role.isAdmin &&
+        !widget.role.canApprove &&
+        (me?.role.canManageFund ?? widget.role.canManageFund);
+
     final destinations = destinationsForRole(
       widget.role,
       showAcknowledged: showAcknowledged,
+      showAging: showAging,
     );
 
     // Guard against the tab set shrinking under a stale index (e.g. an admin's

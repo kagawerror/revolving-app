@@ -98,6 +98,22 @@ class FirestoreRequestRepository implements RequestRepository {
       .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
+  Stream<List<FundRequest>> watchReleasedByCompany(String companyId) => _requests
+      .where('companyId', isEqualTo: companyId)
+      .where('status', isEqualTo: RequestStatus.released.name)
+      .orderBy('createdAt', descending: true)
+      .snapshots()
+      .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
+
+  @override
+  Stream<List<FundRequest>> watchReleasedAll(int limit) => _requests
+      .where('status', isEqualTo: RequestStatus.released.name)
+      .orderBy('createdAt', descending: true)
+      .limit(limit)
+      .snapshots()
+      .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
+
+  @override
   Future<Result<String>> create(FundRequest request) async {
     if (request.status == RequestStatus.pendingAck && !request.hasProof) {
       return const Err(ValidationFailure('A proof image is required.'));

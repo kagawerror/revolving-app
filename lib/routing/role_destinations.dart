@@ -5,7 +5,7 @@ import '../features/auth/domain/app_user.dart';
 /// The logical tabs a role shell can expose. The shell maps each tab to a body
 /// widget (per role for [ShellTab.home]); this config stays body-free so it is
 /// pure and trivially unit-testable.
-enum ShellTab { home, acknowledged, dashboard, profile }
+enum ShellTab { home, acknowledged, aging, dashboard, profile }
 
 /// The primary create action for a shell. Shown ONLY on the Home tab and pushed
 /// via GoRouter. Kept as a tiny value object so [ShellDestination] (and thus the
@@ -77,6 +77,14 @@ const _ackDestination = ShellDestination(
   title: 'Acknowledged',
 );
 
+const _agingDestination = ShellDestination(
+  tab: ShellTab.aging,
+  icon: Icons.hourglass_bottom_outlined,
+  selectedIcon: Icons.hourglass_bottom_rounded,
+  label: 'Aging',
+  title: 'Aging',
+);
+
 const _dashboardDestination = ShellDestination(
   tab: ShellTab.dashboard,
   icon: Icons.dashboard_outlined,
@@ -130,30 +138,43 @@ const _approverHome = ShellDestination(
 
 /// Pure, deterministic destination list for a role's bottom-nav shell.
 ///
-///   * **admin**    => Home, Dashboard, Profile
-///   * **incharge** => Home, Worklist (acknowledged), Dashboard, Profile
+///   * **admin**    => Home, Aging, Dashboard, Profile
+///   * **incharge** => Home, Worklist (acknowledged), Aging, Dashboard, Profile
 ///   * **approver** => Home, Dashboard, Profile
 ///   * **employee** (shares the incharge shell) => Home, Dashboard, Profile
-///     (no Worklist — gate via [showAcknowledged]).
+///     (no Worklist — gate via [showAcknowledged]; no Aging — gate via
+///     [showAging]).
 ///
 /// [showAcknowledged] is the single switch for the acknowledged tab; the shell
 /// passes `role.canManageFundOrAdmin` for the incharge shell and `false`
 /// elsewhere, so this function never needs to know about session state.
+/// [showAging] gates the Aging tab on the incharge shell the same way: the shell
+/// passes `role.canManageFund` (incharge only) so the employee who shares the
+/// shell never sees it. The admin branch lists Aging explicitly, independent of
+/// this flag.
 List<ShellDestination> destinationsForRole(
   UserRole role, {
   required bool showAcknowledged,
+  bool showAging = false,
 }) {
   if (role.isAdmin) {
-    return const [_adminHome, _dashboardDestination, _profileDestination];
+    return const [
+      _adminHome,
+      _agingDestination,
+      _dashboardDestination,
+      _profileDestination,
+    ];
   }
   if (role.canApprove) {
     return const [_approverHome, _dashboardDestination, _profileDestination];
   }
   // incharge + employee share the incharge home/shell. Only fund-managers
-  // (incharge, or an admin operating the shell) get the acknowledged worklist.
+  // (incharge, or an admin operating the shell) get the acknowledged worklist;
+  // Aging is likewise incharge-only here (employee never sees it).
   return [
     _inchargeHome,
     if (showAcknowledged) _ackDestination,
+    if (showAging) _agingDestination,
     _dashboardDestination,
     _profileDestination,
   ];

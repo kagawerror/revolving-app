@@ -21,6 +21,13 @@ abstract interface class RequestRepository {
   /// Admin-only: most-recent requests across every company (unscoped).
   Stream<List<FundRequest>> watchRecentAll(int limit);
 
+  /// Released requests for one company, newest-first — the incharge aging list.
+  Stream<List<FundRequest>> watchReleasedByCompany(String companyId);
+
+  /// Admin-only: released requests across every company, newest-first, capped
+  /// at [limit] — the source for the grouped admin aging view.
+  Stream<List<FundRequest>> watchReleasedAll(int limit);
+
   Future<Result<String>> create(FundRequest request);
 
   /// Generic status move that also appends a history event. Used for

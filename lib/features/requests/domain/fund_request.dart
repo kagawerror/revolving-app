@@ -16,6 +16,11 @@ class FundRequest extends Equatable {
   final RequestStatus status;
   final String? replenishmentId;
 
+  /// Server creation time. Null until the serverTimestamp materializes on the
+  /// first server round-trip (and absent on legacy docs). Read-only: never set
+  /// on create (toCreateMap uses FieldValue.serverTimestamp()).
+  final DateTime? createdAt;
+
   const FundRequest({
     required this.id,
     required this.companyId,
@@ -27,6 +32,7 @@ class FundRequest extends Equatable {
     required this.proofImageUrl,
     required this.status,
     this.replenishmentId,
+    this.createdAt,
   });
 
   bool get hasProof => proofImageUrl.isNotEmpty;
@@ -42,6 +48,7 @@ class FundRequest extends Equatable {
         proofImageUrl: (m['proofImageUrl'] ?? '') as String,
         status: RequestStatus.fromName(m['status'] as String?),
         replenishmentId: m['replenishmentId'] as String?,
+        createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
       );
 
   Map<String, dynamic> toCreateMap() => {
@@ -60,6 +67,6 @@ class FundRequest extends Equatable {
   @override
   List<Object?> get props => [
         id, companyId, fundId, createdByUid, beneficiaryName,
-        amount, purpose, proofImageUrl, status, replenishmentId,
+        amount, purpose, proofImageUrl, status, replenishmentId, createdAt,
       ];
 }

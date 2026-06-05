@@ -1,3 +1,4 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/requests/domain/fund_request.dart';
@@ -23,5 +24,19 @@ void main() {
   test('hasProof is false when url empty', () {
     final r = FundRequest.fromMap('r1', {'proofImageUrl': '', 'amountCentavos': 1});
     expect(r.hasProof, isFalse);
+  });
+
+  test('fromMap parses createdAt from a Timestamp', () {
+    final ts = Timestamp.fromDate(DateTime(2026, 6, 5, 9, 30));
+    final r = FundRequest.fromMap('r1', {
+      'amountCentavos': 1,
+      'createdAt': ts,
+    });
+    expect(r.createdAt, DateTime(2026, 6, 5, 9, 30));
+  });
+
+  test('createdAt is null when absent', () {
+    final r = FundRequest.fromMap('r1', {'amountCentavos': 1});
+    expect(r.createdAt, isNull);
   });
 }
