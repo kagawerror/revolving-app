@@ -181,7 +181,7 @@ void main() {
   // validates repository logic ONLY. The firestore.rules branch permitting an
   // approver to drive a request from 'released' -> 'replenished' must still be
   // verified against the emulator or in production manually.
-  test('end-to-end: release -> createDraft -> approve resets the fund', () async {
+  test('end-to-end: release -> createDraft -> approve adds the total back to the fund', () async {
     db = FakeFirebaseFirestore();
     await db.collection('funds').doc('f1').set({
       'companyId': 'c1', 'name': 'PC',
