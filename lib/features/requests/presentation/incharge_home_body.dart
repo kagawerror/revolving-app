@@ -8,6 +8,7 @@ import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
+import '../../../core/widgets/success_overlay.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
@@ -16,8 +17,7 @@ import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
-import '../../replenishment/presentation/replenish_review_screen.dart';
-import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../replenishment/presentation/replenish_select_dialog.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_status.dart';
 import 'request_detail_screen.dart';
@@ -30,22 +30,6 @@ import 'request_status_visual.dart';
 final _fundRequestsProvider =
     StreamProvider.family((ref, (String, String) key) =>
         ref.watch(requestRepositoryProvider).watchByFund(key.$1, key.$2));
-
-/// Compiles a replenishment draft for [fundId], then opens the review screen.
-Future<void> _startReplenish(
-    BuildContext context, WidgetRef ref, String fundId, String uid) async {
-  final res = await ref
-      .read(replenishmentRepositoryProvider)
-      .createDraft(fundId: fundId, createdByUid: uid);
-  if (!context.mounted) return;
-  final draft = res.valueOrNull;
-  if (draft == null) {
-    context.showFailure(res.failureOrNull!);
-    return;
-  }
-  Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => ReplenishReviewScreen(draft: draft)));
-}
 
 /// Body of the incharge landing tab: the scrolling per-fund request list for the
 /// resolved company. Body-only — the [RoleShellScreen] owns the Scaffold,
@@ -130,7 +114,26 @@ class _FundSectionState extends ConsumerState<_FundSection> {
   Future<void> _replenish(String uid) async {
     setState(() => _busy = true);
     try {
-      await _startReplenish(context, ref, widget.fund.id, uid);
+      final all = ref
+              .read(_fundRequestsProvider(
+                  (widget.fund.companyId, widget.fund.id)))
+              .valueOrNull ??
+          const <FundRequest>[];
+      final releasable = all
+          .where((r) =>
+              r.status == RequestStatus.released && r.replenishmentId == null)
+          .toList();
+      if (!mounted) return;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => ReplenishSelectDialog(
+          fund: widget.fund,
+          releasable: releasable,
+        ),
+      );
+      if (ok == true && mounted) {
+        await SuccessOverlay.show(context, 'Submitted for approval');
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
