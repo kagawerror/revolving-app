@@ -7,6 +7,7 @@ import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/auth/presentation/auth_providers.dart';
 import 'package:rev_app/features/companies/domain/fund.dart';
 import 'package:rev_app/features/companies/domain/fund_repository.dart';
+import 'package:rev_app/features/companies/presentation/admin_company_context_bar.dart';
 import 'package:rev_app/features/companies/presentation/admin_providers.dart';
 import 'package:rev_app/features/dashboard/presentation/dashboard_providers.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
@@ -34,11 +35,19 @@ Fund _fund(String id, String companyId, String name) => Fund(
 class _FakeFundRepo implements FundRepository {
   static final all = [_fund('a', 'c1', 'A'), _fund('b', 'c2', 'B')];
   static final company = [_fund('c', 'c1', 'C')];
+  // Per-company fund lists so a test can prove which companyId the dashboard
+  // queried (i.e. that the company picker actually drove the scope).
+  static final byCompany = <String, List<Fund>>{
+    'c1': company,
+    'cA': [_fund('fa', 'cA', 'Fund A')],
+    'cB': [_fund('fb', 'cB', 'Fund B')],
+  };
 
   @override
   Stream<List<Fund>> watchAll() => Stream.value(all);
   @override
-  Stream<List<Fund>> watchByCompany(String companyId) => Stream.value(company);
+  Stream<List<Fund>> watchByCompany(String companyId) =>
+      Stream.value(byCompany[companyId] ?? const <Fund>[]);
   @override
   Stream<Fund?> watchById(String fundId) => const Stream.empty();
   @override
@@ -83,6 +92,12 @@ class _FakeRequestRepo implements RequestRepository {
     _req('r2', 'c2', RequestStatus.acknowledged),
   ];
   static final companyRecent = [_req('r3', 'c1', RequestStatus.released)];
+  // Per-company recent lists so a test can prove which companyId was queried.
+  static final recentByCompany = <String, List<FundRequest>>{
+    'c1': companyRecent,
+    'cA': [_req('ra', 'cA', RequestStatus.released)],
+    'cB': [_req('rb', 'cB', RequestStatus.acknowledged)],
+  };
 
   @override
   Stream<List<FundRequest>> watchByStatus(String companyId, RequestStatus status) =>
@@ -92,7 +107,7 @@ class _FakeRequestRepo implements RequestRepository {
       Stream.value(allPending);
   @override
   Stream<List<FundRequest>> watchRecentByCompany(String companyId, int limit) =>
-      Stream.value(companyRecent);
+      Stream.value(recentByCompany[companyId] ?? const <FundRequest>[]);
   @override
   Stream<List<FundRequest>> watchRecentAll(int limit) => Stream.value(allRecent);
 
@@ -168,9 +183,15 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
       const Ok(null);
 }
 
-AppUser _user(UserRole role, String companyId) => AppUser(
+AppUser _user(
+  UserRole role,
+  String companyId, {
+  List<String> memberships = const [],
+}) =>
+    AppUser(
       uid: 'u',
       companyId: companyId,
+      companyIds: memberships,
       role: role,
       displayName: 'n',
       email: 'e@x.com',
@@ -261,5 +282,84 @@ void main() {
     await c.read(currentUserProvider.future);
     await c.read(recentRequestsProvider.future);
     expect(c.read(recentRequestsProvider).value, _FakeRequestRepo.companyRecent);
+  });
+
+  // --- Company picker drives the dashboard (multi-company non-admin) ---------
+
+  test(
+      'multi-company incharge: dashboard funds follow the picker (B), and flip '
+      'back to A when the picker flips', () async {
+    final c = container(
+      _user(UserRole.incharge, 'cA', memberships: const ['cA', 'cB']),
+    );
+    c.listen(dashboardFundsProvider, (_, _) {});
+    await c.read(currentUserProvider.future);
+
+    // Picker on B => B's funds.
+    c.read(adminActiveCompanyProvider.notifier).state = 'cB';
+    await c.read(companyFundsProvider('cB').future);
+    expect(c.read(dashboardFundsProvider).value, _FakeFundRepo.byCompany['cB']);
+
+    // Flip the picker to A => A's funds.
+    c.read(adminActiveCompanyProvider.notifier).state = 'cA';
+    await c.read(companyFundsProvider('cA').future);
+    expect(c.read(dashboardFundsProvider).value, _FakeFundRepo.byCompany['cA']);
+  });
+
+  test(
+      'multi-company incharge: recent requests stream is scoped to the picked '
+      'company (B), and flips with the picker', () async {
+    final c = container(
+      _user(UserRole.incharge, 'cA', memberships: const ['cA', 'cB']),
+    );
+    c.listen(recentRequestsProvider, (_, _) {});
+    await c.read(currentUserProvider.future);
+
+    c.read(adminActiveCompanyProvider.notifier).state = 'cB';
+    await c.read(recentRequestsProvider.future);
+    expect(c.read(recentRequestsProvider).value,
+        _FakeRequestRepo.recentByCompany['cB']);
+
+    c.read(adminActiveCompanyProvider.notifier).state = 'cA';
+    await c.read(recentRequestsProvider.future);
+    expect(c.read(recentRequestsProvider).value,
+        _FakeRequestRepo.recentByCompany['cA']);
+  });
+
+  test(
+      'multi-company incharge: with no picker selection, dashboard defaults to '
+      'the first membership', () async {
+    final c = container(
+      _user(UserRole.incharge, 'cA', memberships: const ['cA', 'cB']),
+    );
+    c.listen(dashboardFundsProvider, (_, _) {});
+    await c.read(currentUserProvider.future);
+    // adminActiveCompanyProvider is null => effectiveCompanyId => first
+    // membership (cA).
+    await c.read(companyFundsProvider('cA').future);
+    expect(c.read(dashboardFundsProvider).value, _FakeFundRepo.byCompany['cA']);
+  });
+
+  test('admin dashboard funds ignore the company picker (stay watchAll)',
+      () async {
+    final c = container(_user(UserRole.admin, ''));
+    c.listen(dashboardFundsProvider, (_, _) {});
+    await c.read(currentUserProvider.future);
+    // Even with a picker selection, an admin's funds aggregate across all.
+    c.read(adminActiveCompanyProvider.notifier).state = 'cB';
+    await c.read(allFundsProvider.future);
+    expect(c.read(dashboardFundsProvider).value, _FakeFundRepo.all);
+  });
+
+  test(
+      'single-company non-admin: dashboard resolves to their sole membership, '
+      'ignoring a stray picker value', () async {
+    final c = container(_user(UserRole.incharge, 'c1'));
+    c.listen(dashboardFundsProvider, (_, _) {});
+    await c.read(currentUserProvider.future);
+    // A stray session value must never leak into a single-company user's scope.
+    c.read(adminActiveCompanyProvider.notifier).state = 'cB';
+    await c.read(companyFundsProvider('c1').future);
+    expect(c.read(dashboardFundsProvider).value, _FakeFundRepo.company);
   });
 }

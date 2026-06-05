@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/company.dart';
 import '../../companies/domain/fund.dart';
+import '../../companies/presentation/admin_active_company.dart';
+import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
 import '../../replenishment/domain/replenishment.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
@@ -11,15 +13,27 @@ import '../../requests/presentation/approver_inbox_providers.dart';
 import '../../requests/presentation/request_providers.dart';
 import '../domain/dashboard_summary.dart';
 
+/// The company whose data the dashboard renders. Company-scoped roles honor the
+/// in-session company picker via [effectiveCompanyId]; admins resolve to '' and
+/// stay on their cross-company ("all") queries below.
+final dashboardCompanyIdProvider = Provider<String>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return '';
+  return effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+});
+
 /// Funds feeding the dashboard, scoped by role. Admins belong to no company
 /// (`companyId == ''`), so a company-scoped query would always be empty — they
-/// instead see every company's funds. Company-scoped roles see only their own.
+/// instead see every company's funds. Company-scoped roles see the company
+/// currently selected in the picker (their sole membership when single-company),
+/// resolved via [dashboardCompanyIdProvider].
 final dashboardFundsProvider = Provider<AsyncValue<List<Fund>>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const AsyncValue.loading();
+  final companyId = ref.watch(dashboardCompanyIdProvider);
   return user.role.isAdmin
       ? ref.watch(allFundsProvider)
-      : ref.watch(companyFundsProvider(user.companyId));
+      : ref.watch(companyFundsProvider(companyId));
 });
 
 /// Pending-ack requests feeding the dashboard, scoped by role. Admins see every
@@ -50,9 +64,10 @@ final recentRequestsProvider = StreamProvider<List<FundRequest>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return Stream.value(const <FundRequest>[]);
   final repo = ref.watch(requestRepositoryProvider);
+  final companyId = ref.watch(dashboardCompanyIdProvider);
   return user.role.isAdmin
       ? repo.watchRecentAll(15)
-      : repo.watchRecentByCompany(user.companyId, 15);
+      : repo.watchRecentByCompany(companyId, 15);
 });
 
 /// Map of companyId -> company name, for labeling fund cards. Sourced from the
