@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error/failure_ui.dart';
@@ -10,10 +11,10 @@ import '../../requests/domain/fund_request.dart';
 import '../domain/replenishment.dart';
 import 'replenishment_providers.dart';
 
-/// Popup for the incharge to pick which released requests to replenish, then
-/// submit them for approval in one tap. Pops `true` on a successful submit so
-/// the caller can show the success overlay; stays open (with a snackbar) on
-/// failure. [releasable] is the already-filtered released-unreplenished list.
+/// Popup for the incharge to pick released requests to replenish — each Full or
+/// Partial (amount + remarks) — and submit them for approval in one tap. Pops
+/// `true` on a successful submit so the caller can show the success overlay.
+/// [releasable] is the already-filtered released list (remaining > 0).
 class ReplenishSelectDialog extends ConsumerStatefulWidget {
   final Fund fund;
   final List<FundRequest> releasable;
@@ -30,6 +31,9 @@ class ReplenishSelectDialog extends ConsumerStatefulWidget {
 
 class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
   final _selected = <String>{};
+  final _partial = <String>{};
+  final _amount = <String, String>{}; // requestId -> raw pesos text
+  final _remarks = <String, String>{};
   final _notes = TextEditingController();
   bool _busy = false;
 
@@ -39,22 +43,62 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
     super.dispose();
   }
 
+  /// Parsed partial centavos for a row, or null if blank/invalid.
+  int? _partialCentavos(String id) {
+    final t = (_amount[id] ?? '').trim();
+    if (t.isEmpty) return null;
+    final pesos = num.tryParse(t);
+    if (pesos == null) return null;
+    return (pesos * 100).round();
+  }
+
+  bool _rowValid(FundRequest r) {
+    if (!_partial.contains(r.id)) return true; // Full is always valid
+    final c = _partialCentavos(r.id);
+    if (c == null || c <= 0 || c >= r.remaining.centavos) return false;
+    return (_remarks[r.id] ?? '').trim().isNotEmpty;
+  }
+
+  bool get _canSubmit =>
+      !_busy &&
+      _selected.isNotEmpty &&
+      widget.releasable.where((r) => _selected.contains(r.id)).every(_rowValid);
+
   Money get _total {
     var sum = Money.zero;
     for (final r in widget.releasable) {
-      if (_selected.contains(r.id)) sum += r.amount;
+      if (!_selected.contains(r.id)) continue;
+      if (_partial.contains(r.id)) {
+        final c = _partialCentavos(r.id);
+        if (c != null && c > 0 && c < r.remaining.centavos) {
+          sum += Money.fromCentavos(c);
+        }
+      } else {
+        sum += r.remaining;
+      }
     }
     return sum;
   }
 
   Future<void> _submit() async {
     final user = ref.read(currentUserProvider).valueOrNull;
-    if (user == null || _selected.isEmpty) return;
+    if (user == null || !_canSubmit) return;
+    final items = <ReplenishmentItem>[];
+    for (final r in widget.releasable) {
+      if (!_selected.contains(r.id)) continue;
+      if (_partial.contains(r.id)) {
+        items.add(ReplenishmentItem(
+          requestId: r.id,
+          isPartial: true,
+          amount: Money.fromCentavos(_partialCentavos(r.id)!),
+          remarks: (_remarks[r.id] ?? '').trim(),
+        ));
+      } else {
+        items.add(ReplenishmentItem(
+            requestId: r.id, isPartial: false, amount: r.remaining));
+      }
+    }
     setState(() => _busy = true);
-    final items = _selected
-        .map((id) => ReplenishmentItem(
-            requestId: id, isPartial: false, amount: Money.zero))
-        .toList();
     final res = await ref.read(replenishmentRepositoryProvider).createAndSubmit(
           fundId: widget.fund.id,
           items: items,
@@ -89,31 +133,7 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
                     child: ListView(
                       shrinkWrap: true,
                       children: [
-                        for (final r in widget.releasable)
-                          CheckboxListTile(
-                            dense: true,
-                            value: _selected.contains(r.id),
-                            onChanged: _busy
-                                ? null
-                                : (v) => setState(() {
-                                      if (v ?? false) {
-                                        _selected.add(r.id);
-                                      } else {
-                                        _selected.remove(r.id);
-                                      }
-                                    }),
-                            title: Text(r.beneficiaryName),
-                            subtitle: Text(
-                              r.purpose,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            secondary: Text(
-                              r.amount.format(),
-                              style: textTheme.bodyMedium
-                                  ?.copyWith(fontWeight: FontWeight.w700),
-                            ),
-                          ),
+                        for (final r in widget.releasable) _row(r, textTheme),
                       ],
                     ),
                   ),
@@ -143,7 +163,7 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: (_busy || _selected.isEmpty) ? null : _submit,
+          onPressed: _canSubmit ? _submit : null,
           child: _busy
               ? const SizedBox(
                   height: 18,
@@ -152,6 +172,89 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
                 )
               : const Text('Submit for approval'),
         ),
+      ],
+    );
+  }
+
+  Widget _row(FundRequest r, TextTheme textTheme) {
+    final checked = _selected.contains(r.id);
+    final isPartial = _partial.contains(r.id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        CheckboxListTile(
+          dense: true,
+          value: checked,
+          onChanged: _busy
+              ? null
+              : (v) => setState(() {
+                    if (v ?? false) {
+                      _selected.add(r.id);
+                    } else {
+                      _selected.remove(r.id);
+                      _partial.remove(r.id);
+                    }
+                  }),
+          title: Text(r.beneficiaryName),
+          subtitle: Text(
+            r.purpose,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          secondary: Text(
+            r.remaining.format(),
+            style: textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w700),
+          ),
+        ),
+        if (checked)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppTokens.lg, 0, AppTokens.md, AppTokens.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                SegmentedButton<bool>(
+                  segments: const [
+                    ButtonSegment(value: false, label: Text('Full')),
+                    ButtonSegment(value: true, label: Text('Partial')),
+                  ],
+                  selected: {isPartial},
+                  onSelectionChanged: _busy
+                      ? null
+                      : (s) => setState(() {
+                            if (s.first) {
+                              _partial.add(r.id);
+                            } else {
+                              _partial.remove(r.id);
+                            }
+                          }),
+                ),
+                if (isPartial) ...[
+                  const SizedBox(height: AppTokens.sm),
+                  TextField(
+                    enabled: !_busy,
+                    keyboardType:
+                        const TextInputType.numberWithOptions(decimal: true),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.]'))
+                    ],
+                    decoration: InputDecoration(
+                      labelText: 'Partial amount',
+                      helperText: 'Less than ${r.remaining.format()}',
+                    ),
+                    onChanged: (v) => setState(() => _amount[r.id] = v),
+                  ),
+                  const SizedBox(height: AppTokens.xs),
+                  TextField(
+                    enabled: !_busy,
+                    decoration: const InputDecoration(labelText: 'Remarks'),
+                    onChanged: (v) => setState(() => _remarks[r.id] = v),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        const Divider(height: 1),
       ],
     );
   }

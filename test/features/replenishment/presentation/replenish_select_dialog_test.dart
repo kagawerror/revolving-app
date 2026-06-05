@@ -64,4 +64,62 @@ void main() {
     expect(find.text('No released requests to replenish.'), findsOneWidget);
     expect(find.byType(CheckboxListTile), findsNothing);
   });
+
+  testWidgets('switching a row to Partial reveals amount + remarks and gates submit',
+      (tester) async {
+    await tester.pumpWidget(_host([_req('r1', 400000)]));
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pump();
+    // Default Full -> submit enabled.
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Submit for approval'))
+            .onPressed,
+        isNotNull);
+
+    // Switch to Partial.
+    await tester.tap(find.text('Partial'));
+    await tester.pump();
+    // Amount + remarks fields appear; submit disabled until valid.
+    expect(find.widgetWithText(TextField, 'Partial amount'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Remarks'), findsOneWidget);
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Submit for approval'))
+            .onPressed,
+        isNull);
+
+    // Enter a valid partial (< 4000) + remarks -> enabled.
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Partial amount'), '1000');
+    await tester.enterText(find.widgetWithText(TextField, 'Remarks'), 'half');
+    await tester.pump();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Submit for approval'))
+            .onPressed,
+        isNotNull);
+  });
+
+  testWidgets('a partial amount equal to or above remaining keeps submit disabled',
+      (tester) async {
+    await tester.pumpWidget(_host([_req('r1', 400000)]));
+    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.pump();
+    await tester.tap(find.text('Partial'));
+    await tester.pump();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Partial amount'), '4000'); // == remaining
+    await tester.enterText(find.widgetWithText(TextField, 'Remarks'), 'all');
+    await tester.pump();
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Submit for approval'))
+            .onPressed,
+        isNull);
+  });
 }
