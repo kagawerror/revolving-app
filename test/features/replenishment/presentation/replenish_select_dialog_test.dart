@@ -44,7 +44,9 @@ void main() {
         find.widgetWithText(FilledButton, 'Submit for approval'));
     expect(submit.onPressed, isNull); // disabled
 
-    await tester.tap(find.byType(CheckboxListTile).first);
+    // Rows are tappable selection cards; tapping the beneficiary name toggles
+    // selection via the row's InkWell.
+    await tester.tap(find.text('Bene r1'));
     await tester.pump();
 
     final submit2 = tester.widget<FilledButton>(
@@ -54,21 +56,21 @@ void main() {
 
   testWidgets('selected total reflects the checked requests', (tester) async {
     await tester.pumpWidget(_host([_req('r1', 400000), _req('r2', 300000)]));
-    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.tap(find.text('Bene r1'));
     await tester.pump();
     expect(find.textContaining('₱4,000.00'), findsWidgets);
   });
 
   testWidgets('shows an empty state when nothing is releasable', (tester) async {
     await tester.pumpWidget(_host(const []));
-    expect(find.text('No released requests to replenish.'), findsOneWidget);
-    expect(find.byType(CheckboxListTile), findsNothing);
+    expect(find.text('Nothing to replenish'), findsOneWidget);
+    expect(find.textContaining('Bene'), findsNothing); // no request cards
   });
 
   testWidgets('switching a row to Partial reveals amount + remarks and gates submit',
       (tester) async {
     await tester.pumpWidget(_host([_req('r1', 400000)]));
-    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.tap(find.text('Bene r1'));
     await tester.pump();
     // Default Full -> submit enabled.
     expect(
@@ -104,10 +106,41 @@ void main() {
         isNotNull);
   });
 
+  testWidgets('deselecting a partial row clears it from the running total',
+      (tester) async {
+    await tester.pumpWidget(_host([_req('r1', 400000), _req('r2', 300000)]));
+    // Select r1 and give it a partial amount of ₱1,000. (The amount alone drives
+    // the running total; remarks only gate submit, so they're omitted here — a
+    // second focused field would otherwise let the harness swallow the next tap.)
+    await tester.tap(find.text('Bene r1'));
+    await tester.pump();
+    await tester.tap(find.text('Partial'));
+    await tester.pump();
+    await tester.enterText(
+        find.widgetWithText(TextField, 'Partial amount'), '1000');
+    await tester.pump();
+    expect(find.textContaining('₱1,000.00'), findsWidgets); // partial counted
+
+    // Deselect r1: its partial amount must drop out of the total, and the
+    // Full/Partial control must disappear with the card.
+    await tester.tap(find.text('Bene r1'));
+    await tester.pump();
+    expect(find.textContaining('₱1,000.00'), findsNothing);
+    expect(find.text('Partial'), findsNothing);
+
+    // Submit is disabled again with nothing selected.
+    expect(
+        tester
+            .widget<FilledButton>(
+                find.widgetWithText(FilledButton, 'Submit for approval'))
+            .onPressed,
+        isNull);
+  });
+
   testWidgets('a partial amount equal to or above remaining keeps submit disabled',
       (tester) async {
     await tester.pumpWidget(_host([_req('r1', 400000)]));
-    await tester.tap(find.byType(CheckboxListTile).first);
+    await tester.tap(find.text('Bene r1'));
     await tester.pump();
     await tester.tap(find.text('Partial'));
     await tester.pump();

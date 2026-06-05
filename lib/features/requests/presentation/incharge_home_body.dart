@@ -124,8 +124,11 @@ class _FundSectionState extends ConsumerState<_FundSection> {
               r.status == RequestStatus.released && r.remaining.centavos > 0)
           .toList();
       if (!mounted) return;
-      final ok = await showDialog<bool>(
+      final ok = await showModalBottomSheet<bool>(
         context: context,
+        isScrollControlled: true,
+        useSafeArea: true,
+        backgroundColor: Colors.transparent,
         builder: (_) => ReplenishSelectDialog(
           fund: widget.fund,
           releasable: releasable,
