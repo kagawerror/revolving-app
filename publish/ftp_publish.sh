@@ -45,6 +45,10 @@ fi
 APK_NAME="rev_app-${VERSION_NAME}+${VERSION_CODE}.apk"
 APK_URL="${HTTPS_BASE_URL%/}/${APK_NAME}"
 
+# Escape for safe embedding in a JSON string (backslash first, then double-quote).
+NOTES_ESCAPED="${NOTES//\\/\\\\}"
+NOTES_ESCAPED="${NOTES_ESCAPED//\"/\\\"}"
+
 # Write version.json (manifest the app reads).
 MANIFEST="$ROOT_DIR/build/version.json"
 cat > "$MANIFEST" <<EOF
@@ -52,7 +56,7 @@ cat > "$MANIFEST" <<EOF
   "versionCode": ${VERSION_CODE},
   "versionName": "${VERSION_NAME}",
   "apkUrl": "${APK_URL}",
-  "notes": "${NOTES}"
+  "notes": "${NOTES_ESCAPED}"
 }
 EOF
 
