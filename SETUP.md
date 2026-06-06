@@ -104,3 +104,37 @@ the relay — never in the app.
    with `company_id` / `role`; the relay targets those tags. Foreground
    notifications show a SnackBar; tapping a notification opens Alerts; sign-out
    calls `OneSignal.logout()`. iOS push (APNs) is deferred.
+
+## Self-hosted distribution & in-app updates (Android only)
+
+The app can update itself from an APK hosted on your own FTP server, served over
+HTTPS. iOS is not supported (Apple forbids sideload-update).
+
+### One-time prerequisites (required before the first real release)
+
+1. **Set a real `applicationId`.** `android/app/build.gradle.kts` ships with the
+   placeholder `com.example.rev_app`. Change it to your real id (e.g.
+   `ph.com.brigada.revapp`) **before** distributing. Android matches updates by
+   `applicationId`; changing it after users install means new APKs are treated as
+   a different app and cannot update over the old one.
+2. **Use one consistent release keystore.** Android rejects an update signed by a
+   different key than the installed version. Create a release keystore, wire it
+   into `android/app/build.gradle.kts` signing config, and reuse it for every
+   release. Debug-signed APKs will not upgrade each other reliably.
+3. **Prefer FTPS.** Plain FTP sends the password in cleartext. Keep
+   `FTP_USE_FTPS="true"` in `publish/.ftp.env` unless your host lacks FTPS.
+
+### Configure
+
+1. Copy `publish/.ftp.env.example` to `publish/.ftp.env` and fill in your FTP
+   host/user/pass, `FTP_REMOTE_DIR`, and `HTTPS_BASE_URL`. This file is
+   gitignored and is the ONLY place FTP credentials live — never in the app.
+2. In `.env`, set `UPDATE_MANIFEST_URL` to `<HTTPS_BASE_URL>/version.json`.
+
+### Release a new version
+
+1. Bump `version:` in `pubspec.yaml` (the `+N` build number MUST increase — it is
+   the value the app compares).
+2. Run: `./publish/ftp_publish.sh "What changed in this release"`
+   This builds the release APK, writes `version.json`, and uploads both (manifest
+   last). Installed apps will prompt to update on their next launch.
