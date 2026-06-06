@@ -47,7 +47,13 @@ class AppSecrets {
   static const String adminRelayUrl =
       String.fromEnvironment('ADMIN_RELAY_URL');
 
+  // Public, read-only HTTPS URL of the self-hosted update manifest (version.json).
+  // Safe to embed: it grants no write access. Blank disables update checks.
+  static const String updateManifestUrl =
+      String.fromEnvironment('UPDATE_MANIFEST_URL');
+
   static bool get hasOneSignal => oneSignalAppId.isNotEmpty;
   static bool get hasPushRelay => pushRelayUrl.isNotEmpty;
   static bool get hasAdminRelay => adminRelayUrl.isNotEmpty;
+  static bool get hasUpdates => updateManifestUrl.isNotEmpty;
 }

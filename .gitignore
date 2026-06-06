@@ -59,3 +59,9 @@ service-account*.json
 **/service-account*.json
 relay/node_modules/
 relay/.wrangler/
+
+# Local git worktrees (subagent-driven dev)
+.claude/worktrees/
+
+# Self-hosted publish: real FTP credentials (never commit)
+publish/.ftp.env

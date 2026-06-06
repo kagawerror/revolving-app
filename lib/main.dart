@@ -8,6 +8,7 @@ import 'core/theme/theme_controller.dart';
 import 'features/auth/domain/app_user.dart';
 import 'features/auth/presentation/auth_providers.dart';
 import 'features/messaging/presentation/messaging_initializer.dart';
+import 'features/update/presentation/update_gate.dart';
 import 'features/welcome/domain/welcome_arming.dart';
 import 'features/welcome/presentation/welcome_gate.dart';
 import 'routing/app_router.dart';
@@ -48,8 +49,10 @@ class RevApp extends ConsumerWidget {
       themeMode: theme.mode,
       routerConfig: router,
       scaffoldMessengerKey: scaffoldMessengerKey,
-      builder: (context, child) => WelcomeGate(
-        child: MessagingInitializer(child: child ?? const SizedBox.shrink()),
+      builder: (context, child) => UpdateGate(
+        child: WelcomeGate(
+          child: MessagingInitializer(child: child ?? const SizedBox.shrink()),
+        ),
       ),
     );
   }

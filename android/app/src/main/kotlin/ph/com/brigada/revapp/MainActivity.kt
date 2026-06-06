@@ -1,4 +1,4 @@
-package com.example.rev_app
+package ph.com.brigada.revapp
 
 import io.flutter.embedding.android.FlutterActivity
 

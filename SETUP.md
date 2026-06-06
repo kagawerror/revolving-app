@@ -104,3 +104,50 @@ the relay — never in the app.
    with `company_id` / `role`; the relay targets those tags. Foreground
    notifications show a SnackBar; tapping a notification opens Alerts; sign-out
    calls `OneSignal.logout()`. iOS push (APNs) is deferred.
+
+## Self-hosted distribution & in-app updates (Android only)
+
+The app can update itself from an APK hosted on your own FTP server, served over
+HTTPS. iOS is not supported (Apple forbids sideload-update).
+
+### One-time prerequisites
+
+1. **Real `applicationId` — DONE.** The app id is `ph.com.brigada.revapp`
+   (`android/app/build.gradle.kts`, both `applicationId` and `namespace`). A
+   matching Android app is registered in the Firebase project `rev-app-75af7`, and
+   `android/app/google-services.json` carries both the old and new package ids.
+   Do **not** change the app id again — Android matches updates by `applicationId`,
+   so a change would orphan every installed copy.
+2. **Release keystore — DONE.** Release builds are signed with the upload key in
+   `android/app/upload-keystore.jks`, configured via the gitignored
+   `android/key.properties`. The same key must sign every release forever.
+
+   > ⚠️ **BACK UP THESE FILES NOW — they are gitignored and exist only on disk:**
+   > - `android/app/upload-keystore.jks`
+   > - `android/key.properties` (holds the keystore passwords)
+   > - `android/app/google-services.json`
+   >
+   > If you lose the keystore or its password you can **never** ship another
+   > update to installed apps (Android rejects a different signature). Store a copy
+   > in a password manager / secure backup, not just on this machine.
+
+3. **Prefer FTPS.** Plain FTP sends the password in cleartext. Keep
+   `FTP_USE_FTPS="true"` in `publish/.ftp.env` unless your host lacks FTPS.
+
+> New clones / new machines must restore the three gitignored files above (plus
+> `.env` and `publish/.ftp.env`) before a release build will succeed.
+
+### Configure
+
+1. Copy `publish/.ftp.env.example` to `publish/.ftp.env` and fill in your FTP
+   host/user/pass, `FTP_REMOTE_DIR`, and `HTTPS_BASE_URL`. This file is
+   gitignored and is the ONLY place FTP credentials live — never in the app.
+2. In `.env`, set `UPDATE_MANIFEST_URL` to `<HTTPS_BASE_URL>/version.json`.
+
+### Release a new version
+
+1. Bump `version:` in `pubspec.yaml` (the `+N` build number MUST increase — it is
+   the value the app compares).
+2. Run: `./publish/ftp_publish.sh "What changed in this release"`
+   This builds the release APK, writes `version.json`, and uploads both (manifest
+   last). Installed apps will prompt to update on their next launch.
