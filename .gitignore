@@ -62,3 +62,6 @@ relay/.wrangler/
 
 # Local git worktrees (subagent-driven dev)
 .claude/worktrees/
+
+# Self-hosted publish: real FTP credentials (never commit)
+publish/.ftp.env
