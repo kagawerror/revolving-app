@@ -49,6 +49,8 @@ dependencies:
   cached_network_image: ^3.4.1
   image_cropper: ^8.0.2
   signature: ^5.5.0
+  package_info_plus: ^10.1.0
+  ota_update: ^7.1.0
 
 dev_dependencies:
   flutter_test:

@@ -59,3 +59,6 @@ service-account*.json
 **/service-account*.json
 relay/node_modules/
 relay/.wrangler/
+
+# Local git worktrees (subagent-driven dev)
+.claude/worktrees/
