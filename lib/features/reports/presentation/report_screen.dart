@@ -6,6 +6,7 @@ import '../../../core/error/result.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../companies/presentation/admin_company_context_bar.dart';
 import 'export_format_sheet.dart';
 import 'report_providers.dart';
 import 'released_report_body.dart';
@@ -67,33 +68,59 @@ class _ReportScreenState extends ConsumerState<ReportScreen>
       return const _NotAuthorizedScaffold();
     }
 
+    // The reports are company-scoped. An admin (and any multi-company user) must
+    // first pick a company in the context bar; until then `reportCompanyIdProvider`
+    // resolves to '' and the providers short-circuit to empty. Rather than show a
+    // misleading "no data" empty state, we surface the company picker + an explicit
+    // "select a company" prompt — mirroring the incharge / approval shells.
+    final hasCompany = ref.watch(reportCompanyIdProvider).isNotEmpty;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reports'),
         scrolledUnderElevation: 0.5,
         actions: [
-          _ExportAction(onReleasedTab: _onReleasedTab),
+          // Nothing is exportable until a company is selected.
+          if (hasCompany) _ExportAction(onReleasedTab: _onReleasedTab),
           const SizedBox(width: AppTokens.xs),
         ],
-        bottom: TabBar(
-          controller: _tabs,
-          tabs: const [
-            Tab(text: 'Released'),
-            Tab(text: 'Replenishments'),
-          ],
-        ),
+        // The Released/Replenishments tabs only make sense once a company is
+        // chosen; hide them in the select-company state.
+        bottom: hasCompany
+            ? TabBar(
+                controller: _tabs,
+                tabs: const [
+                  Tab(text: 'Released'),
+                  Tab(text: 'Replenishments'),
+                ],
+              )
+            : null,
       ),
       body: Column(
         children: [
-          const ReportPeriodHeader(),
+          // Picker for admins / multi-company users; renders nothing for a
+          // single-company custodian (their scope is fixed).
+          const CompanyContextBar(),
           Expanded(
-            child: TabBarView(
-              controller: _tabs,
-              children: const [
-                ReleasedReportBody(),
-                ReplenishmentReportBody(),
-              ],
-            ),
+            child: hasCompany
+                ? Column(
+                    children: [
+                      const ReportPeriodHeader(),
+                      Expanded(
+                        child: TabBarView(
+                          controller: _tabs,
+                          children: const [
+                            ReleasedReportBody(),
+                            ReplenishmentReportBody(),
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : const AdminSelectCompanyPrompt(
+                    message: 'Choose a company in the bar above to view its '
+                        'released requests and replenishment reports.',
+                  ),
           ),
         ],
       ),
