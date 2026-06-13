@@ -51,6 +51,21 @@ android {
 
     buildTypes {
         release {
+            // R8 is DISABLED for release. Flutter's Gradle plugin enables
+            // minification + resource shrinking by default (isMinifyEnabled=true
+            // with proguard-android-optimize.txt), and AGP 8's R8 "full mode"
+            // optimization corrupts reflection-based libraries. Concretely it
+            // mangled WorkManager's Room reflection (WorkManager is pulled in by
+            // the ota_update plugin), crashing the app at launch with "Failed to
+            // create an instance of class androidx.work.impl.WorkDatabase" — the
+            // app installed and showed its icon but would not open. This app
+            // ships internally (APK size is dominated by native libs, which
+            // shrinking can't touch) and leans on several reflection-heavy
+            // plugins (Firebase, OneSignal, WorkManager, image_cropper), so
+            // shrinking is more risk than benefit. These lines run AFTER the
+            // Flutter plugin's apply(), so they override its defaults.
+            isMinifyEnabled = false
+            isShrinkResources = false
             // Sign with the release upload key (android/key.properties).
             signingConfig = signingConfigs.getByName("release")
         }
