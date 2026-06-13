@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/error/failure_ui.dart';
 import '../../../core/money/money.dart';
@@ -26,16 +27,43 @@ class _State extends ConsumerState<CreateRequestScreen> {
   final _formKey = GlobalKey<FormState>();
   final _beneficiary = TextEditingController();
   final _amount = TextEditingController();
+  final _amountFocus = FocusNode();
   final _purpose = TextEditingController();
   String? _fundId;
   Uint8List? _image;
 
+  /// Display formatter for the amount field: thousands separators + 2 decimals,
+  /// no peso symbol (the field already shows a `₱ ` prefix).
+  static final _amountFormat = NumberFormat('#,##0.00', 'en_PH');
+
+  @override
+  void initState() {
+    super.initState();
+    // Reformat the amount only once focus leaves the field, so typing stays
+    // smooth (no cursor jumps mid-entry).
+    _amountFocus.addListener(_handleAmountFocusChange);
+  }
+
   @override
   void dispose() {
+    _amountFocus.removeListener(_handleAmountFocusChange);
+    _amountFocus.dispose();
     _beneficiary.dispose();
     _amount.dispose();
     _purpose.dispose();
     super.dispose();
+  }
+
+  /// Parses user-entered text, tolerating grouping commas this screen inserts on
+  /// blur (e.g. `1,000.00`). Returns null for empty/invalid input.
+  num? _parseAmount(String raw) => num.tryParse(raw.replaceAll(',', '').trim());
+
+  void _handleAmountFocusChange() {
+    if (_amountFocus.hasFocus) return; // only on blur
+    final value = _parseAmount(_amount.text);
+    // Leave invalid/empty input untouched so the validator can flag it.
+    if (value == null || value <= 0) return;
+    _amount.text = _amountFormat.format(value);
   }
 
   Future<void> _capture(ImageSource source) async {
@@ -62,7 +90,7 @@ class _State extends ConsumerState<CreateRequestScreen> {
           fundId: _fundId!,
           createdByUid: user.uid,
           beneficiary: _beneficiary.text.trim(),
-          amount: Money.fromPesos(num.parse(_amount.text)),
+          amount: Money.fromPesos(_parseAmount(_amount.text)!),
           purpose: _purpose.text.trim(),
           imageBytes: _image,
         );
@@ -155,6 +183,7 @@ class _State extends ConsumerState<CreateRequestScreen> {
                   const SizedBox(height: AppTokens.md),
                   TextFormField(
                     controller: _amount,
+                    focusNode: _amountFocus,
                     decoration: const InputDecoration(
                       labelText: 'Amount',
                       prefixText: '₱ ',
@@ -163,7 +192,7 @@ class _State extends ConsumerState<CreateRequestScreen> {
                     keyboardType: const TextInputType.numberWithOptions(
                         decimal: true),
                     validator: (v) {
-                      final n = num.tryParse(v ?? '');
+                      final n = _parseAmount(v ?? '');
                       if (n == null || n <= 0) return 'Enter a positive amount';
                       return null;
                     },
