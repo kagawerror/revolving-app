@@ -16,17 +16,23 @@ final fundRepositoryProvider = Provider<FundRepository>(
   (ref) => FirestoreFundRepository(ref.watch(firestoreProvider)),
 );
 
-final companiesProvider = StreamProvider<List<Company>>(
+// autoDispose throughout: these stream providers hold live Firestore listeners.
+// Without it, a listener outlives the auth session (no widget watches it after
+// the sign-out redirect, but a non-autoDispose provider is never torn down) and
+// keeps querying with a null auth token — the PERMISSION_DENIED flood. With
+// autoDispose, losing the last watcher cancels the subscription.
+final companiesProvider = StreamProvider.autoDispose<List<Company>>(
   (ref) => ref.watch(companyRepositoryProvider).watchAll(),
 );
 
 /// Funds owned by a single company.
-final companyFundsProvider = StreamProvider.family<List<Fund>, String>(
+final companyFundsProvider =
+    StreamProvider.autoDispose.family<List<Fund>, String>(
   (ref, companyId) =>
       ref.watch(fundRepositoryProvider).watchByCompany(companyId),
 );
 
 /// All funds across every company — admin-only confirmation view.
-final allFundsProvider = StreamProvider<List<Fund>>(
+final allFundsProvider = StreamProvider.autoDispose<List<Fund>>(
   (ref) => ref.watch(fundRepositoryProvider).watchAll(),
 );
