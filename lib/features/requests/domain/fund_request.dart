@@ -33,6 +33,12 @@ class FundRequest extends Equatable {
   /// on create (toCreateMap uses FieldValue.serverTimestamp()).
   final DateTime? createdAt;
 
+  /// Server release time, stamped when cash is released (the repository writes
+  /// `releasedAt: serverTimestamp()`). Null until release confirms server-side
+  /// (and on legacy/offline-pending docs). Read-only here: never set by
+  /// [toCreateMap]. Used by the Reports feature as the released-row date.
+  final DateTime? releasedAt;
+
   /// Offline-first release bookkeeping. All nullable so existing/legacy docs
   /// (and online-only writes) deserialize unchanged.
   ///
@@ -69,6 +75,7 @@ class FundRequest extends Equatable {
     this.releaseSignatureUrl = '',
     this.replenishedCentavos = 0,
     this.createdAt,
+    this.releasedAt,
     this.releaseState,
     this.clientReleaseId,
     this.disputedReason,
@@ -101,6 +108,7 @@ class FundRequest extends Equatable {
         releaseSignatureUrl: (m['releaseSignatureUrl'] ?? '') as String,
         replenishedCentavos: (m['replenishedCentavos'] ?? 0) as int,
         createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
+        releasedAt: (m['releasedAt'] as Timestamp?)?.toDate(),
         releaseState: m['releaseState'] as String?,
         clientReleaseId: m['clientReleaseId'] as String?,
         disputedReason: m['disputedReason'] as String?,
@@ -142,6 +150,7 @@ class FundRequest extends Equatable {
     String? releaseSignatureUrl,
     int? replenishedCentavos,
     DateTime? createdAt,
+    DateTime? releasedAt,
     String? releaseState,
     String? clientReleaseId,
     String? disputedReason,
@@ -164,6 +173,7 @@ class FundRequest extends Equatable {
         releaseSignatureUrl: releaseSignatureUrl ?? this.releaseSignatureUrl,
         replenishedCentavos: replenishedCentavos ?? this.replenishedCentavos,
         createdAt: createdAt ?? this.createdAt,
+        releasedAt: releasedAt ?? this.releasedAt,
         releaseState: releaseState ?? this.releaseState,
         clientReleaseId: clientReleaseId ?? this.clientReleaseId,
         disputedReason: disputedReason ?? this.disputedReason,
@@ -177,7 +187,7 @@ class FundRequest extends Equatable {
         id, companyId, fundId, createdByUid, beneficiaryName,
         amount, purpose, proofImageUrl, status, replenishmentId,
         releaseProofUrl, releaseSignatureUrl,
-        replenishedCentavos, createdAt,
+        replenishedCentavos, createdAt, releasedAt,
         releaseState, clientReleaseId,
         disputedReason, disputedByUid, disputedAt, pendingImageRef,
       ];

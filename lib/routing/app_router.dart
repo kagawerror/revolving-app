@@ -12,6 +12,7 @@ import '../features/companies/presentation/adjust_fund_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/config/presentation/cloudinary_config_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
+import '../features/reports/presentation/report_screen.dart';
 import '../features/requests/presentation/acknowledged_worklist_screen.dart';
 import '../features/requests/presentation/conflict_worklist_screen.dart';
 import '../features/requests/presentation/create_request_screen.dart';
@@ -66,6 +67,13 @@ String? redirectFor({
     return home;
   }
 
+  // Reports is a shared route (no role shell owns it) but role-gated: only
+  // admin/ceo/incharge (canViewReports) may enter. A permitted role passes
+  // through; everyone else bounces home. Admin already returned above.
+  if (location.startsWith('/reports')) {
+    return user.role.canViewReports ? null : home;
+  }
+
   // Shared routes (e.g. /profile) belong to no role shell, so the role-home
   // guard must let them through. Anything else: a signed-in user may only stay
   // inside their own role subtree; foreign/unknown routes bounce back home.
@@ -74,7 +82,8 @@ String? redirectFor({
 }
 
 /// Routes any signed-in user may visit regardless of role — no role shell owns
-/// them, so the role-home redirect must not bounce them away.
+/// them, so the role-home redirect must not bounce them away. `/reports` is
+/// handled separately above (it is role-gated, not universally shared).
 const _sharedSignedInRoutes = <String>['/profile'];
 
 final routerProvider = Provider<GoRouter>((ref) {
@@ -155,6 +164,13 @@ final routerProvider = Provider<GoRouter>((ref) {
         // but NOT admin) reaches it via the Approvals AppBar action.
         path: '/approvals/adjust-fund',
         builder: (_, _) => const AdjustFundScreen(),
+      ),
+      GoRoute(
+        // Standalone Reports surface. Role-gated in redirectFor on
+        // canViewReports (admin/ceo/incharge); the screen re-checks as a
+        // fail-safe. Reached via the Reports AppBar action on each home shell.
+        path: '/reports',
+        builder: (_, _) => const ReportScreen(),
       ),
       GoRoute(
           path: '/profile',

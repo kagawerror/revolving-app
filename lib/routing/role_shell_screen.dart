@@ -130,6 +130,17 @@ class _RoleShellScreenState extends ConsumerState<RoleShellScreen> {
         // when content scrolls under it, so the title never floats over text.
         scrolledUnderElevation: 0.5,
         actions: [
+          // Reports entry. Lives on the Home surface of every shell that can
+          // view reports (admin, CEO via the approvals shell, and incharge);
+          // manager/superior never see it (canViewReports is false). Mirrors the
+          // Adjust-fund action's home-only, role-gated placement.
+          if (current.tab == ShellTab.home &&
+              (me?.role.canViewReports ?? false))
+            IconButton(
+              icon: const Icon(Icons.assessment_outlined),
+              tooltip: 'Reports',
+              onPressed: () => context.push('/reports'),
+            ),
           // Fund Adjustment entry for CEO (and admin operating this shell).
           // Lives on the approvals Home surface only, so it sits beside the
           // approver's daily work without crowding other tabs. Gated on

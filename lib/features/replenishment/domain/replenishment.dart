@@ -58,6 +58,17 @@ class Replenishment extends Equatable {
   final List<ReplenishmentItem> items;
   final DateTime? createdAt;
 
+  /// Server submit time, stamped when the draft is submitted for approval
+  /// (`submittedAt: serverTimestamp()`). Null on drafts and legacy docs.
+  /// Read-only: never set by [toCreateMap].
+  final DateTime? submittedAt;
+
+  /// Server decision time, stamped when an approver approves/rejects
+  /// (`decidedAt: serverTimestamp()`). Null until decided and on legacy docs.
+  /// Read-only: never set by [toCreateMap]. Used by the Reports feature as the
+  /// approved-replenishment date.
+  final DateTime? decidedAt;
+
   const Replenishment({
     required this.id,
     required this.companyId,
@@ -71,6 +82,8 @@ class Replenishment extends Equatable {
     this.approvedByUid,
     this.items = const [],
     this.createdAt,
+    this.submittedAt,
+    this.decidedAt,
   });
 
   int get itemCount => requestIds.length;
@@ -91,6 +104,8 @@ class Replenishment extends Equatable {
                 Map<String, dynamic>.from(e as Map)))
             .toList(),
         createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
+        submittedAt: (m['submittedAt'] as Timestamp?)?.toDate(),
+        decidedAt: (m['decidedAt'] as Timestamp?)?.toDate(),
       );
 
   Map<String, dynamic> toCreateMap() => {
@@ -110,5 +125,5 @@ class Replenishment extends Equatable {
   @override
   List<Object?> get props =>
       [id, companyId, fundId, status, requestIds, total, reportNotes, createdByUid,
-       submittedByUid, approvedByUid, items, createdAt];
+       submittedByUid, approvedByUid, items, createdAt, submittedAt, decidedAt];
 }

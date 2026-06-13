@@ -32,6 +32,12 @@ enum UserRole {
   /// admin operating a chosen company. Keeps [canManageFund] role-pure.
   bool get canManageFundOrAdmin => canManageFund || isAdmin;
 
+  /// May view the Reports surface (released-request + replenishment summaries):
+  /// an admin (any company), the CEO, or the incharge custodian. Approvers and
+  /// employees do not get the reporting view. The Firestore-rule mirror admits
+  /// the same set on the read paths the reports query.
+  bool get canViewReports => isAdmin || this == UserRole.ceo || canManageFund;
+
   /// May adjust a fund's available balance (Fund Adjustment workflow): an admin
   /// (any company) or the CEO (cross-company, intentional). Gate the
   /// adjust-fund UI/action on this; the Firestore-rule mirror admits the same
