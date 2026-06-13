@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../app_keys.dart';
 import 'update_prompt.dart';
 import 'update_providers.dart';
 
@@ -27,7 +28,14 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
         if (decision.hasUpdate && !_shown) {
           _shown = true;
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) showUpdatePrompt(context, decision.latest!);
+            // Show from the router's root navigator, NOT this widget's context:
+            // UpdateGate lives in MaterialApp.builder, which is ABOVE the
+            // navigator, so showDialog(context) here finds no Navigator and
+            // silently fails. rootNavigatorKey is GoRouter's navigator.
+            final navigatorContext = rootNavigatorKey.currentContext;
+            if (navigatorContext != null) {
+              showUpdatePrompt(navigatorContext, decision.latest!);
+            }
           });
         }
       });
