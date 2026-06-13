@@ -165,6 +165,27 @@ class FirestoreRequestRepository implements RequestRepository {
         request.pendingImageRef == null) {
       return const Err(ValidationFailure('A proof image is required.'));
     }
+    // OFFLINE create (deferred image → pendingImageRef): mint a client-side doc
+    // id and write WITHOUT awaiting. With offline persistence the write Future
+    // does not complete until the server acks it, so awaiting `.add()` here
+    // hangs forever while offline — the submit spinner never clears. The local
+    // cache mutation applies synchronously, which is all the offline path needs;
+    // the writes flush on reconnect. Mirrors `captureLocalRelease`.
+    if (request.pendingImageRef != null) {
+      try {
+        final ref = _requests.doc(); // client-generated id, available now
+        unawaited(ref.set(request.toCreateMap()));
+        unawaited(_appendHistory(ref.id, 'created', request.createdByUid,
+            to: request.status));
+        return Ok(ref.id);
+      } catch (e, st) {
+        developer.log('offline create failed',
+            name: 'requests', error: e, stackTrace: st);
+        return const Err(UnexpectedFailure('Could not save the request.'));
+      }
+    }
+    // ONLINE create: await so a server-side rejection (e.g. rules) surfaces as
+    // an Err the user sees, instead of a silent optimistic success.
     try {
       final ref = await _requests.add(request.toCreateMap());
       await _appendHistory(ref.id, 'created', request.createdByUid,
