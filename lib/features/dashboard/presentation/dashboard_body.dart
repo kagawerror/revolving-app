@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/money/money.dart';
 import '../../../core/theme/app_tokens.dart';
@@ -370,6 +371,32 @@ class _RecentSection extends ConsumerWidget {
   }
 }
 
+/// Builds the second subtitle line for a recent-activity tile, showing the
+/// request's created date and — once released — its released date.
+///
+/// `createdAt`/`releasedAt` are server timestamps and may be null:
+///   - `createdAt` is null only briefly while an offline create awaits its
+///     server timestamp (optimistic local doc).
+///   - `releasedAt` is null for any request that hasn't been released yet
+///     (pending / acknowledged / rejected / disputed).
+///
+/// Return `null` to render no date line at all (the tile falls back to just
+/// the purpose).
+///
+/// Shows the created date alone until a release commits, then appends the
+/// released date. Returns null (no line) while a created timestamp is missing.
+@visibleForTesting
+String? recentDateLine(FundRequest request) {
+  final created = request.createdAt;
+  if (created == null) return null;
+  final released = request.releasedAt;
+  if (released == null) return 'Created ${_fmtDate(created)}';
+  return 'Created ${_fmtDate(created)} · Released ${_fmtDate(released)}';
+}
+
+/// Formats a [DateTime] as `d MMM y` in local time — the app-wide convention.
+String _fmtDate(DateTime date) => DateFormat('d MMM y').format(date.toLocal());
+
 class _RecentTile extends StatelessWidget {
   const _RecentTile({required this.request, required this.pendingPartial});
 
@@ -385,9 +412,13 @@ class _RecentTile extends StatelessWidget {
     final breakdown =
         computeRequestBreakdown(request, pendingPartial: pendingPartial);
 
+    final dateLine = recentDateLine(request);
+
     return AppListTile(
       title: request.beneficiaryName,
-      subtitle: request.purpose,
+      subtitle: dateLine == null
+          ? request.purpose
+          : '${request.purpose}\n$dateLine',
       onTap: () => showRequestDetailSheet(
         context,
         request: request,

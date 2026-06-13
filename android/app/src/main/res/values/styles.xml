@@ -15,4 +15,16 @@
     <style name="NormalTheme" parent="@android:style/Theme.Light.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+    <!-- Theme for the image_cropper (uCrop) activity.
+         targetSdk 35+ force-enables edge-to-edge, which draws the activity under
+         the system bars. The bare AppCompat theme doesn't handle insets, so uCrop's
+         top toolbar (and its "check"/confirm action) ends up behind the status bar
+         and untappable. fitsSystemWindows pads the content below the system bars so
+         the toolbar is fully visible and tappable. windowOptOutEdgeToEdgeEnforcement
+         is ignored at targetSdk 36, so insets are the only reliable fix. -->
+    <style name="Theme.RevApp.UCrop" parent="Theme.AppCompat.Light.NoActionBar">
+        <item name="android:fitsSystemWindows">true</item>
+        <item name="android:statusBarColor">@android:color/black</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
 </resources>
