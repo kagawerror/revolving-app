@@ -18,7 +18,11 @@ class FundTotals extends Equatable {
     required this.replenishingFundCount,
   });
 
-  Money get totalDisbursed => totalBudget - totalAvailable;
+  /// Cash paid out of the funds (budget minus what's still available). Clamped
+  /// at ₱0: the admin/CEO "add cash" adjustment can push available ABOVE budget,
+  /// in which case nothing is disbursed (there's a surplus) — never a negative.
+  Money get totalDisbursed => Money.fromCentavos(
+      (totalBudget.centavos - totalAvailable.centavos).clamp(0, 1 << 62));
 
   /// Fraction 0..1 of the budget that is currently disbursed.
   double get utilization =>
@@ -29,8 +33,8 @@ class FundTotals extends Equatable {
       [totalBudget, totalAvailable, fundCount, lowFundCount, replenishingFundCount];
 }
 
-/// Pure aggregate over a company's funds. (available never exceeds budget, so the
-/// disbursed subtraction is always >= 0.)
+/// Pure aggregate over a company's funds. Available CAN exceed budget once an
+/// admin/CEO adds cash, so disbursed is clamped to >= 0 (see [FundTotals]).
 FundTotals computeFundTotals(List<Fund> funds) {
   var budget = Money.zero;
   var available = Money.zero;

@@ -34,4 +34,18 @@ void main() {
     // utilization = 10,900,000 / 17,000,000
     expect(t.utilization, closeTo(0.6412, 0.0001));
   });
+
+  // Regression: the admin/CEO "add cash" fund adjustment can push available
+  // ABOVE budget (the old "available never exceeds budget" invariant no longer
+  // holds). `totalBudget - totalAvailable` must not underflow into a negative
+  // Money (which would throw ArgumentError and crash the dashboard).
+  test('available exceeding budget → disbursed clamps to zero, no throw', () {
+    final t = computeFundTotals([
+      _fund(5000000, 8000000, FundStatus.active), // over-funded by 3,000,000
+    ]);
+    expect(t.totalBudget, Money.fromCentavos(5000000));
+    expect(t.totalAvailable, Money.fromCentavos(8000000));
+    expect(t.totalDisbursed, Money.zero); // nothing disbursed; there's a surplus
+    expect(t.utilization, 0.0); // never negative
+  });
 }
