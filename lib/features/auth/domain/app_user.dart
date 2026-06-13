@@ -31,6 +31,12 @@ enum UserRole {
   /// Superuser-aware fund-management capability: the incharge custodian OR an
   /// admin operating a chosen company. Keeps [canManageFund] role-pure.
   bool get canManageFundOrAdmin => canManageFund || isAdmin;
+
+  /// May adjust a fund's available balance (Fund Adjustment workflow): an admin
+  /// (any company) or the CEO (cross-company, intentional). Gate the
+  /// adjust-fund UI/action on this; the Firestore-rule mirror admits the same
+  /// two roles (`isAdmin() || isCeo()`).
+  bool get canAdjustFund => isAdmin || this == UserRole.ceo;
 }
 
 class AppUser extends Equatable {

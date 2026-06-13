@@ -8,6 +8,7 @@ import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/bootstrap_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/admin_users/presentation/user_admin_screen.dart';
+import '../features/companies/presentation/adjust_fund_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/config/presentation/cloudinary_config_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
@@ -146,6 +147,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         // non-approvers out (admin passes via the superuser bypass).
         path: '/approvals/review',
         builder: (_, _) => const PostReleaseReviewScreen(),
+      ),
+      GoRoute(
+        // Fund Adjustment entry for CEO/admin. Under the /approvals subtree so
+        // the role-home prefix guard keeps non-approvers out; the screen itself
+        // re-checks canAdjustFund (admin || ceo) as a fail-safe. A CEO (approver
+        // but NOT admin) reaches it via the Approvals AppBar action.
+        path: '/approvals/adjust-fund',
+        builder: (_, _) => const AdjustFundScreen(),
       ),
       GoRoute(
           path: '/profile',

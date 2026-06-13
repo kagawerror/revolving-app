@@ -42,7 +42,10 @@ if [ ! -f "$APK_SRC" ]; then
   exit 1
 fi
 
-APK_NAME="rev_app-${VERSION_NAME}+${VERSION_CODE}.apk"
+# Dash (not '+') between name and build: a literal '+' is valid in a URL path,
+# but browsers / chat apps decode it to a space on manual download -> 404. Dash
+# is safe everywhere (ota_update and human-shared links alike).
+APK_NAME="rev_app-${VERSION_NAME}-${VERSION_CODE}.apk"
 APK_URL="${HTTPS_BASE_URL%/}/${APK_NAME}"
 
 # Escape for safe embedding in a JSON string (backslash first, then double-quote).

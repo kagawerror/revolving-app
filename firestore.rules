@@ -16,6 +16,7 @@ service cloud.firestore {
     }
     function myRole() { return myProfile().role; }
     function isAdmin() { return signedIn() && myRole() == 'admin'; }
+    function isCeo() { return signedIn() && myRole() == 'ceo'; }
     function sameCompany(companyId) {
       return signedIn() && companyId in myCompanyIds();
     }
@@ -76,7 +77,8 @@ service cloud.firestore {
     }
 
     match /funds/{fundId} {
-      allow read: if isAdmin() || sameCompany(resource.data.companyId);
+      // CEO reads funds in ANY company (cross-company Fund Adjustment, intentional).
+      allow read: if isAdmin() || isCeo() || sameCompany(resource.data.companyId);
       allow create: if isAdmin();
       // Two distinct paths:
       //  1) METADATA EDIT (first disjunct): an admin renaming a saved fund.
@@ -99,6 +101,21 @@ service cloud.firestore {
           && request.resource.data.lowBalanceThresholdPct
               == resource.data.lowBalanceThresholdPct
           && request.resource.data.status == resource.data.status)
+        // FUND ADJUSTMENT (availability-only): admin OR ceo may move available
+        // cash. Tightly scoped — the diff is exactly {availableBalanceCentavos,
+        // status}, and the budget, threshold, name and companyId are pinned
+        // immutable. CEO is intentionally cross-company here. Every write goes
+        // through a runTransaction in the repo that re-reads + re-validates the
+        // balance, so this can never overdraw despite trusting the new value.
+        || ((isAdmin() || isCeo())
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['availableBalanceCentavos', 'status'])
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.originalBudgetCentavos
+              == resource.data.originalBudgetCentavos
+          && request.resource.data.lowBalanceThresholdPct
+              == resource.data.lowBalanceThresholdPct
+          && request.resource.data.name == resource.data.name)
         || ((sameCompany(resource.data.companyId) || isAdmin())
           && (isIncharge() || isApprover() || isAdmin()));
       allow delete: if isAdmin();
@@ -106,9 +123,11 @@ service cloud.firestore {
       // Append-only audit trail (budgetAdjusted, etc.). Mirrors the request
       // history block. No amounts are exposed beyond the company scope.
       match /history/{eventId} {
-        allow read: if isAdmin()
+        allow read: if isAdmin() || isCeo()
           || sameCompany(get(/databases/$(database)/documents/funds/$(fundId)).data.companyId);
-        allow create: if isAdmin();
+        // balanceAdjusted is written by admin or ceo (cross-company); other
+        // audit events (budgetAdjusted) are admin-only and still admitted here.
+        allow create: if isAdmin() || isCeo();
         allow update, delete: if false;
       }
     }
@@ -145,13 +164,18 @@ service cloud.firestore {
       // a superuser across companies, but every status check below stays so admin
       // cannot make an illegal transition.
       allow update: if (sameCompany(resource.data.companyId) || isAdmin()) && (
-        // CREATE IMAGE BACKFILL: created -> created changing ONLY proofImageUrl
-        // and/or pendingImageRef (the offline-create image arrives on sync).
-        // The new proofImageUrl must be a real non-empty URL; amountCentavos and
-        // every other field stay pinned. Incharge owner or admin only.
+        // CREATE IMAGE BACKFILL: fills the deferred create proof photo for an
+        // offline-created request. The request may since have moved on (a doc
+        // created offline can also be RELEASED offline, so its server status is
+        // 'released' by the time this backfill drains — see confirmPendingRelease
+        // / the queued capture write). So status is pinned UNCHANGED rather than
+        // to 'created', and only an EMPTY proofImageUrl may be filled (the create
+        // proof is write-once — this can never overwrite an existing photo).
+        // Changes ONLY proofImageUrl (+ clears pendingImageRef); amountCentavos
+        // and every other field stay pinned. Incharge owner or admin only.
         ((isIncharge() || isAdmin())
-          && resource.data.status == 'created'
-          && request.resource.data.status == 'created'
+          && request.resource.data.status == resource.data.status
+          && resource.data.get('proofImageUrl', '') == ''
           && request.resource.data.diff(resource.data).affectedKeys()
               .hasOnly(['proofImageUrl', 'pendingImageRef'])
           && request.resource.data.proofImageUrl is string

@@ -60,6 +60,7 @@ class _FakeUploader implements SyncUploader {
 class _FakeConfirmRepo implements SyncRequestRepository {
   _FakeConfirmRepo({this.result = ReleaseSyncResult.confirmed});
   ReleaseSyncResult result;
+  Result<void> backfillResult = const Ok(null);
   int confirmCalls = 0;
   int backfillCalls = 0;
   final List<String> backfilledUrls = [];
@@ -83,7 +84,7 @@ class _FakeConfirmRepo implements SyncRequestRepository {
   }) async {
     backfillCalls++;
     backfilledUrls.add(proofImageUrl);
-    return const Ok(null);
+    return backfillResult;
   }
 }
 
@@ -214,6 +215,27 @@ void main() {
     expect(images.deleted, contains('/local/create.jpg'));
   });
 
+  // RACE REGRESSION: a backfill that fails because the offline `create` write
+  // hasn't reached the server yet (a retryable NotFound Err) MUST keep the local
+  // proof and leave the entry pending for a later drain. Deleting the proof or
+  // marking the entry done here loses the create photo forever.
+  test('createRequest: a retryable backfill failure keeps the local proof '
+      'and retries (entry stays pending, file NOT deleted)', () async {
+    await outbox.enqueue(createEntry('a'));
+    final images = _FakeImageStore();
+    final repo = _FakeConfirmRepo()
+      ..backfillResult = const Err(NotFoundFailure('not synced yet'));
+    final report = await engine(images: images, repo: repo).drain();
+
+    expect(report.backfilled, 0);
+    final entry = outbox.all().single;
+    expect(entry.state, OutboxState.pending,
+        reason: 'transient failure must remain retryable, not done/failed');
+    expect(entry.attempts, 1);
+    expect(images.deleted, isEmpty,
+        reason: 'the only local copy of the create proof must be preserved');
+  });
+
   test('Cloudinary failure isolates to its entry; others still drain',
       () async {
     await outbox.enqueue(createEntry('bad', createdAt: 1));
@@ -264,6 +286,43 @@ void main() {
     await engine(uploader: _FakeUploader(), repo: repo).drain();
     expect(repo.confirmCalls, 0);
     expect(outbox.all().single.state, OutboxState.failed);
+  });
+
+  test('retryFailedAndDrain re-arms a parked failed entry and it then succeeds',
+      () async {
+    await outbox.enqueue(releaseEntry('a'));
+    // Park it as failed by exhausting attempts with a broken uploader.
+    final downUploader = _FakeUploader(fail: true);
+    for (var i = 0; i < 6; i++) {
+      await engine(uploader: downUploader).drain();
+    }
+    expect(outbox.all().single.state, OutboxState.failed);
+
+    // Now the underlying cause is fixed (uploader + repo work). An explicit
+    // user retry re-arms the failed entry to pending and drains it to done.
+    final repo = _FakeConfirmRepo();
+    final report = await engine(uploader: _FakeUploader(), repo: repo)
+        .retryFailedAndDrain();
+
+    expect(repo.confirmCalls, 1);
+    expect(report.confirmed, 1);
+    final entry = outbox.all().single;
+    expect(entry.state, OutboxState.done);
+    expect(entry.attempts, 0); // attempt count was reset on re-arm
+  });
+
+  test('retryFailedAndDrain leaves conflict entries untouched', () async {
+    await outbox.enqueue(releaseEntry('a'));
+    // Drive it to conflict (overdraft) — resolved via the worklist, not retry.
+    await engine(repo: _FakeConfirmRepo(result: ReleaseSyncResult.conflict))
+        .drain();
+    expect(outbox.all().single.state, OutboxState.conflict);
+
+    final repo = _FakeConfirmRepo();
+    await engine(repo: repo).retryFailedAndDrain();
+    // Conflict is NOT re-armed: no replay, still conflict.
+    expect(repo.confirmCalls, 0);
+    expect(outbox.all().single.state, OutboxState.conflict);
   });
 
   test('createRequest then dependent release for same entity: create first',

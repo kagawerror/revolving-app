@@ -118,6 +118,27 @@ class SyncEngine {
   /// Processes the whole outbox once. Each entry is isolated (a per-entry
   /// failure never aborts the drain). Returns a counts-only [SyncReport].
   /// Concurrent calls while a drain is in flight no-op (return an empty report).
+  /// Re-arms every parked [OutboxState.failed] entry (resets it to
+  /// [OutboxState.pending] with a cleared attempt count) and then drains. Use
+  /// for an EXPLICIT user-initiated "Sync now": the automatic backoff parks an
+  /// entry as `failed` after [kMaxDrainAttempts] and `drain()` then skips it
+  /// forever, so a manual retry needs to un-park it first. Deliberately leaves
+  /// [OutboxState.conflict] entries untouched — an overdraft conflict is
+  /// resolved through the conflict worklist, not a blind replay.
+  ///
+  /// Re-arming while offline is fine and useful: the entries become `pending`
+  /// again, so the next reconnect drain (or this one, once reachable) retries
+  /// them. The drain itself owns the reentrancy guard.
+  Future<SyncReport> retryFailedAndDrain() async {
+    for (final entry in _outbox.all()) {
+      if (entry.state == OutboxState.failed) {
+        await _outbox.update(
+            entry.copyWith(state: OutboxState.pending, attempts: 0));
+      }
+    }
+    return drain();
+  }
+
   Future<SyncReport> drain() async {
     if (_draining) return const SyncReport();
     _draining = true;

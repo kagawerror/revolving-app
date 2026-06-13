@@ -27,6 +27,14 @@ const _approver = AppUser(
   email: 'manny@acme.com',
 );
 
+const _ceo = AppUser(
+  uid: 'ceo',
+  companyId: 'c1',
+  role: UserRole.ceo,
+  displayName: 'Cleo',
+  email: 'cleo@acme.com',
+);
+
 const _employee = AppUser(
   uid: 'e',
   companyId: 'c1',
@@ -244,6 +252,61 @@ void main() {
         redirectFor(
             auth: const AsyncData(_employee), location: '/approvals/review'),
         homeFor(UserRole.employee),
+      );
+    });
+
+    // /approvals/adjust-fund is the Fund Adjustment entry, gated to
+    // canAdjustFund (admin || ceo). It lives under the /approvals subtree, so a
+    // CEO (an approver) passes via the role-home prefix guard and admin passes
+    // via the superuser bypass. Other roles are bounced.
+    test('ceo may reach /approvals/adjust-fund', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_ceo), location: '/approvals/adjust-fund'),
+        isNull,
+      );
+    });
+
+    test('admin superuser may reach /approvals/adjust-fund', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_admin), location: '/approvals/adjust-fund'),
+        isNull,
+      );
+    });
+
+    test('incharge is bounced away from /approvals/adjust-fund to /incharge', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_incharge),
+            location: '/approvals/adjust-fund'),
+        '/incharge',
+      );
+    });
+
+    test('employee is bounced away from /approvals/adjust-fund to its home', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_employee),
+            location: '/approvals/adjust-fund'),
+        homeFor(UserRole.employee),
+      );
+    });
+
+    test('non-adjuster approver (manager) reaches /approvals/adjust-fund route',
+        () {
+      // NOTE: the redirect is role-SHELL based, not canAdjustFund-based. A
+      // manager (approver, !canAdjustFund) is NOT bounced by the router because
+      // the route is under the /approvals subtree it owns. The screen itself
+      // fail-safes on canAdjustFund (see AdjustFundScreen._AdjustFundBody) and
+      // the CEO/admin AppBar entry is the only navigation into it. This is the
+      // manual-verification gap: router-level gating is by shell, action-level
+      // gating is by canAdjustFund.
+      expect(
+        redirectFor(
+            auth: const AsyncData(_approver),
+            location: '/approvals/adjust-fund'),
+        isNull,
       );
     });
   });

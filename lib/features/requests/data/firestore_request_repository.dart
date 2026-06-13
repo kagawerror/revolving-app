@@ -413,11 +413,37 @@ class FirestoreRequestRepository implements RequestRepository {
       return const Err(ValidationFailure('A proof image URL is required.'));
     }
     try {
-      await _requests.doc(requestId).update({
-        'proofImageUrl': proofImageUrl,
-        'pendingImageRef': '',
+      await _db.runTransaction((tx) async {
+        final ref = _requests.doc(requestId);
+        final snap = await tx.get(ref);
+        // TRANSIENT, NOT terminal: the offline `create` write rides Firestore's
+        // own offline queue, which flushes on its own schedule — independently
+        // of the connectivity probe that fires this drain. So the doc can be
+        // absent here simply because the create hasn't reached the server yet
+        // (transactions read server state only, never the cache). Surface a
+        // retryable NotFound so the engine KEEPS the local proof and retries on a
+        // later drain — exactly like confirmPendingRelease. Returning Ok here
+        // would retire the outbox entry and delete the only copy of the proof,
+        // losing it forever ("No proof photo"). Requests are never deleted, so a
+        // genuinely-gone doc cannot happen.
+        if (!snap.exists) {
+          throw _NotFound('Request not on the server yet.');
+        }
+        // Idempotent no-op once the create proof is already backfilled: it is
+        // WRITE-ONCE, so re-running must retire the entry cleanly rather than
+        // re-attempt a write the rule now rejects for a non-empty proofImageUrl.
+        final current = (snap.data()?['proofImageUrl'] ?? '') as String;
+        if (current.isNotEmpty) return;
+        tx.update(ref, {
+          'proofImageUrl': proofImageUrl,
+          'pendingImageRef': '',
+        });
       });
       return const Ok(null);
+    } on _NotFound catch (e) {
+      // Retryable: the drain bumps attempts and tries again once the create
+      // write has flushed (or parks it as failed after the cap for the incharge).
+      return Err(NotFoundFailure(e.message));
     } catch (e, st) {
       developer.log('backfillCreateImage failed',
           name: 'requests', error: e, stackTrace: st);

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:rev_app/core/error/result.dart';
 import 'package:rev_app/core/money/money.dart';
+import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/companies/domain/fund.dart';
 import 'package:rev_app/features/companies/domain/fund_repository.dart';
 import 'package:rev_app/features/companies/presentation/admin_providers.dart';
@@ -40,6 +41,14 @@ class _LeakSpyFundRepo implements FundRepository {
     required Money newBudget,
     required String actorUid,
     required String note,
+  }) async => const Ok(null);
+  @override
+  Future<Result<void>> adjustBalance({
+    required String fundId,
+    required int signedDeltaCentavos,
+    required String reason,
+    required String actorUid,
+    required UserRole actorRole,
   }) async => const Ok(null);
 }
 

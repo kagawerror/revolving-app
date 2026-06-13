@@ -15,6 +15,7 @@ import '../domain/company.dart';
 import '../domain/fund.dart';
 import 'add_company_dialog.dart';
 import 'admin_providers.dart';
+import 'adjust_fund_dialog.dart';
 import 'edit_company_dialog.dart';
 import 'edit_fund_dialog.dart';
 import 'fund_grouping.dart';
@@ -106,6 +107,41 @@ class AdminHomeBody extends ConsumerWidget {
     }
   }
 
+  Future<void> _handleAdjustFund(
+    BuildContext context,
+    WidgetRef ref,
+    Fund fund,
+  ) async {
+    final me = ref.read(currentUserProvider).valueOrNull;
+    if (me == null) return;
+    final done = await showAdjustFundDialog(
+      context,
+      fund: fund,
+      onSubmit: (s) async {
+        final res = await ref.read(fundRepositoryProvider).adjustBalance(
+              fundId: fund.id,
+              signedDeltaCentavos: s.signedDeltaCentavos,
+              reason: s.reason,
+              actorUid: me.uid,
+              actorRole: me.role,
+            );
+        if (!context.mounted) return false;
+        return res.showOnError(context);
+      },
+    );
+    if (done != null && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            done.isDeduction
+                ? 'Deducted ${done.amount.format()} from ${fund.name}'
+                : 'Added ${done.amount.format()} to ${fund.name}',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final companies = ref.watch(companiesProvider);
@@ -127,6 +163,7 @@ class AdminHomeBody extends ConsumerWidget {
         onAddCompany: () => _handleAddCompany(context, ref),
         onEditCompany: (c) => _handleEditCompany(context, ref, c),
         onEditFund: (f) => _handleEditFund(context, ref, f),
+        onAdjustFund: (f) => _handleAdjustFund(context, ref, f),
         onManageUsers: () => context.push('/admin/users'),
         onConfigureCloudinary: () => context.push('/admin/cloudinary'),
         onOperateIncharge: () => context.push('/incharge'),
@@ -145,6 +182,7 @@ class _AdminBody extends StatelessWidget {
     required this.onAddCompany,
     required this.onEditCompany,
     required this.onEditFund,
+    required this.onAdjustFund,
     required this.onManageUsers,
     required this.onConfigureCloudinary,
     required this.onOperateIncharge,
@@ -161,6 +199,7 @@ class _AdminBody extends StatelessWidget {
   final VoidCallback onAddCompany;
   final ValueChanged<Company> onEditCompany;
   final ValueChanged<Fund> onEditFund;
+  final ValueChanged<Fund> onAdjustFund;
   final VoidCallback onManageUsers;
   final VoidCallback onConfigureCloudinary;
   final VoidCallback onOperateIncharge;
@@ -241,6 +280,7 @@ class _AdminBody extends StatelessWidget {
           totalCount: totalFundCount,
           onRetry: onRetryFunds,
           onEditFund: onEditFund,
+          onAdjustFund: onAdjustFund,
         ),
         const SizedBox(height: AppTokens.lg),
         _UsersSection(onManage: onManageUsers),
@@ -292,6 +332,7 @@ class _FundsSection extends StatelessWidget {
     required this.totalCount,
     required this.onRetry,
     required this.onEditFund,
+    required this.onAdjustFund,
   });
   final AsyncValue<
     List<({String companyId, String companyName, List<Fund> funds})>
@@ -300,6 +341,7 @@ class _FundsSection extends StatelessWidget {
   final int totalCount;
   final VoidCallback onRetry;
   final ValueChanged<Fund> onEditFund;
+  final ValueChanged<Fund> onAdjustFund;
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -354,6 +396,7 @@ class _FundsSection extends StatelessWidget {
                       _FundTile(
                         fund: groups[g].funds[i],
                         onEdit: () => onEditFund(groups[g].funds[i]),
+                        onAdjust: () => onAdjustFund(groups[g].funds[i]),
                       ),
                   ],
                 ],
@@ -411,9 +454,14 @@ class _FundGroupHeader extends StatelessWidget {
 }
 
 class _FundTile extends StatelessWidget {
-  const _FundTile({required this.fund, required this.onEdit});
+  const _FundTile({
+    required this.fund,
+    required this.onEdit,
+    required this.onAdjust,
+  });
   final Fund fund;
   final VoidCallback onEdit;
+  final VoidCallback onAdjust;
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
@@ -463,16 +511,41 @@ class _FundTile extends StatelessWidget {
               ],
             ),
           ),
-          IconButton(
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: 'Edit fund',
-            onPressed: onEdit,
+          PopupMenuButton<_FundAction>(
+            icon: const Icon(Icons.more_vert_rounded),
+            tooltip: 'Fund actions',
+            onSelected: (a) => switch (a) {
+              _FundAction.edit => onEdit(),
+              _FundAction.adjust => onAdjust(),
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: _FundAction.edit,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.edit_outlined),
+                  title: Text('Edit fund'),
+                ),
+              ),
+              PopupMenuItem(
+                value: _FundAction.adjust,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.tune_rounded),
+                  title: Text('Adjust balance'),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 }
+
+/// Overflow-menu actions on a fund card. `adjust` is admin/ceo-only at the
+/// route level; on the admin console an admin always sees both.
+enum _FundAction { edit, adjust }
 
 class _FundStatusChip extends StatelessWidget {
   const _FundStatusChip({required this.status, required this.isLow});

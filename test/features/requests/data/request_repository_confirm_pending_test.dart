@@ -305,5 +305,91 @@ void main() {
       // amount untouched.
       expect(d['amountCentavos'], 100);
     });
+
+    // REGRESSION: a request created offline can also be RELEASED offline, so by
+    // the time the create-image backfill drains the doc is already 'released'
+    // (releaseState serverConfirmed). The backfill must still fill the empty
+    // create proof WITHOUT changing the status. (The matching rule clause was
+    // generalized from status=='created' to status-unchanged for this case.)
+    test('backfills the create proof on an already-released request, '
+        'leaving status untouched', () async {
+      await db.collection('requests').doc('r1').set({
+        'companyId': companyId,
+        'fundId': fundId,
+        'createdByUid': 'u',
+        'beneficiaryName': 'B',
+        'amountCentavos': 100,
+        'purpose': 'x',
+        'proofImageUrl': '', // create proof never uploaded while offline
+        'status': RequestStatus.released.name,
+        'releaseState': 'serverConfirmed',
+        'clientReleaseId': 'crid-1',
+        'releaseProofUrl': 'http://rel-proof',
+        'releaseSignatureUrl': 'http://rel-sig',
+        'pendingImageRef': '',
+        'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+      });
+
+      final res = await repo.backfillCreateImage(
+        requestId: 'r1',
+        proofImageUrl: 'http://uploaded',
+      );
+      expect(res.isOk, isTrue);
+
+      final d = await reqData('r1');
+      expect(d['proofImageUrl'], 'http://uploaded');
+      // Release lifecycle is untouched by the backfill.
+      expect(d['status'], RequestStatus.released.name);
+      expect(d['releaseState'], 'serverConfirmed');
+      expect(d['amountCentavos'], 100);
+    });
+
+    // RACE REGRESSION: the offline `create` write rides Firestore's own offline
+    // queue, which flushes on its OWN schedule — independently of the
+    // connectivity probe that triggers the outbox drain. So the backfill
+    // transaction (server-only read) can run BEFORE the create doc reaches the
+    // server: the doc is transiently absent, NOT permanently gone. This MUST be
+    // a retryable Err (the engine keeps the local proof and retries on a later
+    // drain), never an Ok no-op — an Ok retires the outbox entry and deletes the
+    // only local copy of the create proof, losing it forever ("No proof photo").
+    test('returns a retryable Err when the request is not on the server yet '
+        '(create write has not flushed)', () async {
+      // No doc written: simulates the create still queued in Firestore's cache.
+      final res = await repo.backfillCreateImage(
+        requestId: 'not-synced-yet',
+        proofImageUrl: 'http://uploaded',
+      );
+
+      expect(res.isOk, isFalse,
+          reason: 'a missing doc is a transient race, not terminal success');
+    });
+
+    // IDEMPOTENT: a re-drain after a backfill already landed (e.g. the write
+    // committed but the app died before the outbox entry was retired) must be a
+    // clean no-op Ok that does NOT overwrite the existing write-once proof.
+    test('is an idempotent no-op when proofImageUrl is already set', () async {
+      await db.collection('requests').doc('r1').set({
+        'companyId': companyId,
+        'fundId': fundId,
+        'createdByUid': 'u',
+        'beneficiaryName': 'B',
+        'amountCentavos': 100,
+        'purpose': 'x',
+        'proofImageUrl': 'http://original',
+        'status': RequestStatus.created.name,
+        'pendingImageRef': '',
+        'createdAt': Timestamp.fromDate(DateTime(2026, 1, 1)),
+      });
+
+      final res = await repo.backfillCreateImage(
+        requestId: 'r1',
+        proofImageUrl: 'http://second-attempt',
+      );
+      expect(res.isOk, isTrue);
+
+      // Original proof preserved — never overwritten.
+      final d = await reqData('r1');
+      expect(d['proofImageUrl'], 'http://original');
+    });
   });
 }

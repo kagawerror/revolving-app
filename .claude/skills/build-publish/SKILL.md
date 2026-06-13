@@ -74,8 +74,10 @@ It builds `flutter build apk --release --dart-define-from-file=.env`, writes
 curl -fsSL "<HTTPS_BASE_URL>/version.json"          # versionCode == the build you shipped?
 curl -fsI  "<apkUrl from manifest>" | grep -i '^HTTP'  # → 200
 ```
-The APK filename contains a literal `+` (`rev_app-1.0.1+3.apk`). That's fine — in
-a URL path `+` is literal (not decoded to space) and resolves over HTTPS.
+APKs are named with a **dash** (`rev_app-1.0.1-5.apk`), not `+`. A literal `+`
+is valid in a URL path and works in-app (ota_update sends it verbatim), but
+browsers and chat apps decode `+` to a space on manual download → 404. Dash is
+safe everywhere. If you see a `+`-named APK from an older release, that's why.
 
 ### 4. Tag (optional)
 `git add pubspec.yaml && git commit -m "release: vX.Y.Z+N" && git tag vX.Y.Z+N`

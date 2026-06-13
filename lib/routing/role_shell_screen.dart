@@ -130,6 +130,18 @@ class _RoleShellScreenState extends ConsumerState<RoleShellScreen> {
         // when content scrolls under it, so the title never floats over text.
         scrolledUnderElevation: 0.5,
         actions: [
+          // Fund Adjustment entry for CEO (and admin operating this shell).
+          // Lives on the approvals Home surface only, so it sits beside the
+          // approver's daily work without crowding other tabs. Gated on
+          // canAdjustFund so a plain superior/manager never sees it.
+          if (widget.role.canApprove &&
+              current.tab == ShellTab.home &&
+              (me?.role.canAdjustFund ?? false))
+            IconButton(
+              icon: const Icon(Icons.tune_rounded),
+              tooltip: 'Adjust fund',
+              onPressed: () => context.push('/approvals/adjust-fund'),
+            ),
           if (showSyncBadge) const PendingSyncBadge(),
           const AlertsBell(),
           const SizedBox(width: AppTokens.xs),

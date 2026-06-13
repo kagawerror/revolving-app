@@ -249,7 +249,9 @@ class _SyncStatusSheetState extends ConsumerState<SyncStatusSheet> {
   Future<void> _syncNow() async {
     setState(() => _draining = true);
     try {
-      await ref.read(syncEngineProvider).drain();
+      // Explicit user retry: re-arm any parked `failed` entry (which the
+      // automatic backoff would otherwise skip forever) and drain.
+      await ref.read(syncEngineProvider).retryFailedAndDrain();
     } finally {
       if (mounted) setState(() => _draining = false);
     }
@@ -271,9 +273,9 @@ class _SyncStatusSheetState extends ConsumerState<SyncStatusSheet> {
           Icons.error_outline_rounded,
           StatusTone.danger,
           'Some changes need attention',
-          'One or more saved changes couldn’t sync cleanly. Open the affected '
-              'items below to resolve them — your recorded cash releases are '
-              'safe on this device in the meantime.',
+          'One or more saved changes couldn’t sync cleanly. Tap “Sync now” to '
+              'try again — your recorded cash releases are safe on this device '
+              'in the meantime.',
         ),
       (false, false, final n) when n > 0 => (
           Icons.cloud_off_rounded,
@@ -352,13 +354,17 @@ class _SyncStatusSheetState extends ConsumerState<SyncStatusSheet> {
                   ?.copyWith(color: scheme.onSurfaceVariant),
             ),
             const SizedBox(height: AppTokens.xl),
-            // Primary action — disabled when nothing is pending or while a
-            // drain is already running. Offline is allowed: drain() is a no-op
-            // when unreachable, but trying is honest and harmless.
+            // Primary action — disabled only when there is nothing to do
+            // (nothing pending AND nothing needing attention) or while a drain
+            // is already running. Attention items enable it so a parked
+            // `failed` entry can be re-armed and retried. Offline is allowed:
+            // retry re-arms entries to `pending` so the next reconnect picks
+            // them up, and the drain is a harmless no-op when unreachable.
             FilledButton.icon(
-              onPressed: (_draining || summary.pendingCount == 0)
-                  ? null
-                  : _syncNow,
+              onPressed:
+                  (_draining || (summary.pendingCount == 0 && !summary.hasAttention))
+                      ? null
+                      : _syncNow,
               style: FilledButton.styleFrom(
                 minimumSize: const Size.fromHeight(52),
               ),

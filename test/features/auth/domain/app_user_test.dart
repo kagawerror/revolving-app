@@ -21,6 +21,15 @@ void main() {
     expect(UserRole.manager.canManageFund, isFalse);
   });
 
+  test('only admin and ceo may adjust a fund balance', () {
+    expect(UserRole.admin.canAdjustFund, isTrue);
+    expect(UserRole.ceo.canAdjustFund, isTrue);
+    expect(UserRole.manager.canAdjustFund, isFalse);
+    expect(UserRole.superior.canAdjustFund, isFalse);
+    expect(UserRole.incharge.canAdjustFund, isFalse);
+    expect(UserRole.employee.canAdjustFund, isFalse);
+  });
+
   group('superuser-or-admin capability getters', () {
     test('admin satisfies both *OrAdmin getters', () {
       expect(UserRole.admin.canApproveOrAdmin, isTrue);

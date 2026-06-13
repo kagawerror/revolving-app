@@ -1,5 +1,6 @@
 import '../../../core/error/result.dart';
 import '../../../core/money/money.dart';
+import '../../auth/domain/app_user.dart';
 import 'fund.dart';
 
 abstract interface class FundRepository {
@@ -25,5 +26,21 @@ abstract interface class FundRepository {
     required Money newBudget,
     required String actorUid,
     required String note,
+  });
+
+  /// Applies a signed [signedDeltaCentavos] to the available balance ONLY,
+  /// inside a transaction that re-reads + re-validates against current server
+  /// state (mirrors `adjustBudget`/`release`). The original budget and
+  /// threshold are never touched; status is recomputed against the unchanged
+  /// budget. A non-empty [reason] is required (enforced by the caller/UI) and
+  /// recorded in the `history` audit entry — never logged. Only admin or CEO may
+  /// call this (mirrored in firestore.rules). CODER: implement in the Firestore
+  /// repo and the matching firestore.rules block.
+  Future<Result<void>> adjustBalance({
+    required String fundId,
+    required int signedDeltaCentavos,
+    required String reason,
+    required String actorUid,
+    required UserRole actorRole,
   });
 }

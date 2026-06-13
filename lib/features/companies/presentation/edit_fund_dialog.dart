@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../core/money/money.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../domain/fund.dart';
+import 'balance_impact.dart';
 
 /// Result of an Edit-fund submission, handed back to the caller so it can run
 /// the two distinct repository calls the architect specified:
@@ -205,9 +206,10 @@ class _EditFundDialogState extends State<_EditFundDialog> {
                 ),
               ),
               const SizedBox(height: AppTokens.sm),
-              _BalanceImpact(
+              BalanceImpact(
                 currentAvailable: widget.fund.availableBalance,
                 deltaCentavos: null,
+                lowThreshold: widget.fund.lowBalanceThreshold,
               ),
               const SizedBox(height: AppTokens.lg),
               TextFormField(
@@ -244,108 +246,6 @@ class _EditFundDialogState extends State<_EditFundDialog> {
           label: Text(_saving ? 'Saving…' : 'Save'),
         ),
       ],
-    );
-  }
-}
-
-/// Read-only line that always shows the current available balance, and — when
-/// the budget field holds a different value — an inline helper explaining that
-/// the balance shifts by the same signed delta. This is the key trust feature:
-/// the admin sees the consequence before saving.
-class _BalanceImpact extends StatelessWidget {
-  const _BalanceImpact({
-    required this.currentAvailable,
-    required this.deltaCentavos,
-  });
-
-  final Money currentAvailable;
-  final int? deltaCentavos;
-
-  @override
-  Widget build(BuildContext context) {
-    final textTheme = Theme.of(context).textTheme;
-    final scheme = Theme.of(context).colorScheme;
-    final delta = deltaCentavos;
-    final hasDelta = delta != null && delta != 0;
-
-    final amountStyle = textTheme.bodySmall?.copyWith(
-      color: scheme.onSurfaceVariant,
-      fontFeatures: const [FontFeature.tabularFigures()],
-    );
-
-    if (!hasDelta) {
-      return Align(
-        alignment: Alignment.centerLeft,
-        child: Text(
-          'Current available balance ${currentAvailable.format()}',
-          style: amountStyle,
-        ),
-      );
-    }
-
-    final increase = delta > 0;
-    // Available balance may not go negative; clamp the projection for display.
-    final projectedCentavos =
-        (currentAvailable.centavos + delta).clamp(0, 1 << 62);
-    final projected = Money.fromCentavos(projectedCentavos);
-    final magnitude = Money.fromCentavos(delta.abs());
-    final tone = increase ? scheme.tertiary : scheme.error;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: AppTokens.md,
-        vertical: AppTokens.sm,
-      ),
-      decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.10),
-        borderRadius: AppTokens.brField,
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(
-            increase
-                ? Icons.trending_up_rounded
-                : Icons.trending_down_rounded,
-            size: 18,
-            color: tone,
-            semanticLabel: increase ? 'Increase' : 'Decrease',
-          ),
-          const SizedBox(width: AppTokens.sm),
-          Expanded(
-            child: Text.rich(
-              TextSpan(
-                style: textTheme.bodySmall
-                    ?.copyWith(color: scheme.onSurfaceVariant),
-                children: [
-                  TextSpan(
-                    text: increase
-                        ? 'Available balance will increase by '
-                        : 'Available balance will decrease by ',
-                  ),
-                  TextSpan(
-                    text: magnitude.format(),
-                    style: TextStyle(
-                      color: tone,
-                      fontWeight: FontWeight.w800,
-                      fontFeatures:
-                          const [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  TextSpan(
-                    text:
-                        ' (${currentAvailable.format()} → ${projected.format()}).',
-                    style: const TextStyle(
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
     );
   }
 }

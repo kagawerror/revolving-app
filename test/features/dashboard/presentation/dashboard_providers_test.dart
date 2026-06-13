@@ -66,6 +66,14 @@ class _FakeFundRepo implements FundRepository {
     required String actorUid,
     required String note,
   }) async => const Ok(null);
+  @override
+  Future<Result<void>> adjustBalance({
+    required String fundId,
+    required int signedDeltaCentavos,
+    required String reason,
+    required String actorUid,
+    required UserRole actorRole,
+  }) async => const Ok(null);
 }
 
 FundRequest _req(String id, String companyId, RequestStatus status) =>

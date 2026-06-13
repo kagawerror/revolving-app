@@ -5,8 +5,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/error/result.dart';
 import '../../../core/money/money.dart';
+import '../../auth/domain/app_user.dart';
 import '../domain/budget_adjustment.dart';
 import '../domain/fund.dart';
+import '../domain/fund_adjustment.dart';
 import '../domain/fund_repository.dart';
 
 class FirestoreFundRepository implements FundRepository {
@@ -108,6 +110,56 @@ class FirestoreFundRepository implements FundRepository {
       developer.log('adjustBudget failed',
           name: 'funds', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Could not adjust the budget.'));
+    }
+  }
+
+  // Applies a signed delta to the available balance ONLY, inside a transaction
+  // that re-reads + re-validates against current server state (mirrors
+  // `adjustBudget`). The budget and threshold are never touched; status is
+  // recomputed against the unchanged budget. Writes a `history` audit entry.
+  // Neither the amounts nor the reason ever reach the logs.
+  @override
+  Future<Result<void>> adjustBalance({
+    required String fundId,
+    required int signedDeltaCentavos,
+    required String reason,
+    required String actorUid,
+    required UserRole actorRole,
+  }) async {
+    try {
+      // "Reason required" is a money-mutation invariant, enforced here at the
+      // seam (not only in the UI) so no caller can persist a blank-reason audit
+      // entry. Mapped to ValidationFailure by the StateError catch below.
+      if (reason.trim().isEmpty) throw StateError('A reason is required.');
+      await _db.runTransaction((tx) async {
+        final ref = _col.doc(fundId);
+        final snap = await tx.get(ref);
+        if (!snap.exists) throw StateError('Fund not found.');
+        final fund = Fund.fromMap(snap.id, snap.data()!);
+        final adj = computeFundAdjustment(fund, signedDeltaCentavos);
+        tx.update(ref, {
+          'availableBalanceCentavos': adj.newBalance.centavos,
+          'status': adj.newStatus.name,
+        });
+        final historyRef = ref.collection('history').doc();
+        tx.set(historyRef, {
+          'event': 'balanceAdjusted',
+          'actorUid': actorUid,
+          'actorRole': actorRole.name,
+          'signedDeltaCentavos': adj.signedDeltaCentavos,
+          'reason': reason,
+          'fromBalanceCentavos': fund.availableBalance.centavos,
+          'balanceAfterCentavos': adj.newBalance.centavos,
+          'at': FieldValue.serverTimestamp(),
+        });
+      });
+      return const Ok(null);
+    } on StateError catch (e) {
+      return Err(ValidationFailure(e.message));
+    } catch (e, st) {
+      developer.log('adjustBalance failed',
+          name: 'funds', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not adjust the fund.'));
     }
   }
 }
