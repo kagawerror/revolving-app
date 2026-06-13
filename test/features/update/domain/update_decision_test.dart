@@ -32,5 +32,25 @@ void main() {
       final d = decideUpdate(currentVersionCode: 3, latest: _info(2));
       expect(d.status, UpdateStatus.upToDate);
     });
+
+    test('newer manifest the user skipped -> upToDate (no nag loop)', () {
+      final d = decideUpdate(
+        currentVersionCode: 1,
+        latest: _info(2),
+        skippedVersionCode: 2,
+      );
+      expect(d.status, UpdateStatus.upToDate);
+      expect(d.hasUpdate, isFalse);
+    });
+
+    test('manifest newer than the skipped one -> updateAvailable again', () {
+      final d = decideUpdate(
+        currentVersionCode: 1,
+        latest: _info(3),
+        skippedVersionCode: 2,
+      );
+      expect(d.status, UpdateStatus.updateAvailable);
+      expect(d.latest!.versionCode, 3);
+    });
   });
 }

@@ -9,24 +9,39 @@ import 'update_installer.dart';
 
 /// Shows the dismissible "Update available" confirmation dialog. Returns when
 /// the dialog is closed. Tapping "Update" downloads + installs in place,
-/// showing live progress; "Later" dismisses (re-checked next launch).
+/// showing live progress; "Later" dismisses.
+///
+/// [onSkipVersion] is invoked with the manifest's versionCode when the user
+/// dismisses ("Later") or the install fails, so the launch check stops
+/// re-prompting for that same build every time the app opens. A newer release
+/// still prompts.
 Future<void> showUpdatePrompt(
   BuildContext context,
   AppVersionInfo latest, {
   UpdateInstaller installer = const UpdateInstaller(),
+  ValueChanged<int>? onSkipVersion,
 }) {
   return showDialog<void>(
     context: context,
     barrierDismissible: true,
-    builder: (_) => _UpdateDialog(latest: latest, installer: installer),
+    builder: (_) => _UpdateDialog(
+      latest: latest,
+      installer: installer,
+      onSkipVersion: onSkipVersion,
+    ),
   );
 }
 
 class _UpdateDialog extends StatefulWidget {
-  const _UpdateDialog({required this.latest, required this.installer});
+  const _UpdateDialog({
+    required this.latest,
+    required this.installer,
+    this.onSkipVersion,
+  });
 
   final AppVersionInfo latest;
   final UpdateInstaller installer;
+  final ValueChanged<int>? onSkipVersion;
 
   @override
   State<_UpdateDialog> createState() => _UpdateDialogState();
@@ -51,6 +66,9 @@ class _UpdateDialogState extends State<_UpdateDialog> {
         // surfaces the error and restores the action buttons.
         if (statusName.contains('ERROR') ||
             event.status == OtaStatus.CANCELED) {
+          // Remember this build so a stuck install can't re-prompt every launch
+          // (the crash-loop guard). A newer release still clears the gate.
+          widget.onSkipVersion?.call(widget.latest.versionCode);
           setState(() {
             _error = 'Update failed. Please try again later.';
             _progress = null;
@@ -124,7 +142,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           ? const []
           : [
               TextButton(
-                onPressed: () => Navigator.of(context).pop(),
+                onPressed: () {
+                  widget.onSkipVersion?.call(widget.latest.versionCode);
+                  Navigator.of(context).pop();
+                },
                 child: const Text('Later'),
               ),
               FilledButton(

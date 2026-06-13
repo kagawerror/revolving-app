@@ -34,7 +34,12 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
             // silently fails. rootNavigatorKey is GoRouter's navigator.
             final navigatorContext = rootNavigatorKey.currentContext;
             if (navigatorContext != null) {
-              showUpdatePrompt(navigatorContext, decision.latest!);
+              showUpdatePrompt(
+                navigatorContext,
+                decision.latest!,
+                onSkipVersion: (code) =>
+                    ref.read(updateSkipStoreProvider).skip(code),
+              );
             }
           });
         }

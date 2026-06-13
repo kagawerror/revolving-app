@@ -19,12 +19,19 @@ class UpdateDecision extends Equatable {
 
 /// Pure comparison seam (mirrors `computeRelease`). A null [latest] — a failed
 /// or skipped check — is treated as up to date so the app never nags on error.
+///
+/// [skippedVersionCode] is the highest build the user has dismissed or that
+/// failed to install (0 = none). A manifest at or below it is treated as up to
+/// date so a stuck/declined update can't re-prompt every launch; a strictly
+/// newer release still clears the gate.
 UpdateDecision decideUpdate({
   required int currentVersionCode,
   required AppVersionInfo? latest,
+  int skippedVersionCode = 0,
 }) {
   if (latest == null) return const UpdateDecision(UpdateStatus.upToDate);
-  if (latest.versionCode > currentVersionCode) {
+  if (latest.versionCode > currentVersionCode &&
+      latest.versionCode > skippedVersionCode) {
     return UpdateDecision(UpdateStatus.updateAvailable, latest);
   }
   return UpdateDecision(UpdateStatus.upToDate, latest);

@@ -5,7 +5,9 @@ import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/config/app_secrets.dart';
+import '../../sync/presentation/sync_providers.dart' show sharedPreferencesProvider;
 import '../data/update_repository.dart';
+import '../data/update_skip_store.dart';
 import '../domain/update_decision.dart';
 
 /// Shared HTTP client for the update check. Closed when the provider scope is
@@ -24,6 +26,12 @@ final updateRepositoryProvider = Provider<UpdateRepository?>((ref) {
     manifestUrl: AppSecrets.updateManifestUrl,
   );
 });
+
+/// Persists dismissed/failed update versions so they don't re-prompt every
+/// launch. Backed by the bootstrap-injected [sharedPreferencesProvider].
+final updateSkipStoreProvider = Provider<UpdateSkipStore>(
+  (ref) => UpdateSkipStore(ref.watch(sharedPreferencesProvider)),
+);
 
 /// The running build's versionCode (pubspec `+N`). Overridable in tests.
 final currentVersionCodeProvider = FutureProvider<int>((ref) async {
@@ -51,10 +59,14 @@ final updateCheckProvider = FutureProvider<UpdateDecision>((ref) async {
   if (repo == null) return const UpdateDecision(UpdateStatus.upToDate);
 
   final current = await ref.watch(currentVersionCodeProvider.future);
+  final skipped = ref.watch(updateSkipStoreProvider).skippedVersionCode();
   final result = await repo.fetchLatest();
   return result.when(
-    ok: (latest) =>
-        decideUpdate(currentVersionCode: current, latest: latest),
+    ok: (latest) => decideUpdate(
+      currentVersionCode: current,
+      latest: latest,
+      skippedVersionCode: skipped,
+    ),
     err: (_) => const UpdateDecision(UpdateStatus.upToDate),
   );
 });
