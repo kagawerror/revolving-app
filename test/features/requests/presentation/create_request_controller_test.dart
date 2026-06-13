@@ -9,6 +9,7 @@ import 'package:rev_app/features/requests/domain/fund_request.dart';
 import 'package:rev_app/features/requests/domain/request_status.dart';
 import 'package:rev_app/features/requests/presentation/create_request_controller.dart';
 import 'package:rev_app/features/requests/presentation/request_providers.dart';
+import 'package:rev_app/features/sync/presentation/sync_providers.dart';
 import 'package:rev_app/services/cloudinary/cloudinary_uploader.dart';
 
 class _MockRepo extends Mock implements RequestRepository {}
@@ -26,7 +27,7 @@ void main() {
       amount: Money.zero,
       purpose: '',
       proofImageUrl: '',
-      status: RequestStatus.draft,
+      status: RequestStatus.created,
     ));
     // uploadJpeg(any()) takes a Uint8List, so mocktail needs a fallback for it.
     registerFallbackValue(Uint8List(0));
@@ -63,7 +64,7 @@ void main() {
     expect(res.failureOrNull, isNotNull);
   });
 
-  test('submit uploads then creates as pendingAck', () async {
+  test('submit uploads then creates as created', () async {
     final repo = _MockRepo();
     final uploader = _MockUploader();
     when(() => uploader.uploadJpeg(any()))
@@ -73,8 +74,11 @@ void main() {
     final c = ProviderContainer(overrides: [
       requestRepositoryProvider.overrideWithValue(repo),
       cloudinaryUploaderProvider.overrideWithValue(uploader),
+      // Force online so this exercises the Cloudinary-upload create path.
+      connectivityProvider.overrideWith((ref) => Stream.value(true)),
     ]);
     addTearDown(c.dispose);
+    await c.read(connectivityProvider.future);
 
     final res = await c.read(createRequestControllerProvider.notifier).submit(
           companyId: 'c1',
@@ -88,7 +92,7 @@ void main() {
     expect(res.valueOrNull, 'r1');
     final captured =
         verify(() => repo.create(captureAny())).captured.single as FundRequest;
-    expect(captured.status, RequestStatus.pendingAck);
+    expect(captured.status, RequestStatus.created);
     expect(captured.proofImageUrl, 'https://cdn/p.jpg');
   });
 }

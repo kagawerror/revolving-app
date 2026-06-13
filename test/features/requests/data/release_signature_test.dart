@@ -34,14 +34,15 @@ void main() {
       await fake
           .collection('requests')
           .doc('r1')
-          .set(requestMap('readyForRelease'));
-      final req = FundRequest.fromMap('r1', requestMap('readyForRelease'));
+          .set(requestMap('created'));
+      final req = FundRequest.fromMap('r1', requestMap('created'));
 
       final res = await FirestoreRequestRepository(fake).release(
         request: req,
         actorUid: 'incharge1',
         releaseProofUrl: 'https://img/release.jpg',
         releaseSignatureUrl: '', // missing
+        clientReleaseId: 'cid-test',
       );
 
       expect(res.failureOrNull, isA<ValidationFailure>());
@@ -51,7 +52,7 @@ void main() {
       expect(fundAfter['availableBalanceCentavos'], 500000);
       final reqAfter =
           (await fake.collection('requests').doc('r1').get()).data()!;
-      expect(reqAfter['status'], 'readyForRelease');
+      expect(reqAfter['status'], 'created');
       expect(reqAfter.containsKey('releaseSignatureUrl'), isFalse);
     });
 
@@ -62,14 +63,15 @@ void main() {
       await fake
           .collection('requests')
           .doc('r1')
-          .set(requestMap('readyForRelease'));
-      final req = FundRequest.fromMap('r1', requestMap('readyForRelease'));
+          .set(requestMap('created'));
+      final req = FundRequest.fromMap('r1', requestMap('created'));
 
       final res = await FirestoreRequestRepository(fake).release(
         request: req,
         actorUid: 'incharge1',
         releaseProofUrl: '', // missing
         releaseSignatureUrl: 'https://img/sig.png',
+        clientReleaseId: 'cid-test',
       );
 
       expect(res.failureOrNull, isA<ValidationFailure>());
@@ -84,14 +86,15 @@ void main() {
       await fake
           .collection('requests')
           .doc('r1')
-          .set(requestMap('readyForRelease'));
-      final req = FundRequest.fromMap('r1', requestMap('readyForRelease'));
+          .set(requestMap('created'));
+      final req = FundRequest.fromMap('r1', requestMap('created'));
 
       final res = await FirestoreRequestRepository(fake).release(
         request: req,
         actorUid: 'incharge1',
         releaseProofUrl: 'https://img/release.jpg',
         releaseSignatureUrl: 'https://img/sig.png',
+        clientReleaseId: 'cid-test',
       );
 
       expect(res.isOk, isTrue);

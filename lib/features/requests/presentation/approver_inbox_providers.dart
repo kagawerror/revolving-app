@@ -19,9 +19,11 @@ final pendingRequestsProvider =
   final companyId =
       effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
   if (companyId.isEmpty) return const Stream.empty();
+  // Release-first: the approver's pending queue is releases awaiting post-hoc
+  // review (acknowledge/dispute), i.e. status == released.
   return ref
       .watch(requestRepositoryProvider)
-      .watchByStatus(companyId, RequestStatus.pendingAck);
+      .watchByStatus(companyId, RequestStatus.released);
 });
 
 /// The approver "Approved" tab: this company's acted requests (acknowledged /
@@ -54,8 +56,8 @@ final acknowledgedWorklistProvider =
       .watchAcknowledgedWorklist(companyId);
 });
 
-/// Admin-only: pending-ack requests across every company.
+/// Admin-only: released requests awaiting post-hoc review across every company.
 final allPendingRequestsProvider =
     StreamProvider.autoDispose<List<FundRequest>>((ref) => ref
         .watch(requestRepositoryProvider)
-        .watchByStatusAll(RequestStatus.pendingAck));
+        .watchByStatusAll(RequestStatus.released));

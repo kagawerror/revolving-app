@@ -19,6 +19,7 @@ import '../features/requests/presentation/aging_body.dart';
 import '../features/requests/presentation/approver_approved_body.dart';
 import '../features/requests/presentation/approver_home_body.dart';
 import '../features/requests/presentation/incharge_home_body.dart';
+import '../features/sync/presentation/pending_sync_indicator.dart';
 
 /// Shared bottom-navigation shell for the three role landing screens.
 ///
@@ -115,6 +116,12 @@ class _RoleShellScreenState extends ConsumerState<RoleShellScreen> {
 
     final fab = current.fab;
 
+    // The pending-sync badge belongs to the incharge shell only: the incharge
+    // (or an admin operating the shell) is the sole role that queues offline
+    // mutations. It self-hides when nothing is queued, so it adds no chrome at
+    // rest. Approvers/admin maintenance shells never queue offline releases.
+    final showSyncBadge = !widget.role.isAdmin && !widget.role.canApprove;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(current.title),
@@ -122,9 +129,10 @@ class _RoleShellScreenState extends ConsumerState<RoleShellScreen> {
         // (elevation 0) but with a bottom nav we let the top bar tint a hair
         // when content scrolls under it, so the title never floats over text.
         scrolledUnderElevation: 0.5,
-        actions: const [
-          AlertsBell(),
-          SizedBox(width: AppTokens.xs),
+        actions: [
+          if (showSyncBadge) const PendingSyncBadge(),
+          const AlertsBell(),
+          const SizedBox(width: AppTokens.xs),
         ],
       ),
       body: Column(

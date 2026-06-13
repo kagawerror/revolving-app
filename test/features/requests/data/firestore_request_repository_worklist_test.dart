@@ -35,33 +35,40 @@ void main() {
   });
 
   test(
-      'watchAcknowledgedWorklist returns only this company\'s acknowledged + '
-      'readyForRelease, newest first, excluding everything else', () async {
-    // Company A spread across the lifecycle.
-    await seed('a-pending',
-        companyId: 'cA', status: 'pendingAck', createdAt: DateTime(2026, 1, 1));
-    await seed('a-ack',
-        companyId: 'cA', status: 'acknowledged', createdAt: DateTime(2026, 1, 2));
-    await seed('a-ready',
-        companyId: 'cA', status: 'readyForRelease', createdAt: DateTime(2026, 1, 4));
+      'watchAcknowledgedWorklist (release-first) returns only this company\'s '
+      'created requests awaiting release, newest first', () async {
+    // Company A spread across the release-first lifecycle.
+    await seed('a-created-old',
+        companyId: 'cA', status: 'created', createdAt: DateTime(2026, 1, 1));
+    await seed('a-created-new',
+        companyId: 'cA', status: 'created', createdAt: DateTime(2026, 1, 4));
     await seed('a-released',
         companyId: 'cA', status: 'released', createdAt: DateTime(2026, 1, 5));
     await seed('a-rejected',
         companyId: 'cA', status: 'rejected', createdAt: DateTime(2026, 1, 6));
-    // Company B acknowledged doc must NOT leak in.
-    await seed('b-ack',
-        companyId: 'cB', status: 'acknowledged', createdAt: DateTime(2026, 1, 3));
+    // Company B created doc must NOT leak in.
+    await seed('b-created',
+        companyId: 'cB', status: 'created', createdAt: DateTime(2026, 1, 3));
 
     final list = await repo.watchAcknowledgedWorklist('cA').first;
 
-    // Only cA's acknowledged + readyForRelease, newest (a-ready) first.
-    expect(list.map((r) => r.id).toList(), ['a-ready', 'a-ack']);
-    expect(
-      list.every((r) =>
-          r.status == RequestStatus.acknowledged ||
-          r.status == RequestStatus.readyForRelease),
-      isTrue,
-    );
+    // Only cA's created requests, newest (a-created-new) first.
+    expect(list.map((r) => r.id).toList(), ['a-created-new', 'a-created-old']);
+    expect(list.every((r) => r.status == RequestStatus.created), isTrue);
     expect(list.every((r) => r.companyId == 'cA'), isTrue);
+  });
+
+  test('watchConflicts / watchPostReleaseReview / watchDisputed filter by '
+      'their single status', () async {
+    await seed('c1',
+        companyId: 'cA', status: 'conflict', createdAt: DateTime(2026, 2, 1));
+    await seed('r1',
+        companyId: 'cA', status: 'released', createdAt: DateTime(2026, 2, 2));
+    await seed('d1',
+        companyId: 'cA', status: 'disputed', createdAt: DateTime(2026, 2, 3));
+
+    expect((await repo.watchConflicts('cA').first).map((r) => r.id), ['c1']);
+    expect((await repo.watchPostReleaseReview('cA').first).map((r) => r.id), ['r1']);
+    expect((await repo.watchDisputed('cA').first).map((r) => r.id), ['d1']);
   });
 }

@@ -17,6 +17,7 @@ import 'package:rev_app/features/requests/domain/request_repository.dart';
 import 'package:rev_app/features/requests/domain/request_status.dart';
 import 'package:rev_app/features/requests/presentation/create_request_screen.dart';
 import 'package:rev_app/features/requests/presentation/request_providers.dart';
+import 'package:rev_app/features/sync/presentation/sync_providers.dart';
 import 'package:rev_app/services/cloudinary/cloudinary_uploader.dart';
 import 'package:rev_app/services/image/image_pick_compress.dart';
 
@@ -73,7 +74,7 @@ void main() {
       amount: Money.zero,
       purpose: '',
       proofImageUrl: '',
-      status: RequestStatus.draft,
+      status: RequestStatus.created,
     ));
     registerFallbackValue(Uint8List(0));
     registerFallbackValue(ImageSource.gallery);
@@ -112,6 +113,10 @@ void main() {
           requestRepositoryProvider.overrideWithValue(repo),
           cloudinaryUploaderProvider.overrideWithValue(uploader),
           imagePickCompressProvider.overrideWithValue(picker),
+          // Force online so the create takes the Cloudinary-upload path (these
+          // tests assert the online behaviour). Offline branching has its own
+          // controller tests.
+          connectivityProvider.overrideWith((ref) => Stream.value(true)),
           // companyFundsProvider is keyed by the resolved companyId; return the
           // funds regardless of key so the dropdown can populate.
           companyFundsProvider.overrideWith((ref, id) => Stream.value(funds)),
@@ -161,6 +166,11 @@ void main() {
           find.widgetWithText(FilledButton, 'Send for acknowledgement');
       await tester.ensureVisible(submit);
       await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      // Confirm the create decision in the dialog (online copy → 'Send').
+      expect(find.text('Create this request?'), findsOneWidget);
+      await tester.tap(find.text('Send'));
       await tester.pumpAndSettle();
 
       final captured =
@@ -230,6 +240,11 @@ void main() {
           find.widgetWithText(FilledButton, 'Send for acknowledgement');
       await tester.ensureVisible(submit);
       await tester.tap(submit);
+      await tester.pumpAndSettle();
+
+      // Confirm the create decision in the dialog (online copy → 'Send').
+      expect(find.text('Create this request?'), findsOneWidget);
+      await tester.tap(find.text('Send'));
       await tester.pumpAndSettle();
 
       final captured =

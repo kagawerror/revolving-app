@@ -172,5 +172,79 @@ void main() {
         homeFor(UserRole.employee),
       );
     });
+
+    // /incharge/conflicts is the incharge overdraft-resolution queue — it moves
+    // money, so it is view-restricted to incharge + admin exactly like
+    // /incharge/acknowledged.
+    test('incharge may reach the /incharge/conflicts queue', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_incharge),
+            location: '/incharge/conflicts'),
+        isNull,
+      );
+    });
+
+    test('admin superuser may reach the /incharge/conflicts queue', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_admin), location: '/incharge/conflicts'),
+        isNull,
+      );
+    });
+
+    test('approver is bounced away from /incharge/conflicts to /approvals', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_approver),
+            location: '/incharge/conflicts'),
+        '/approvals',
+      );
+    });
+
+    test('employee is bounced away from /incharge/conflicts to its home', () {
+      // Employee shares the /incharge shell; the targeted rule must bounce it.
+      expect(
+        redirectFor(
+            auth: const AsyncData(_employee),
+            location: '/incharge/conflicts'),
+        homeFor(UserRole.employee),
+      );
+    });
+
+    // /approvals/review is the approver post-release review queue. It lives
+    // under the /approvals subtree, so the role-home prefix guard keeps
+    // non-approvers out; admin passes via the superuser bypass.
+    test('approver may reach the /approvals/review queue', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_approver), location: '/approvals/review'),
+        isNull,
+      );
+    });
+
+    test('admin superuser may reach the /approvals/review queue', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_admin), location: '/approvals/review'),
+        isNull,
+      );
+    });
+
+    test('incharge is bounced away from /approvals/review to /incharge', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_incharge), location: '/approvals/review'),
+        '/incharge',
+      );
+    });
+
+    test('employee is bounced away from /approvals/review to its home', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_employee), location: '/approvals/review'),
+        homeFor(UserRole.employee),
+      );
+    });
   });
 }

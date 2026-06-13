@@ -14,6 +14,7 @@ import '../../auth/presentation/auth_providers.dart';
 import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../companies/presentation/admin_providers.dart';
+import '../../sync/presentation/sync_providers.dart';
 import 'create_request_controller.dart';
 import 'request_providers.dart';
 
@@ -85,12 +86,25 @@ class _State extends ConsumerState<CreateRequestScreen> {
     final companyId =
         effectiveCompanyId(user, ref.read(adminActiveCompanyProvider));
     if (companyId.isEmpty) return;
+
+    // Every money/state decision is confirmed first. Creating a request commits
+    // a spend amount against the fund, so it goes through a confirmation dialog
+    // — with offline-aware copy when the device is queuing locally.
+    final online = ref.read(connectivityProvider).valueOrNull ?? false;
+    final amount = Money.fromPesos(_parseAmount(_amount.text)!);
+    final confirmed = await _confirmCreate(
+      online: online,
+      amount: amount,
+      beneficiary: _beneficiary.text.trim(),
+    );
+    if (confirmed != true || !mounted) return;
+
     final res = await ref.read(createRequestControllerProvider.notifier).submit(
           companyId: companyId,
           fundId: _fundId!,
           createdByUid: user.uid,
           beneficiary: _beneficiary.text.trim(),
-          amount: Money.fromPesos(_parseAmount(_amount.text)!),
+          amount: amount,
           purpose: _purpose.text.trim(),
           imageBytes: _image,
         );
@@ -98,9 +112,52 @@ class _State extends ConsumerState<CreateRequestScreen> {
     if (res.showOnError(context)) Navigator.of(context).pop();
   }
 
+  /// Confirmation dialog for the create decision. Same component/style for both
+  /// paths; only the body copy branches on connectivity so the incharge knows
+  /// an offline create is saved on-device and synced later.
+  Future<bool?> _confirmCreate({
+    required bool online,
+    required Money amount,
+    required String beneficiary,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(online
+            ? Icons.send_rounded
+            : Icons.cloud_off_rounded),
+        title: const Text('Create this request?'),
+        content: Text(
+          online
+              ? 'This will send a ${amount.format()} request for '
+                  '$beneficiary for acknowledgement.'
+              : 'You\'re offline — this ${amount.format()} request for '
+                  '$beneficiary will be saved on your device and synced when '
+                  'you\'re back online.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: Icon(online ? Icons.send_rounded : Icons.save_rounded,
+                size: 18),
+            label: Text(online ? 'Send' : 'Save offline'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider).valueOrNull;
+    // Keep the connectivity probe warm while the form is open so the submit-time
+    // read reflects the live value (rather than an initial loading→offline) and
+    // the confirmation dialog shows the right copy.
+    ref.watch(connectivityProvider);
     // Non-admins resolve to their own pinned companyId (unchanged). Admins
     // resolve to their in-session selection, which may be empty if they reached
     // this screen without choosing a company.

@@ -151,7 +151,7 @@ void main() {
         'minimal case shows proof but hides release tiles and liquidation',
         (tester) async {
       // Only an initial proof: no release proof, no signature, no partials.
-      final request = _request(status: RequestStatus.pendingAck);
+      final request = _request(status: RequestStatus.released);
 
       await _openSheet(
         tester,

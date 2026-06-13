@@ -14,6 +14,7 @@ import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../sync/presentation/pending_sync_indicator.dart';
 import 'approver_inbox_providers.dart';
 import 'request_detail_screen.dart';
 import 'request_status_visual.dart';
@@ -49,6 +50,9 @@ class _ApproverInbox extends ConsumerWidget {
         padding: const EdgeInsets.fromLTRB(AppTokens.lg, AppTokens.sm,
             AppTokens.lg, AppTokens.bottomNavContentInset),
         children: [
+          // Approvers act offline too (acknowledge/dispute queue locally) — let
+          // them see they're offline. Self-collapses when online.
+          const OfflineBanner(),
           SectionHeader(
             title: 'Pending replenishments',
             trailing: replenishments.maybeWhen(
@@ -93,7 +97,7 @@ class _ApproverInbox extends ConsumerWidget {
                   ).animate().fadeIn(duration: 280.ms),
           ),
           SectionHeader(
-            title: 'Pending requests',
+            title: 'To review',
             trailing: pending.maybeWhen(
               data: (list) =>
                   list.isEmpty ? null : _CountBadge(count: list.length),
@@ -106,9 +110,9 @@ class _ApproverInbox extends ConsumerWidget {
             data: (list) => list.isEmpty
                 ? const SurfaceCard(
                     child: EmptyState(
-                      title: 'All caught up',
-                      message: 'Requests waiting for your acknowledgement '
-                          'will show up here.',
+                      title: 'Nothing to review',
+                      message: 'When a custodian releases cash, it shows up '
+                          'here for you to acknowledge or dispute.',
                     ),
                   )
                 : SurfaceCard(

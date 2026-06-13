@@ -12,7 +12,9 @@ import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/config/presentation/cloudinary_config_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/requests/presentation/acknowledged_worklist_screen.dart';
+import '../features/requests/presentation/conflict_worklist_screen.dart';
 import '../features/requests/presentation/create_request_screen.dart';
+import '../features/requests/presentation/post_release_review_screen.dart';
 import 'role_shell_screen.dart';
 
 @visibleForTesting
@@ -50,6 +52,15 @@ String? redirectFor({
   // may see /incharge/acknowledged. An employee shares the /incharge shell, so
   // the prefix guard below would admit it; bounce any non-incharge back home.
   if (location.startsWith('/incharge/acknowledged') &&
+      user.role != UserRole.incharge) {
+    return home;
+  }
+
+  // View-restricted conflicts queue: ONLY incharge (and admin, already passed
+  // above) may resolve overdraft conflicts — it moves money. An employee shares
+  // the /incharge shell, so the prefix guard below would admit it; bounce any
+  // non-incharge back home.
+  if (location.startsWith('/incharge/conflicts') &&
       user.role != UserRole.incharge) {
     return home;
   }
@@ -118,10 +129,23 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _) => const AcknowledgedWorklistScreen(),
       ),
       GoRoute(
+        // Incharge overdraft-resolution queue. View-restricted to incharge/admin
+        // by redirectFor (an employee sharing the /incharge shell is bounced).
+        path: '/incharge/conflicts',
+        builder: (_, _) => const ConflictWorklistScreen(),
+      ),
+      GoRoute(
         path: '/approvals',
         // ceo maps to the approver shell (role.canApprove); the shell only needs
         // to know this is the "approvals" shell, not the exact approver role.
         builder: (_, _) => const RoleShellScreen(role: UserRole.ceo),
+      ),
+      GoRoute(
+        // Approver post-release review queue. Lives under the /approvals
+        // subtree, so the role-home prefix guard in redirectFor already keeps
+        // non-approvers out (admin passes via the superuser bypass).
+        path: '/approvals/review',
+        builder: (_, _) => const PostReleaseReviewScreen(),
       ),
       GoRoute(
           path: '/profile',

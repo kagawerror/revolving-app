@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
-import '../../../core/error/failure_ui.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
@@ -22,9 +22,11 @@ import '../../../core/money/money.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
 import '../../replenishment/presentation/replenish_select_dialog.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../sync/presentation/pending_sync_indicator.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_breakdown.dart';
 import '../domain/request_status.dart';
+import 'conflict_worklist_providers.dart';
 import 'release_flow_controller.dart';
 import 'request_detail_screen.dart';
 import 'request_providers.dart';
@@ -68,16 +70,24 @@ class _InchargeBody extends ConsumerWidget {
     // list. Non-admins always have a non-empty companyId, so never see this.
     if (companyId.isEmpty) return const AdminSelectCompanyPrompt();
 
-    return ref.watch(companyFundsProvider(companyId)).when(
-          loading: () => const Padding(
-            padding: EdgeInsets.all(AppTokens.lg),
-            child: SurfaceCard(child: SkeletonList()),
-          ),
-          error: (e, _) => Center(child: Text('Error: $e')),
-          data: (funds) => Column(
-            children: [
-              LowBalanceBanner(funds: funds),
-              Expanded(
+    // Offline banner + conflicts entry sit ABOVE the fund list so they're
+    // visible regardless of the funds async state. The banner self-collapses
+    // when online; the conflicts entry self-hides when there are no conflicts.
+    return Column(
+      children: [
+        const OfflineBanner(),
+        const _ConflictsEntry(),
+        Expanded(
+          child: ref.watch(companyFundsProvider(companyId)).when(
+                loading: () => const Padding(
+                  padding: EdgeInsets.all(AppTokens.lg),
+                  child: SurfaceCard(child: SkeletonList()),
+                ),
+                error: (e, _) => Center(child: Text('Error: $e')),
+                data: (funds) => Column(
+                  children: [
+                    LowBalanceBanner(funds: funds),
+                    Expanded(
                 child: funds.isEmpty
                     ? const EmptyState(
                         title: 'No funds yet',
@@ -100,10 +110,74 @@ class _InchargeBody extends ConsumerWidget {
                             ),
                         ],
                       ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-        );
+        ),
+      ],
+    );
+  }
+}
+
+/// A discoverable entry to the incharge "Conflicts" worklist. Self-hides when
+/// there are no conflicts (zero chrome at rest); when one or more overdraft
+/// conflicts exist it surfaces a calm-but-urgent card — a conflict is money in
+/// limbo, so it must be impossible to miss. Tapping opens `/incharge/conflicts`.
+class _ConflictsEntry extends ConsumerWidget {
+  const _ConflictsEntry();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final conflicts = ref.watch(conflictsProvider).valueOrNull ?? const [];
+    if (conflicts.isEmpty) return const SizedBox.shrink();
+
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final (bg, fg) = StatusPill.colorsFor(StatusTone.danger, scheme);
+    final n = conflicts.length;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+          AppTokens.lg, AppTokens.md, AppTokens.lg, 0),
+      child: SurfaceCard(
+        padding: const EdgeInsets.all(AppTokens.md),
+        onTap: () => context.push('/incharge/conflicts'),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration:
+                  BoxDecoration(color: bg, borderRadius: AppTokens.brField),
+              child: Icon(Icons.error_outline_rounded, color: fg, size: 22),
+            ),
+            const SizedBox(width: AppTokens.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    n == 1
+                        ? '1 release needs resolving'
+                        : '$n releases need resolving',
+                    style: textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    'These overdrew the fund on sync. Tap to re-release or void.',
+                    style: textTheme.bodySmall
+                        ?.copyWith(color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.chevron_right_rounded, color: scheme.onSurfaceVariant),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -283,7 +357,6 @@ class _RequestAction extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final repo = ref.read(requestRepositoryProvider);
     final user = ref.read(currentUserProvider).valueOrNull;
     // Defense-in-depth: an incharge custodian (or an admin superuser operating
     // this company) may release/ready requests — mirrors the isIncharge() ||
@@ -291,20 +364,11 @@ class _RequestAction extends ConsumerWidget {
     final canManage = user?.role.canManageFundOrAdmin ?? false;
     if (!canManage) return _statusPill();
     switch (request.status) {
-      case RequestStatus.acknowledged:
-        return FilledButton.tonalIcon(
-          onPressed: () async {
-            final res = await repo.transition(
-              request: request,
-              to: RequestStatus.readyForRelease,
-              actorUid: user!.uid,
-            );
-            if (context.mounted) res.showOnError(context);
-          },
-          icon: const Icon(Icons.task_alt_rounded, size: 18),
-          label: const Text('Mark ready'),
-        );
-      case RequestStatus.readyForRelease:
+      // Release-first: the incharge releases a freshly created request directly.
+      // A conflicted (overdraft) request is resolved through the same release
+      // flow once funds allow.
+      case RequestStatus.created:
+      case RequestStatus.conflict:
         return FilledButton.icon(
           onPressed: () => unawaited(ref
               .read(releaseFlowControllerProvider.notifier)

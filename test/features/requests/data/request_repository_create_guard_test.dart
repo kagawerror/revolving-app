@@ -10,12 +10,12 @@ import 'package:rev_app/features/requests/domain/request_status.dart';
 class _MockDb extends Mock implements FirebaseFirestore {}
 
 void main() {
-  test('create rejects pendingAck request without proof', () async {
+  test('create rejects a created request without proof or pendingImageRef', () async {
     final repo = FirestoreRequestRepository(_MockDb());
     final res = await repo.create(FundRequest(
       id: '', companyId: 'c1', fundId: 'f1', createdByUid: 'u1',
       beneficiaryName: 'Ben', amount: Money.fromPesos(100), purpose: 'x',
-      proofImageUrl: '', status: RequestStatus.pendingAck));
+      proofImageUrl: '', status: RequestStatus.created));
     expect(res.failureOrNull, isA<ValidationFailure>());
   });
 }

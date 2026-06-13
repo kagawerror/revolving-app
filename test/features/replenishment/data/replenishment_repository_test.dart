@@ -247,7 +247,7 @@ void main() {
     await db.collection('requests').doc('r1').set({
       'companyId': 'c1', 'fundId': 'f1', 'createdByUid': 'inc',
       'beneficiaryName': 'B', 'amountCentavos': 400000, 'purpose': 'x',
-      'proofImageUrl': 'http://img', 'status': 'readyForRelease',
+      'proofImageUrl': 'http://img', 'status': 'created',
       'replenishmentId': null,
     });
 
@@ -263,6 +263,7 @@ void main() {
       actorUid: 'inc',
       releaseProofUrl: 'https://img/release.jpg',
       releaseSignatureUrl: 'https://img/sig.png',
+      clientReleaseId: 'cid-test',
     );
     expect(released.isOk, isTrue);
     var fund = await db.collection('funds').doc('f1').get();

@@ -17,6 +17,7 @@ import 'package:rev_app/features/replenishment/presentation/replenishment_provid
 import 'package:rev_app/features/requests/domain/fund_request.dart';
 import 'package:rev_app/features/requests/domain/request_repository.dart';
 import 'package:rev_app/features/requests/domain/request_status.dart';
+import 'package:rev_app/features/sync/domain/release_sync_result.dart';
 import 'package:rev_app/features/requests/presentation/approver_inbox_providers.dart';
 import 'package:rev_app/features/requests/presentation/request_providers.dart';
 
@@ -83,10 +84,10 @@ FundRequest _req(String id, String companyId, RequestStatus status) =>
 /// Distinct lists per read path so the test can tell which query was chosen.
 class _FakeRequestRepo implements RequestRepository {
   static final allPending = [
-    _req('a', 'c1', RequestStatus.pendingAck),
-    _req('b', 'c2', RequestStatus.pendingAck),
+    _req('a', 'c1', RequestStatus.created),
+    _req('b', 'c2', RequestStatus.created),
   ];
-  static final companyPending = [_req('c', 'c1', RequestStatus.pendingAck)];
+  static final companyPending = [_req('c', 'c1', RequestStatus.created)];
   static final allRecent = [
     _req('r1', 'c1', RequestStatus.released),
     _req('r2', 'c2', RequestStatus.acknowledged),
@@ -116,6 +117,15 @@ class _FakeRequestRepo implements RequestRepository {
       const Stream.empty();
   @override
   Stream<List<FundRequest>> watchReleasedAll(int limit) => const Stream.empty();
+  @override
+  Stream<List<FundRequest>> watchConflicts(String companyId) =>
+      const Stream.empty();
+  @override
+  Stream<List<FundRequest>> watchPostReleaseReview(String companyId) =>
+      const Stream.empty();
+  @override
+  Stream<List<FundRequest>> watchDisputed(String companyId) =>
+      const Stream.empty();
 
   @override
   Stream<List<FundRequest>> watchAcknowledgedWorklist(String companyId) =>
@@ -130,18 +140,48 @@ class _FakeRequestRepo implements RequestRepository {
   @override
   Future<Result<String>> create(FundRequest request) async => const Ok('');
   @override
-  Future<Result<void>> transition({
-    required FundRequest request,
-    required RequestStatus to,
-    required String actorUid,
-    String? note,
-  }) async => const Ok(null);
-  @override
   Future<Result<void>> release({
     required FundRequest request,
     required String actorUid,
     required String releaseProofUrl,
     required String releaseSignatureUrl,
+    required String clientReleaseId,
+  }) async => const Ok(null);
+  @override
+  Future<Result<void>> captureLocalRelease({
+    required FundRequest request,
+    required String clientReleaseId,
+    required String actorUid,
+  }) async => const Ok(null);
+  @override
+  Future<Result<ReleaseSyncResult>> confirmPendingRelease({
+    required FundRequest request,
+    required String clientReleaseId,
+    required String releaseProofUrl,
+    required String releaseSignatureUrl,
+    required String actorUid,
+  }) async => const Ok(ReleaseSyncResult.confirmed);
+  @override
+  Future<Result<void>> backfillCreateImage({
+    required String requestId,
+    required String proofImageUrl,
+  }) async => const Ok(null);
+  @override
+  Future<Result<void>> acknowledgePostRelease({
+    required FundRequest request,
+    required String actorUid,
+  }) async => const Ok(null);
+  @override
+  Future<Result<void>> dispute({
+    required FundRequest request,
+    required String actorUid,
+    required String reason,
+  }) async => const Ok(null);
+  @override
+  Future<Result<void>> resolveConflict({
+    required FundRequest request,
+    required RequestStatus to,
+    required String actorUid,
   }) async => const Ok(null);
 }
 

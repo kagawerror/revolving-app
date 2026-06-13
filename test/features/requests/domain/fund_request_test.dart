@@ -14,11 +14,63 @@ void main() {
       'amountCentavos': 250000,
       'purpose': 'Fuel',
       'proofImageUrl': 'https://img/x.jpg',
-      'status': 'pendingAck',
+      'status': 'created',
     });
     expect(r.amount, Money.fromPesos(2500));
-    expect(r.status, RequestStatus.pendingAck);
+    expect(r.status, RequestStatus.created);
     expect(r.hasProof, isTrue);
+  });
+
+  test('legacy pendingAck status remaps to created on read', () {
+    final r = FundRequest.fromMap('r1', {
+      'amountCentavos': 1,
+      'status': 'pendingAck',
+    });
+    expect(r.status, RequestStatus.created);
+  });
+
+  test('fromMap parses the new offline-first fields', () {
+    final disputedTs = Timestamp.fromDate(DateTime(2026, 6, 6, 8));
+    final r = FundRequest.fromMap('r1', {
+      'amountCentavos': 1,
+      'releaseState': 'localPending',
+      'clientReleaseId': 'cid-9',
+      'disputedReason': 'wrong amount',
+      'disputedByUid': 'approver-1',
+      'disputedAt': disputedTs,
+      'pendingImageRef': 'local://proof.jpg',
+    });
+    expect(r.releaseState, 'localPending');
+    expect(r.clientReleaseId, 'cid-9');
+    expect(r.disputedReason, 'wrong amount');
+    expect(r.disputedByUid, 'approver-1');
+    expect(r.disputedAt, DateTime(2026, 6, 6, 8));
+    expect(r.pendingImageRef, 'local://proof.jpg');
+  });
+
+  test('new offline-first fields default to null on legacy docs', () {
+    final r = FundRequest.fromMap('r1', {'amountCentavos': 1});
+    expect(r.releaseState, isNull);
+    expect(r.clientReleaseId, isNull);
+    expect(r.disputedReason, isNull);
+    expect(r.disputedByUid, isNull);
+    expect(r.disputedAt, isNull);
+    expect(r.pendingImageRef, isNull);
+  });
+
+  test('toCreateMap includes pendingImageRef only when set', () {
+    final withRef = FundRequest.fromMap('r1', {
+      'amountCentavos': 1,
+      'status': 'created',
+      'pendingImageRef': 'local://x.jpg',
+    });
+    expect(withRef.toCreateMap()['pendingImageRef'], 'local://x.jpg');
+
+    final without = FundRequest.fromMap('r1', {
+      'amountCentavos': 1,
+      'status': 'created',
+    });
+    expect(without.toCreateMap().containsKey('pendingImageRef'), isFalse);
   });
 
   test('hasProof is false when url empty', () {

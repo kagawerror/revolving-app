@@ -51,6 +51,12 @@ dependencies:
   signature: ^5.5.0
   package_info_plus: ^10.1.0
   ota_update: ^7.1.0
+  # Offline-first persistence substrate (Phase 3). The outbox is tens of entries
+  # for a single incharge, so a single shared_preferences JSON key is plenty —
+  # no need for Hive/sqlite. path_provider locates the docs dir for the local
+  # image store that holds proof/signature bytes until upload.
+  shared_preferences: ^2.3.3
+  path_provider: ^2.1.5
 
 dev_dependencies:
   flutter_test:

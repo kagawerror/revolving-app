@@ -27,7 +27,7 @@ void main() {
         'amountCentavos': 200000, // ₱2,000
         'purpose': 'x',
         'proofImageUrl': 'https://img/x.jpg',
-        'status': 'readyForRelease',
+        'status': 'created',
       };
       await fake.collection('requests').doc('r1').set(requestMap);
 
@@ -38,6 +38,7 @@ void main() {
         actorUid: 'incharge1',
         releaseProofUrl: 'https://img/release.jpg',
         releaseSignatureUrl: 'https://img/sig.png',
+        clientReleaseId: 'cid-test',
       );
 
       expect(result.isOk, isTrue);
@@ -100,7 +101,7 @@ void main() {
         'amountCentavos': 200000, // ₱2,000 > ₱1,000 available
         'purpose': 'x',
         'proofImageUrl': 'https://img/x.jpg',
-        'status': 'readyForRelease',
+        'status': 'created',
       };
       await fake.collection('requests').doc('r1').set(requestMap);
 
@@ -111,6 +112,7 @@ void main() {
         actorUid: 'incharge1',
         releaseProofUrl: 'https://img/release.jpg',
         releaseSignatureUrl: 'https://img/sig.png',
+        clientReleaseId: 'cid-test',
       );
 
       expect(result.failureOrNull, isA<ValidationFailure>());
@@ -122,7 +124,7 @@ void main() {
 
       final reqAfter =
           (await fake.collection('requests').doc('r1').get()).data()!;
-      expect(reqAfter['status'], 'readyForRelease');
+      expect(reqAfter['status'], 'created');
 
       // No notification should be written when the release fails/rolls back.
       final notifs = await fake.collection('notifications').get();

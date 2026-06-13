@@ -116,55 +116,148 @@ service cloud.firestore {
     match /requests/{requestId} {
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
 
-      // Incharge creates; must belong to their company and carry a proof image.
-      // Admin superuser may create in ANY company (non-empty companyId), still
-      // owning the doc and attaching a proof image.
+      // Incharge creates; must belong to their company and carry a proof image
+      // OR a non-empty pendingImageRef (offline create backfills the image
+      // later). Status on create must be 'created'. Admin superuser may create
+      // in ANY company (non-empty companyId), still owning the doc.
+      // The offline-create image backfill is enforced by the CREATE IMAGE
+      // BACKFILL clause in the `update` block below (created->created changing
+      // only proofImageUrl/pendingImageRef, requiring a real proof URL).
       allow create: if (isIncharge()
           && request.resource.data.companyId in myCompanyIds()
           && request.resource.data.createdByUid == request.auth.uid
-          && request.resource.data.proofImageUrl is string
-          && request.resource.data.proofImageUrl.size() > 0)
+          && request.resource.data.status == 'created'
+          && ((request.resource.data.proofImageUrl is string
+              && request.resource.data.proofImageUrl.size() > 0)
+            || (request.resource.data.get('pendingImageRef', '') is string
+              && request.resource.data.get('pendingImageRef', '').size() > 0)))
         || (isAdmin()
           && request.resource.data.companyId is string
           && request.resource.data.companyId.size() > 0
           && request.resource.data.createdByUid == request.auth.uid
-          && request.resource.data.proofImageUrl is string
-          && request.resource.data.proofImageUrl.size() > 0);
+          && request.resource.data.status == 'created'
+          && ((request.resource.data.proofImageUrl is string
+              && request.resource.data.proofImageUrl.size() > 0)
+            || (request.resource.data.get('pendingImageRef', '') is string
+              && request.resource.data.get('pendingImageRef', '').size() > 0)));
 
-      // Approvers acknowledge/reject; incharge advances ready/released. Admin is
-      // a superuser across companies, but the status-transition checks below stay
-      // unchanged so admin still cannot make an illegal transition.
+      // Release-first lifecycle. Mirrors RequestStatus._allowed exactly. Admin is
+      // a superuser across companies, but every status check below stays so admin
+      // cannot make an illegal transition.
       allow update: if (sameCompany(resource.data.companyId) || isAdmin()) && (
-        ((isApprover() || isAdmin())
-          && resource.data.status == 'pendingAck'
-          && request.resource.data.status in ['acknowledged', 'rejected'])
-        // Incharge advances ready/released. A write that sets status 'released'
-        // MUST carry a non-empty release proof photo AND recipient signature
-        // (mirrors the Dart ensureReleaseSignature guard). The
-        // `status != 'released' || (both present)` shape lets the
-        // acknowledged -> readyForRelease move pass with neither field set.
+        // CREATE IMAGE BACKFILL: created -> created changing ONLY proofImageUrl
+        // and/or pendingImageRef (the offline-create image arrives on sync).
+        // The new proofImageUrl must be a real non-empty URL; amountCentavos and
+        // every other field stay pinned. Incharge owner or admin only.
+        ((isIncharge() || isAdmin())
+          && resource.data.status == 'created'
+          && request.resource.data.status == 'created'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['proofImageUrl', 'pendingImageRef'])
+          && request.resource.data.proofImageUrl is string
+          && request.resource.data.proofImageUrl.size() > 0
+          && request.resource.data.amountCentavos == resource.data.amountCentavos)
+        // RELEASE: incharge/admin releases a created OR conflict-resolved
+        // request. The write MUST carry a non-empty release proof photo AND
+        // recipient signature, OR be an offline release pending backfill
+        // (releaseState 'localPending', both URLs may be empty here and are
+        // backfilled by the image-backfill clause below). amountCentavos is
+        // immutable. Mirrors RequestStatus._allowed: only 'created' and
+        // 'conflict' may transition to 'released'.
         || ((isIncharge() || isAdmin())
-          && resource.data.status in ['acknowledged', 'readyForRelease']
-          && request.resource.data.status in ['readyForRelease', 'released']
-          && (request.resource.data.status != 'released'
-            || (request.resource.data.releaseProofUrl is string
+          && resource.data.status in ['created', 'conflict']
+          && request.resource.data.status == 'released'
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && ((request.resource.data.releaseProofUrl is string
               && request.resource.data.releaseProofUrl.size() > 0
               && request.resource.data.releaseSignatureUrl is string
-              && request.resource.data.releaseSignatureUrl.size() > 0)))
-        // Full replenishment: once released, the captured proof + signature are
-        // immutable — a later write may not alter them.
+              && request.resource.data.releaseSignatureUrl.size() > 0)
+            || request.resource.data.get('releaseState', '') == 'localPending'))
+        // IMAGE BACKFILL: released -> released changing only the release image
+        // URLs / pendingImageRef / releaseState. Both URLs must now be present.
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'released'
+          && request.resource.data.status == 'released'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['releaseProofUrl', 'releaseSignatureUrl', 'pendingImageRef', 'releaseState'])
+          && request.resource.data.releaseProofUrl is string
+          && request.resource.data.releaseProofUrl.size() > 0
+          && request.resource.data.releaseSignatureUrl is string
+          && request.resource.data.releaseSignatureUrl.size() > 0)
+        // RELEASE-CONFIRM (offline replay): released -> released, promoting a
+        // locally-captured release ('localPending') to 'serverConfirmed'. This
+        // is the server-side confirm in confirmPendingRelease, which ALSO debits
+        // the fund in the same transaction (permitted by the funds OPERATIONAL
+        // update clause for incharge/admin). Distinct from IMAGE BACKFILL above
+        // because it additionally stamps releasedAt. The affectedKeys set is
+        // exactly {releasedAt, releaseProofUrl, releaseSignatureUrl,
+        // releaseState, pendingImageRef} (status + clientReleaseId are rewritten
+        // to identical values, so they stay out of the diff and are pinned by
+        // equality below). Money + identity are immutable; both proof URLs must
+        // now be present. Incharge owner or admin only.
+        || ((isIncharge() || isAdmin())
+          && resource.data.get('releaseState', '') == 'localPending'
+          && resource.data.status == 'released'
+          && request.resource.data.releaseState == 'serverConfirmed'
+          && request.resource.data.status == 'released'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['releasedAt', 'releaseProofUrl', 'releaseSignatureUrl', 'releaseState', 'pendingImageRef'])
+          && request.resource.data.releaseProofUrl is string
+          && request.resource.data.releaseProofUrl.size() > 0
+          && request.resource.data.releaseSignatureUrl is string
+          && request.resource.data.releaseSignatureUrl.size() > 0
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.fundId == resource.data.fundId
+          && request.resource.data.createdByUid == resource.data.createdByUid
+          && request.resource.data.clientReleaseId == resource.data.clientReleaseId)
+        // POST-HOC ACKNOWLEDGE: approver/admin acknowledges a released spend.
         || ((isApprover() || isAdmin())
           && resource.data.status == 'released'
+          && request.resource.data.status == 'acknowledged'
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
+          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
+        // DISPUTE: approver/admin disputes a released OR acknowledged spend, and
+        // must stamp themselves as the disputer. No money/proof changes.
+        || ((isApprover() || isAdmin())
+          && resource.data.status in ['released', 'acknowledged']
+          && request.resource.data.status == 'disputed'
+          && request.resource.data.disputedByUid == request.auth.uid
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
+          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
+        // REJECT: approver/admin rejects a still-created request.
+        || ((isApprover() || isAdmin())
+          && resource.data.status == 'created'
+          && request.resource.data.status == 'rejected')
+        // CONFLICT (overdraft): incharge/admin flags a released request that the
+        // server could not actually cover.
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'released'
+          && request.resource.data.status == 'conflict')
+        // RESOLVE CONFLICT to rejected (resolve-to-released is the RELEASE
+        // clause above). Incharge/admin only.
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'conflict'
+          && request.resource.data.status == 'rejected')
+        // Full replenishment: released OR acknowledged OR disputed ->
+        // replenished. Disputed/acknowledged cash is still reconcilable.
+        // Captured proof + signature stay immutable. Mirrors
+        // RequestStatus._allowed (released/acknowledged/disputed -> replenished).
+        || ((isApprover() || isAdmin())
+          && resource.data.status in ['released', 'acknowledged', 'disputed']
           && request.resource.data.status == 'replenished'
           && request.resource.data.replenishmentId is string
           && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
           && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
-        // Partial replenishment: the request stays `released` while only
-        // replenishedCentavos grows; the original amount, release proof and
-        // signature are immutable.
+        // Partial replenishment: the request stays in its current reconcilable
+        // status (released, acknowledged or disputed) while only
+        // replenishedCentavos grows; amount, release proof and signature are
+        // immutable. This is a self-transition (no status change).
         || ((isApprover() || isAdmin())
-          && resource.data.status == 'released'
-          && request.resource.data.status == 'released'
+          && resource.data.status in ['released', 'acknowledged', 'disputed']
+          && request.resource.data.status == resource.data.status
           && request.resource.data.replenishedCentavos
               > resource.data.get('replenishedCentavos', 0)
           && request.resource.data.amountCentavos == resource.data.amountCentavos

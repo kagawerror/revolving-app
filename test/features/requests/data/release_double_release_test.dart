@@ -26,18 +26,19 @@ void main() {
         'status': status,
       };
 
-  test('one-tap release directly from acknowledged succeeds and deducts once',
+  test('release-first: release directly from created succeeds and deducts once',
       () async {
     final fake = FakeFirebaseFirestore();
     await seedFund(fake);
-    await fake.collection('requests').doc('r1').set(requestMap('acknowledged'));
-    final req = FundRequest.fromMap('r1', requestMap('acknowledged'));
+    await fake.collection('requests').doc('r1').set(requestMap('created'));
+    final req = FundRequest.fromMap('r1', requestMap('created'));
 
     final res = await FirestoreRequestRepository(fake).release(
       request: req,
       actorUid: 'incharge1',
       releaseProofUrl: 'https://img/release.jpg',
       releaseSignatureUrl: 'https://img/sig.png',
+      clientReleaseId: 'cid-test',
     );
 
     expect(res.isOk, isTrue);
@@ -45,6 +46,7 @@ void main() {
     expect(fundAfter['availableBalanceCentavos'], 300000); // 5,000 - 2,000
     final reqAfter = (await fake.collection('requests').doc('r1').get()).data()!;
     expect(reqAfter['status'], 'released');
+    expect(reqAfter['clientReleaseId'], 'cid-test');
 
     // History 'from' reflects the actual server status it transitioned out of.
     final history = await fake
@@ -55,7 +57,8 @@ void main() {
     final released = history.docs
         .map((d) => d.data())
         .firstWhere((m) => m['event'] == 'released');
-    expect(released['from'], 'acknowledged');
+    expect(released['from'], 'created');
+    expect(released['clientReleaseId'], 'cid-test');
   });
 
   test(
@@ -63,17 +66,18 @@ void main() {
       'is deducted exactly once', () async {
     final fake = FakeFirebaseFirestore();
     await seedFund(fake);
-    await fake.collection('requests').doc('r1').set(requestMap('acknowledged'));
+    await fake.collection('requests').doc('r1').set(requestMap('created'));
 
     final repo = FirestoreRequestRepository(fake);
-    // Both callers hold the same stale acknowledged snapshot (shared worklist).
-    final req = FundRequest.fromMap('r1', requestMap('acknowledged'));
+    // Both callers hold the same stale created snapshot (shared worklist).
+    final req = FundRequest.fromMap('r1', requestMap('created'));
 
     final first = await repo.release(
       request: req,
       actorUid: 'incharge1',
       releaseProofUrl: 'https://img/release.jpg',
       releaseSignatureUrl: 'https://img/sig.png',
+      clientReleaseId: 'cid-1',
     );
     expect(first.isOk, isTrue);
 
@@ -83,6 +87,7 @@ void main() {
       actorUid: 'incharge2',
       releaseProofUrl: 'https://img/release.jpg',
       releaseSignatureUrl: 'https://img/sig.png',
+      clientReleaseId: 'cid-2',
     );
     expect(second.failureOrNull, isA<ValidationFailure>());
 

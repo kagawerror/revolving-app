@@ -53,7 +53,7 @@ FundRequest _request() => FundRequest(
       amount: Money.fromPesos(100),
       purpose: 'Lunch',
       proofImageUrl: 'https://cdn/p.jpg',
-      status: RequestStatus.readyForRelease,
+      status: RequestStatus.created,
     );
 
 void main() {
@@ -119,6 +119,7 @@ void main() {
           actorUid: any(named: 'actorUid'),
           releaseProofUrl: any(named: 'releaseProofUrl'),
           releaseSignatureUrl: any(named: 'releaseSignatureUrl'),
+          clientReleaseId: any(named: 'clientReleaseId'),
         ));
     expect(find.text('Release cancelled — no cash was deducted'),
         findsOneWidget);
@@ -144,6 +145,7 @@ void main() {
           actorUid: any(named: 'actorUid'),
           releaseProofUrl: any(named: 'releaseProofUrl'),
           releaseSignatureUrl: any(named: 'releaseSignatureUrl'),
+          clientReleaseId: any(named: 'clientReleaseId'),
         ));
     expect(find.text('Release cancelled — no cash was deducted'),
         findsOneWidget);
@@ -174,6 +176,7 @@ void main() {
           actorUid: any(named: 'actorUid'),
           releaseProofUrl: any(named: 'releaseProofUrl'),
           releaseSignatureUrl: any(named: 'releaseSignatureUrl'),
+          clientReleaseId: any(named: 'clientReleaseId'),
         ));
     expect(find.text('Release cancelled — no cash was deducted'),
         findsOneWidget);
