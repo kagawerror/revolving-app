@@ -18,6 +18,7 @@ import '../../requests/domain/fund_request.dart';
 import '../../requests/domain/request_breakdown.dart';
 import '../../requests/presentation/request_status_visual.dart';
 import '../../requests/presentation/widgets/request_breakdown_view.dart';
+import '../../requests/presentation/widgets/request_detail_sheet.dart';
 import '../domain/dashboard_summary.dart';
 import 'dashboard_providers.dart';
 
@@ -378,18 +379,27 @@ class _RecentTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final visual = requestStatusVisual(request.status);
+    // Compute once and reuse for both the trailing glance view and the
+    // read-only detail sheet, threading the pending-partial the tile already
+    // holds — never recomputed or refetched.
+    final breakdown =
+        computeRequestBreakdown(request, pendingPartial: pendingPartial);
 
     return AppListTile(
       title: request.beneficiaryName,
       subtitle: request.purpose,
+      onTap: () => showRequestDetailSheet(
+        context,
+        request: request,
+        breakdown: breakdown,
+      ),
       trailing: Column(
         crossAxisAlignment: CrossAxisAlignment.end,
         mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
           RequestBreakdownView(
-            breakdown: computeRequestBreakdown(request,
-                pendingPartial: pendingPartial),
+            breakdown: breakdown,
             compact: true,
           ),
           const SizedBox(height: AppTokens.xs),
