@@ -56,6 +56,44 @@ class ReplenishmentRow extends Equatable {
       [replenishmentId, itemCount, total, approvedDate, createdDate];
 }
 
+/// One line of the detailed replenishment export: a single request being
+/// replenished within one approved replenishment bundle (full or a partial
+/// installment). Joins bundle data (date, amount, partial flag) with the
+/// request (beneficiary/purpose) and the fund name.
+@immutable
+class ReplenishedLineRow extends Equatable {
+  const ReplenishedLineRow({
+    required this.approvedDate,
+    required this.fundName,
+    required this.beneficiaryName,
+    required this.purpose,
+    required this.amount,
+    required this.isPartial,
+    required this.remarks,
+    required this.replenishmentId,
+  });
+
+  /// The bundle's `decidedAt ?? createdAt`; null only on legacy un-timestamped
+  /// bundles.
+  final DateTime? approvedDate;
+  final String fundName;
+  final String beneficiaryName;
+  final String purpose;
+
+  /// The amount credited for this request IN THIS bundle (a partial installment
+  /// or the full remainder), not the request's original amount.
+  final Money amount;
+  final bool isPartial;
+  final String remarks;
+  final String replenishmentId;
+
+  @override
+  List<Object?> get props => [
+        approvedDate, fundName, beneficiaryName, purpose,
+        amount, isPartial, remarks, replenishmentId,
+      ];
+}
+
 /// A report payload: the rows for the active window plus the summed grand total
 /// and the window the figures belong to (carried through to export headers).
 @immutable
