@@ -95,6 +95,53 @@ class ReportShareServiceImpl implements ReportShareService {
     }
   }
 
+  @override
+  Future<Result<void>> shareReplenishmentDetail(
+    ReportExportFormat format,
+    ReportSummary<ReplenishedLineRow> summary,
+    String periodLabel,
+  ) async {
+    try {
+      final bytes = await _buildDetailBytes(format, summary, periodLabel);
+      final filename =
+          'replenishment_detail_${_slug(periodLabel)}.${format.extension}';
+      final dir = await getTemporaryDirectory();
+      final file = File('${dir.path}/$filename');
+      await file.writeAsBytes(bytes, flush: true);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(file.path, mimeType: _mime(format), name: filename)],
+        ),
+      );
+      return const Ok(null);
+    } catch (e, st) {
+      developer.log(
+        'shareReplenishmentDetail failed (${format.name})',
+        name: 'ReportShareService',
+        error: e,
+        stackTrace: st,
+      );
+      return const Err(
+        UnexpectedFailure('Could not export the report. Please try again.'),
+      );
+    }
+  }
+
+  Future<Uint8List> _buildDetailBytes(
+    ReportExportFormat format,
+    ReportSummary<ReplenishedLineRow> summary,
+    String periodLabel,
+  ) async {
+    switch (format) {
+      case ReportExportFormat.csv:
+        return encodeCsvBytes(replenishmentDetailCsv(summary, periodLabel));
+      case ReportExportFormat.excel:
+        return replenishmentDetailXlsx(summary, periodLabel);
+      case ReportExportFormat.pdf:
+        return replenishmentDetailPdf(summary, periodLabel);
+    }
+  }
+
   String _mime(ReportExportFormat f) => switch (f) {
         ReportExportFormat.pdf => 'application/pdf',
         ReportExportFormat.csv => 'text/csv',

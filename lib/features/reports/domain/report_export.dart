@@ -41,4 +41,12 @@ abstract class ReportShareService {
     ReportSummary<Object> summary,
     String periodLabel,
   );
+
+  /// Export the DETAILED (per-request) replenishment report. Separate entry so
+  /// [ReportKind] stays mapped 1:1 to the on-screen tabs.
+  Future<Result<void>> shareReplenishmentDetail(
+    ReportExportFormat format,
+    ReportSummary<ReplenishedLineRow> summary,
+    String periodLabel,
+  );
 }
