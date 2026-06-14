@@ -156,4 +156,121 @@ void main() {
       );
     });
   });
+
+  group('replenishmentLineRows', () {
+    FundRequest reqL(String id, String name, String purpose, int cents) =>
+        FundRequest(
+          id: id, companyId: 'c', fundId: 'f1', createdByUid: 'u',
+          beneficiaryName: name, amount: Money.fromCentavos(cents),
+          purpose: purpose, proofImageUrl: 'http://x',
+          status: RequestStatus.replenished,
+        );
+
+    Replenishment bundle(
+            String id, DateTime decided, List<ReplenishmentItem> items) =>
+        Replenishment(
+          id: id, companyId: 'c', fundId: 'f1',
+          status: ReplenishmentStatus.approved,
+          requestIds: items.map((i) => i.requestId).toList(),
+          total: items.fold(Money.zero, (a, i) => a + i.amount),
+          reportNotes: '', createdByUid: 'u', items: items, decidedAt: decided,
+        );
+
+    test('one row per (bundle, item); enriches name/purpose/fund; full+partial',
+        () {
+      final requests = {
+        'r1': reqL('r1', 'Alice', 'Laptop', 5000),
+        'r2': reqL('r2', 'Bob', 'Load', 1000),
+      };
+      final funds = {'f1': 'AUDIT'};
+      final reps = [
+        bundle('rep1', DateTime(2026, 6, 10), [
+          ReplenishmentItem(
+              requestId: 'r1',
+              isPartial: false,
+              amount: Money.fromCentavos(5000)),
+          ReplenishmentItem(
+              requestId: 'r2',
+              isPartial: true,
+              amount: Money.fromCentavos(400),
+              remarks: 'first'),
+        ]),
+      ];
+
+      final rows = replenishmentLineRows(reps, requests, funds);
+
+      expect(rows.length, 2);
+      expect(rows.map((r) => r.beneficiaryName).toSet(), {'Alice', 'Bob'});
+      final alice = rows.firstWhere((r) => r.beneficiaryName == 'Alice');
+      expect(alice.fundName, 'AUDIT');
+      expect(alice.isPartial, isFalse);
+      expect(alice.amount.centavos, 5000);
+      expect(alice.replenishmentId, 'rep1');
+      final bob = rows.firstWhere((r) => r.beneficiaryName == 'Bob');
+      expect(bob.isPartial, isTrue);
+      expect(bob.remarks, 'first');
+      expect(bob.amount.centavos, 400); // installment, not original 1000
+    });
+
+    test('skips items whose request cannot be resolved', () {
+      final rows = replenishmentLineRows(
+        [
+          bundle('rep1', DateTime(2026, 6, 10), [
+            ReplenishmentItem(
+                requestId: 'ghost',
+                isPartial: false,
+                amount: Money.fromCentavos(500)),
+          ])
+        ],
+        const {},
+        {'f1': 'AUDIT'},
+      );
+      expect(rows, isEmpty);
+    });
+
+    test('sorted by approved date desc, then fund, then beneficiary', () {
+      final requests = {
+        'a': reqL('a', 'Zed', 'x', 100),
+        'b': reqL('b', 'Amy', 'x', 100),
+      };
+      final rows = replenishmentLineRows([
+        bundle('old', DateTime(2026, 6, 1), [
+          ReplenishmentItem(
+              requestId: 'a',
+              isPartial: false,
+              amount: Money.fromCentavos(100)),
+        ]),
+        bundle('new', DateTime(2026, 6, 9), [
+          ReplenishmentItem(
+              requestId: 'b',
+              isPartial: false,
+              amount: Money.fromCentavos(100)),
+        ]),
+      ], requests, {'f1': 'AUDIT'});
+      expect(rows.first.replenishmentId, 'new'); // newer first
+      expect(rows.last.replenishmentId, 'old');
+    });
+
+    test('grand total of rows equals the sum of bundle item amounts', () {
+      final requests = {
+        'r1': reqL('r1', 'A', 'x', 5000),
+        'r2': reqL('r2', 'B', 'x', 1000)
+      };
+      final reps = [
+        bundle('rep1', DateTime(2026, 6, 10), [
+          ReplenishmentItem(
+              requestId: 'r1',
+              isPartial: false,
+              amount: Money.fromCentavos(5000)),
+          ReplenishmentItem(
+              requestId: 'r2',
+              isPartial: true,
+              amount: Money.fromCentavos(400),
+              remarks: 'x'),
+        ]),
+      ];
+      final rows = replenishmentLineRows(reps, requests, {'f1': 'AUDIT'});
+      expect(grandTotal(rows.map((r) => r.amount)).centavos, 5400);
+    });
+  });
 }

@@ -67,6 +67,49 @@ List<ReplenishmentRow> replenishmentRowsInWindow(
   return rows;
 }
 
+/// Flattens approved replenishment bundles into per-request detail rows: one
+/// row per `(bundle, item)`, enriched with the request's beneficiary/purpose
+/// (from [requestById]) and the bundle's fund name (from [fundNameById]). Items
+/// whose request is missing from [requestById] are skipped defensively (e.g. a
+/// deleted request). Sorted newest-approved first, then fund, then beneficiary.
+///
+/// Caller supplies bundles already filtered to the window + approved (e.g. from
+/// `fetchApprovedReplenishments`); this fn does no date filtering.
+List<ReplenishedLineRow> replenishmentLineRows(
+  List<Replenishment> approved,
+  Map<String, FundRequest> requestById,
+  Map<String, String> fundNameById,
+) {
+  final rows = <ReplenishedLineRow>[];
+  for (final rep in approved) {
+    final date = rep.decidedAt ?? rep.createdAt;
+    final fundName = fundNameById[rep.fundId] ?? '';
+    for (final item in rep.items) {
+      final req = requestById[item.requestId];
+      if (req == null) continue;
+      rows.add(ReplenishedLineRow(
+        approvedDate: date,
+        fundName: fundName,
+        beneficiaryName: req.beneficiaryName,
+        purpose: req.purpose,
+        amount: item.amount,
+        isPartial: item.isPartial,
+        remarks: item.remarks,
+        replenishmentId: rep.id,
+      ));
+    }
+  }
+  rows.sort((a, b) {
+    final ad = a.approvedDate, bd = b.approvedDate;
+    final byDate = (ad == null || bd == null) ? 0 : bd.compareTo(ad);
+    if (byDate != 0) return byDate;
+    final byFund = a.fundName.compareTo(b.fundName);
+    if (byFund != 0) return byFund;
+    return a.beneficiaryName.compareTo(b.beneficiaryName);
+  });
+  return rows;
+}
+
 /// Sum of [amounts], folding from [Money.zero]. Empty → zero.
 Money grandTotal(Iterable<Money> amounts) =>
     amounts.fold(Money.zero, (acc, m) => acc + m);
