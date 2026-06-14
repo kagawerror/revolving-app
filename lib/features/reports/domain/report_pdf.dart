@@ -104,6 +104,56 @@ Future<Uint8List> replenishmentReportPdf(
   return doc.save();
 }
 
+/// Print-ready PDF for the DETAILED replenishment report: a per-request table
+/// (date/fund/beneficiary/purpose/type/amount) + a bold GRAND TOTAL row.
+Future<Uint8List> replenishmentDetailPdf(
+    ReportSummary<ReplenishedLineRow> summary, String periodLabel) async {
+  final doc = pw.Document();
+  final dateFmt = DateFormat('MMM d, yyyy');
+
+  final dataRows = <List<String>>[
+    for (final r in summary.rows)
+      [
+        r.approvedDate == null ? '—' : dateFmt.format(r.approvedDate!),
+        r.fundName,
+        r.beneficiaryName,
+        r.purpose,
+        r.isPartial ? 'Partial' : 'Full',
+        'PHP ${_pdfPeso(r.amount)}',
+      ],
+  ];
+
+  doc.addPage(
+    pw.MultiPage(
+      pageFormat: PdfPageFormat.a4,
+      build: (context) => [
+        _header('Replenishment detail', periodLabel, summary.rows.length),
+        pw.SizedBox(height: 12),
+        pw.TableHelper.fromTextArray(
+          headers: const [
+            'Approved date', 'Fund', 'Beneficiary', 'Purpose', 'Type', 'Amount',
+          ],
+          data: dataRows,
+          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+          headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+          cellAlignments: const {
+            0: pw.Alignment.centerLeft,
+            1: pw.Alignment.centerLeft,
+            2: pw.Alignment.centerLeft,
+            3: pw.Alignment.centerLeft,
+            4: pw.Alignment.centerLeft,
+            5: pw.Alignment.centerRight,
+          },
+        ),
+        pw.SizedBox(height: 12),
+        _grandTotal('PHP ${_pdfPeso(summary.grandTotal)}'),
+      ],
+    ),
+  );
+
+  return doc.save();
+}
+
 pw.Widget _header(String title, String periodLabel, int rowCount) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
