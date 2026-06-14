@@ -76,6 +76,42 @@ Uint8List replenishmentReportXlsx(
   return Uint8List.fromList(excel.encode() ?? const <int>[]);
 }
 
+/// .xlsx workbook for the DETAILED replenishment report: one data row per
+/// replenished request (amount numeric) + a GRAND TOTAL row.
+Uint8List replenishmentDetailXlsx(
+    ReportSummary<ReplenishedLineRow> summary, String periodLabel) {
+  final excel = Excel.createExcel();
+  final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
+  excel.rename(sheetName, 'Replenishment detail');
+  final sheet = excel['Replenishment detail'];
+
+  sheet.appendRow(<CellValue?>[
+    TextCellValue('Approved date'),
+    TextCellValue('Fund'),
+    TextCellValue('Beneficiary'),
+    TextCellValue('Purpose'),
+    TextCellValue('Type'),
+    TextCellValue('Amount'),
+  ]);
+  for (final r in summary.rows) {
+    sheet.appendRow(<CellValue?>[
+      TextCellValue(r.approvedDate == null ? '' : _iso(r.approvedDate!)),
+      TextCellValue(r.fundName),
+      TextCellValue(r.beneficiaryName),
+      TextCellValue(r.purpose),
+      TextCellValue(r.isPartial ? 'Partial' : 'Full'),
+      DoubleCellValue(_pesos(r.amount)),
+    ]);
+  }
+  sheet.appendRow(<CellValue?>[
+    TextCellValue('GRAND TOTAL ($periodLabel)'),
+    null, null, null, null,
+    DoubleCellValue(_pesos(summary.grandTotal)),
+  ]);
+
+  return Uint8List.fromList(excel.encode() ?? const <int>[]);
+}
+
 String _iso(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}-'
