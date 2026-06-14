@@ -200,9 +200,11 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                   (widget.fund.companyId, widget.fund.id)))
               .valueOrNull ??
           const <FundRequest>[];
+      // Release-first: released cash may already be acknowledged/disputed by an
+      // approver yet still owed back to the fund, so all replenishable statuses
+      // belong in the sheet — not just `released`.
       final releasable = all
-          .where((r) =>
-              r.status == RequestStatus.released && r.remaining.centavos > 0)
+          .where((r) => r.status.isReplenishable && r.remaining.centavos > 0)
           .toList();
       if (!mounted) return;
       final ok = await showModalBottomSheet<bool>(

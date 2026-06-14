@@ -48,6 +48,33 @@ void main() {
     expect(fund.data()!['status'], 'replenishing');
   });
 
+  test('createDraft includes acknowledged & disputed (post-release) requests, '
+      'not just released', () async {
+    // Release-first lifecycle: cash is handed out (fund debited, status
+    // "released"), THEN an approver acknowledges or disputes on sync. That
+    // already-released cash is still owed back to the fund, so it must remain
+    // replenishable. Regression for the offline-first replenish-sheet bug.
+    await db.collection('requests').doc('r1').update({'status': 'acknowledged'});
+    await db.collection('requests').doc('r2').update({'status': 'disputed'});
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc');
+    expect(res.isOk, isTrue);
+    expect(res.valueOrNull!.requestIds.toSet(), {'r1', 'r2'});
+    expect(res.valueOrNull!.total.centavos, 800000);
+  });
+
+  test('createDraft still excludes non-replenishable statuses (created, '
+      'rejected, replenished)', () async {
+    await db.collection('requests').doc('r1').update({'status': 'created'});
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.createDraft(
+        fundId: 'f1', items: [full('r1')], createdByUid: 'inc');
+    expect(res.failureOrNull, isA<ValidationFailure>());
+    expect((res.failureOrNull as ValidationFailure).message,
+        'Some selected requests are no longer available to replenish.');
+  });
+
   test('createDraft fails when fund already replenishing', () async {
     await db.collection('funds').doc('f1').update({'status': 'replenishing'});
     final repo = FirestoreReplenishmentRepository(db);

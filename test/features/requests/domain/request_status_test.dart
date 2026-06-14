@@ -84,6 +84,29 @@ void main() {
     });
   });
 
+  group('replenishable set', () {
+    test('is EXACTLY {released, acknowledged, disputed}', () {
+      expect(RequestStatus.replenishable,
+          {RequestStatus.released, RequestStatus.acknowledged, RequestStatus.disputed});
+    });
+
+    test('mirrors the state machine: replenishable iff can transition to '
+        'replenished', () {
+      for (final s in RequestStatus.values) {
+        expect(RequestStatus.replenishable.contains(s),
+            s.canTransitionTo(RequestStatus.replenished),
+            reason: '${s.name} replenishable/transition mismatch');
+      }
+    });
+
+    test('isReplenishable getter agrees with the set', () {
+      for (final s in RequestStatus.values) {
+        expect(s.isReplenishable, RequestStatus.replenishable.contains(s),
+            reason: s.name);
+      }
+    });
+  });
+
   group('ensureTransition', () {
     test('throws StateError on an illegal move', () {
       expect(() => RequestStatus.created.ensureTransition(RequestStatus.acknowledged),

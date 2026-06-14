@@ -62,6 +62,25 @@ enum RequestStatus {
     );
   }
 
+  /// Statuses whose (already-released) cash can still be replenished.
+  ///
+  /// In the release-first lifecycle the fund is debited on `→released`; an
+  /// approver later acknowledges or disputes that spend on sync. All three
+  /// states name cash that is OUT of the fund and owed back, so all three feed
+  /// the replenish sheet. This is the SAME set encoded as
+  /// `released/acknowledged/disputed → replenished` in both `_allowed` above
+  /// and the `match /requests` block of `firestore.rules` — keep the three in
+  /// sync.
+  static const Set<RequestStatus> replenishable = {
+    RequestStatus.released,
+    RequestStatus.acknowledged,
+    RequestStatus.disputed,
+  };
+
+  /// Whether this request's released cash is still reconcilable via a
+  /// replenishment. See [replenishable].
+  bool get isReplenishable => replenishable.contains(this);
+
   bool canTransitionTo(RequestStatus next) => _allowed[this]!.contains(next);
 
   void ensureTransition(RequestStatus next) {

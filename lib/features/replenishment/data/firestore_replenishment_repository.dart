@@ -87,16 +87,22 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         return const Err(ValidationFailure('Fund not found.'));
       }
       final companyId = (fundSnap0.data()!['companyId'] ?? '') as String;
-      // COMPANY-SCOPED query (permission-denied fix). Released requests with a
-      // positive remaining balance are replenishable.
+      // COMPANY-SCOPED query (permission-denied fix). Two equality filters only
+      // (no composite index needed); status is post-filtered in Dart because
+      // release-first cash stays replenishable across released/acknowledged/
+      // disputed (see RequestStatus.replenishable) and a `whereIn` here would
+      // force a new composite index + deploy.
       final snap = await _requests
           .where('companyId', isEqualTo: companyId)
           .where('fundId', isEqualTo: fundId)
-          .where('status', isEqualTo: RequestStatus.released.name)
           .get();
       final remainingById = <String, int>{};
       for (final d in snap.docs) {
         if (d.data()['replenishmentId'] != null) continue;
+        if (!RequestStatus.fromName(d.data()['status'] as String?)
+            .isReplenishable) {
+          continue;
+        }
         final amount = (d.data()['amountCentavos'] ?? 0) as int;
         final repl = (d.data()['replenishedCentavos'] ?? 0) as int;
         final remaining = amount - repl;
