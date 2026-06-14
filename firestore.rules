@@ -240,8 +240,8 @@ service cloud.firestore {
           && resource.data.status == 'released'
           && request.resource.data.status == 'acknowledged'
           && request.resource.data.amountCentavos == resource.data.amountCentavos
-          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
-          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
         // DISPUTE: approver/admin disputes a released OR acknowledged spend, and
         // must stamp themselves as the disputer. No money/proof changes.
         || ((isApprover() || isAdmin())
@@ -249,8 +249,8 @@ service cloud.firestore {
           && request.resource.data.status == 'disputed'
           && request.resource.data.disputedByUid == request.auth.uid
           && request.resource.data.amountCentavos == resource.data.amountCentavos
-          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
-          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
         // REJECT: approver/admin rejects a still-created request.
         || ((isApprover() || isAdmin())
           && resource.data.status == 'created'
@@ -273,8 +273,8 @@ service cloud.firestore {
           && resource.data.status in ['released', 'acknowledged', 'disputed']
           && request.resource.data.status == 'replenished'
           && request.resource.data.replenishmentId is string
-          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
-          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
         // Partial replenishment: the request stays in its current reconcilable
         // status (released, acknowledged or disputed) while only
         // replenishedCentavos grows; amount, release proof and signature are
@@ -285,8 +285,8 @@ service cloud.firestore {
           && request.resource.data.replenishedCentavos
               > resource.data.get('replenishedCentavos', 0)
           && request.resource.data.amountCentavos == resource.data.amountCentavos
-          && request.resource.data.releaseProofUrl == resource.data.releaseProofUrl
-          && request.resource.data.releaseSignatureUrl == resource.data.releaseSignatureUrl)
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
       );
 
       allow delete: if false;
