@@ -65,6 +65,29 @@ String replenishmentReportCsv(ReportSummary<ReplenishmentRow> summary,
   return b.toString();
 }
 
+/// CSV for the DETAILED replenishment report: one row per replenished request
+/// (full or partial installment) + a trailing GRAND TOTAL line. Amounts are
+/// bare pesos so spreadsheets read them as numbers.
+String replenishmentDetailCsv(
+    ReportSummary<ReplenishedLineRow> summary, String periodLabel) {
+  final b = StringBuffer();
+  b.writeln(_row(
+      ['Approved date', 'Fund', 'Beneficiary', 'Purpose', 'Type', 'Amount']));
+  for (final r in summary.rows) {
+    b.writeln(_row([
+      r.approvedDate == null ? '' : _isoDate(r.approvedDate!),
+      r.fundName,
+      r.beneficiaryName,
+      r.purpose,
+      r.isPartial ? 'Partial' : 'Full',
+      moneyPesosBare(r.amount),
+    ]));
+  }
+  b.writeln(_row(
+      ['GRAND TOTAL ($periodLabel)', '', '', '', '', moneyPesosBare(summary.grandTotal)]));
+  return b.toString();
+}
+
 String _isoDate(DateTime d) =>
     '${d.year.toString().padLeft(4, '0')}-'
     '${d.month.toString().padLeft(2, '0')}-'
