@@ -1,12 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error/failure.dart';
 import '../../../core/error/failure_ui.dart';
 import '../../../core/error/result.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/empty_state.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
+import '../domain/report_math.dart';
+import '../domain/report_models.dart';
+import '../domain/report_period.dart';
 import 'export_format_sheet.dart';
 import 'report_providers.dart';
 import 'released_report_body.dart';
@@ -206,18 +210,68 @@ class _ExportAction extends ConsumerWidget {
     );
     if (confirmed != true || !context.mounted) return;
 
-    // Hand the settled summary + chosen format to the generic share service.
-    // The pure per-format builders + the share service are the testable seams;
-    // the widget only orchestrates and reports the outcome.
+    // Hand the settled summary + chosen format to the share service. The pure
+    // per-format builders + the share service are the testable seams; the widget
+    // only orchestrates and reports the outcome.
     final share = ref.read(reportShareServiceProvider);
-    final ReportSummary<Object>? summary = onReleasedTab
-        ? ref.read(releasedReportProvider).valueOrNull
-        : ref.read(replenishmentReportProvider).valueOrNull;
-    if (summary == null) return;
 
-    final result = await share.shareReport(format, kind, summary, label);
+    if (onReleasedTab) {
+      final summary = ref.read(releasedReportProvider).valueOrNull;
+      if (summary == null) return;
+      final result =
+          await share.shareReport(format, ReportKind.released, summary, label);
+      if (!context.mounted) return;
+      _reportResult(context, result,
+          rowCount: summary.rows.length, format: format, label: label);
+      return;
+    }
 
+    // Replenishments tab → fetch per-request line-item detail on demand. The
+    // on-screen summary only has bundle-level rows; the detail export joins each
+    // bundle's items to their request + fund docs, so we read it fresh here
+    // (after confirm) rather than keep it resident.
+    final companyId = ref.read(reportCompanyIdProvider);
+    final period = ref.read(reportPeriodProvider);
+    final window = periodWindow(period.granularity, period.anchor);
+
+    // Brief blocking spinner while the join reads run.
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+    final pageRes = await ref
+        .read(reportRepositoryProvider)
+        .fetchReplenishmentLineItems(companyId, window);
     if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop(); // dismiss spinner
+    if (!context.mounted) return;
+
+    final page = pageRes.valueOrNull;
+    if (page == null) {
+      context.showFailure(pageRes.failureOrNull ??
+          const UnexpectedFailure('Could not export the report.'));
+      return;
+    }
+    final summary = ReportSummary<ReplenishedLineRow>(
+      rows: page.items,
+      grandTotal: grandTotal(page.items.map((r) => r.amount)),
+      period: period,
+      truncated: page.truncated,
+    );
+    final result = await share.shareReplenishmentDetail(format, summary, label);
+    if (!context.mounted) return;
+    _reportResult(context, result,
+        rowCount: page.items.length, format: format, label: label);
+  }
+
+  void _reportResult(
+    BuildContext context,
+    Result<void> result, {
+    required int rowCount,
+    required ReportExportFormat format,
+    required String label,
+  }) {
     switch (result) {
       case Ok():
         ScaffoldMessenger.of(context).showSnackBar(
@@ -226,7 +280,6 @@ class _ExportAction extends ConsumerWidget {
           ),
         );
       case Err(:final failure):
-        // Map the failure to a user-safe message via the shared extension.
         context.showFailure(failure);
     }
   }
@@ -245,8 +298,9 @@ Future<bool?> _confirmExport(
 }) {
   final scheme = Theme.of(context).colorScheme;
   final textTheme = Theme.of(context).textTheme;
-  final kindLabel =
-      kind == ReportKind.released ? 'Released requests' : 'Replenishments';
+  final kindLabel = kind == ReportKind.released
+      ? 'Released requests'
+      : 'Replenishments (line-item detail)';
   final rowsLabel = rowCount == 1 ? '1 row' : '$rowCount rows';
 
   return showDialog<bool>(

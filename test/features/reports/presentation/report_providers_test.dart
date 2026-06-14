@@ -7,6 +7,7 @@ import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/auth/presentation/auth_providers.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment_status.dart';
+import 'package:rev_app/features/reports/domain/report_models.dart';
 import 'package:rev_app/features/reports/domain/report_period.dart';
 import 'package:rev_app/features/reports/domain/report_repository.dart';
 import 'package:rev_app/features/reports/presentation/report_providers.dart';
@@ -28,6 +29,13 @@ class _FakeReportRepo implements ReportRepository {
   Future<Result<ReportPage<Replenishment>>> fetchApprovedReplenishments(
           String companyId, DateRange window) async =>
       Ok(ReportPage(replenishments));
+
+  @override
+  Future<Result<ReportPage<ReplenishedLineRow>>> fetchReplenishmentLineItems(
+    String companyId,
+    DateRange window,
+  ) async =>
+      Ok(ReportPage<ReplenishedLineRow>(const []));
 }
 
 AppUser _user(UserRole role, String companyId) => AppUser(
