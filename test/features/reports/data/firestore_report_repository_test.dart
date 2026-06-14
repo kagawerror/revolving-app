@@ -85,4 +85,60 @@ void main() {
       expect(ids, {'in'});
     });
   });
+
+  group('fetchReplenishmentLineItems', () {
+    test('joins approved bundles to request + fund docs into line rows',
+        () async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('funds').doc('f1').set({'companyId': 'c1', 'name': 'AUDIT'});
+      await db.collection('requests').doc('r1').set({
+        'companyId': 'c1', 'fundId': 'f1', 'createdByUid': 'u',
+        'beneficiaryName': 'Alice', 'amountCentavos': 5000, 'purpose': 'Laptop',
+        'proofImageUrl': 'http://x', 'status': 'replenished',
+      });
+      await db.collection('replenishments').doc('rep1').set({
+        'companyId': 'c1', 'fundId': 'f1', 'status': 'approved',
+        'requestIds': ['r1'], 'totalCentavos': 5000, 'reportNotes': '',
+        'createdByUid': 'u',
+        'items': [
+          {'requestId': 'r1', 'isPartial': false, 'amountCentavos': 5000, 'remarks': ''}
+        ],
+        'decidedAt': Timestamp.fromDate(DateTime(2026, 6, 10)),
+      });
+
+      final repo = FirestoreReportRepository(db);
+      final window = DateRange(
+        start: DateTime(2026, 6, 1), endExclusive: DateTime(2026, 7, 1));
+      final res = await repo.fetchReplenishmentLineItems('c1', window);
+
+      expect(res.isOk, isTrue);
+      final rows = res.valueOrNull!.items;
+      expect(rows.length, 1);
+      expect(rows.single.beneficiaryName, 'Alice');
+      expect(rows.single.fundName, 'AUDIT');
+      expect(rows.single.amount.centavos, 5000);
+      expect(rows.single.replenishmentId, 'rep1');
+    });
+
+    test('excludes bundles outside the window', () async {
+      final db = FakeFirebaseFirestore();
+      await db.collection('funds').doc('f1').set({'companyId': 'c1', 'name': 'AUDIT'});
+      await db.collection('requests').doc('r1').set({
+        'companyId': 'c1', 'fundId': 'f1', 'createdByUid': 'u',
+        'beneficiaryName': 'Alice', 'amountCentavos': 5000, 'purpose': 'x',
+        'proofImageUrl': 'http://x', 'status': 'replenished',
+      });
+      await db.collection('replenishments').doc('rep1').set({
+        'companyId': 'c1', 'fundId': 'f1', 'status': 'approved',
+        'requestIds': ['r1'], 'totalCentavos': 5000, 'reportNotes': '',
+        'createdByUid': 'u',
+        'items': [{'requestId': 'r1', 'isPartial': false, 'amountCentavos': 5000, 'remarks': ''}],
+        'decidedAt': Timestamp.fromDate(DateTime(2026, 5, 10)),
+      });
+      final repo = FirestoreReportRepository(db);
+      final res = await repo.fetchReplenishmentLineItems('c1',
+          DateRange(start: DateTime(2026, 6, 1), endExclusive: DateTime(2026, 7, 1)));
+      expect(res.valueOrNull!.items, isEmpty);
+    });
+  });
 }

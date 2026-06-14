@@ -1,6 +1,7 @@
 import '../../../core/error/result.dart';
 import '../../replenishment/domain/replenishment.dart';
 import '../../requests/domain/fund_request.dart';
+import 'report_models.dart';
 import 'report_period.dart';
 
 /// A page of report rows plus whether the underlying query hit its defensive
@@ -29,6 +30,14 @@ abstract class ReportRepository {
   /// Approved replenishments for [companyId] whose `decidedAt` falls inside
   /// [window].
   Future<Result<ReportPage<Replenishment>>> fetchApprovedReplenishments(
+    String companyId,
+    DateRange window,
+  );
+
+  /// Detailed (per-request) view of approved replenishments for [companyId]
+  /// whose `decidedAt` falls inside [window]. Joins each bundle's items to their
+  /// request + fund docs. Capped + [ReportPage.truncated] like the other reports.
+  Future<Result<ReportPage<ReplenishedLineRow>>> fetchReplenishmentLineItems(
     String companyId,
     DateRange window,
   );
