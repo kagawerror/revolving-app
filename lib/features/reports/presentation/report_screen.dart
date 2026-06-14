@@ -234,7 +234,11 @@ class _ExportAction extends ConsumerWidget {
     final period = ref.read(reportPeriodProvider);
     final window = periodWindow(period.granularity, period.anchor);
 
-    // Brief blocking spinner while the join reads run.
+    // Brief blocking spinner while the join reads run. Capture the root
+    // navigator BEFORE the await so we can always tear the spinner down — even
+    // if the screen unmounts mid-fetch (e.g. hardware back behind the modal
+    // barrier), which would otherwise orphan the dialog on the root navigator.
+    final rootNavigator = Navigator.of(context, rootNavigator: true);
     showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -243,8 +247,7 @@ class _ExportAction extends ConsumerWidget {
     final pageRes = await ref
         .read(reportRepositoryProvider)
         .fetchReplenishmentLineItems(companyId, window);
-    if (!context.mounted) return;
-    Navigator.of(context, rootNavigator: true).pop(); // dismiss spinner
+    if (rootNavigator.canPop()) rootNavigator.pop(); // dismiss spinner
     if (!context.mounted) return;
 
     final page = pageRes.valueOrNull;
