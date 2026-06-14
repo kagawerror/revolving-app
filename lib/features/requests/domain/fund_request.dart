@@ -93,6 +93,13 @@ class FundRequest extends Equatable {
   /// Outstanding amount still owed back to the fund (amount − replenished).
   Money get remaining => amount - replenished;
 
+  /// Whether this request still belongs in the incharge's active per-fund list.
+  /// Fully-finished outcomes — `replenished` (reconciled) and `rejected` — are
+  /// hidden there to keep the worklist focused; they remain in Firestore and in
+  /// reports / the request detail screen. Display-only.
+  bool get isActiveInFund =>
+      status != RequestStatus.replenished && status != RequestStatus.rejected;
+
   factory FundRequest.fromMap(String id, Map<String, dynamic> m) => FundRequest(
         id: id,
         companyId: (m['companyId'] ?? '') as String,

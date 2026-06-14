@@ -302,7 +302,11 @@ class _FundSectionState extends ConsumerState<_FundSection> {
               padding: const EdgeInsets.all(AppTokens.sm),
               child: Text('Error: $e'),
             ),
-            data: (list) => list.isEmpty
+            data: (rawList) {
+              // Hide fully-finished requests (replenished/rejected) from the
+              // active fund worklist — they still appear in reports + detail.
+              final list = rawList.where((r) => r.isActiveInFund).toList();
+              return list.isEmpty
                 ? Padding(
                     padding: const EdgeInsets.symmetric(
                         horizontal: AppTokens.sm, vertical: AppTokens.md),
@@ -345,7 +349,8 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                           ),
                         ),
                     ],
-                  ),
+                  );
+            },
           ),
         ],
       ),

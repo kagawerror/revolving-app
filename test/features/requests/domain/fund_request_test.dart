@@ -91,4 +91,20 @@ void main() {
     final r = FundRequest.fromMap('r1', {'amountCentavos': 1});
     expect(r.createdAt, isNull);
   });
+
+  group('isActiveInFund', () {
+    FundRequest withStatus(RequestStatus s) => FundRequest(
+          id: 'r', companyId: 'c', fundId: 'f', createdByUid: 'u',
+          beneficiaryName: 'B', amount: Money.fromCentavos(100),
+          purpose: 'p', proofImageUrl: 'http://x', status: s,
+        );
+
+    test('hidden set is EXACTLY {replenished, rejected}', () {
+      for (final s in RequestStatus.values) {
+        final expected =
+            s != RequestStatus.replenished && s != RequestStatus.rejected;
+        expect(withStatus(s).isActiveInFund, expected, reason: s.name);
+      }
+    });
+  });
 }
