@@ -9,17 +9,17 @@ enum ReportExportFormat { pdf, csv, excel }
 /// Short, user-facing label + file extension for a format.
 extension ReportExportFormatX on ReportExportFormat {
   String get label => switch (this) {
-        ReportExportFormat.pdf => 'PDF',
-        ReportExportFormat.csv => 'CSV',
-        ReportExportFormat.excel => 'Excel',
-      };
+    ReportExportFormat.pdf => 'PDF',
+    ReportExportFormat.csv => 'CSV',
+    ReportExportFormat.excel => 'Excel',
+  };
 
   /// File extension (no dot) the share service writes the temp file with.
   String get extension => switch (this) {
-        ReportExportFormat.pdf => 'pdf',
-        ReportExportFormat.csv => 'csv',
-        ReportExportFormat.excel => 'xlsx',
-      };
+    ReportExportFormat.pdf => 'pdf',
+    ReportExportFormat.csv => 'csv',
+    ReportExportFormat.excel => 'xlsx',
+  };
 }
 
 /// Which dataset is being exported.

@@ -90,8 +90,11 @@ class _TruncatedNote extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(Icons.info_outline_rounded,
-              size: 16, color: scheme.onSurfaceVariant),
+          Icon(
+            Icons.info_outline_rounded,
+            size: 16,
+            color: scheme.onSurfaceVariant,
+          ),
           const SizedBox(width: AppTokens.xs),
           Expanded(
             child: Text(

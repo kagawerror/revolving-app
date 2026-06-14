@@ -40,9 +40,9 @@ class ReplenishmentReportBody extends ConsumerWidget {
           total: summary.grandTotal,
           itemCount: rows.length,
           truncated: summary.truncated,
-          itemBuilder: (context, i) => _ReplenishmentRow(row: rows[i])
-              .animate()
-              .fadeIn(duration: 200.ms, delay: (28 * i).ms),
+          itemBuilder: (context, i) => _ReplenishmentRow(
+            row: rows[i],
+          ).animate().fadeIn(duration: 200.ms, delay: (28 * i).ms),
         );
       },
     );
@@ -63,11 +63,13 @@ class _ReplenishmentRow extends StatelessWidget {
     // the created date for a not-yet-approved record, and to an em dash if
     // neither is materialized yet (server timestamp pending).
     final date = row.approvedDate ?? row.createdDate;
-    final dateLabel =
-        date == null ? '—' : DateFormat('MMM d, yyyy').format(date);
+    final dateLabel = date == null
+        ? '—'
+        : DateFormat('MMM d, yyyy').format(date);
     final approved = row.approvedDate != null;
-    final countLabel =
-        row.itemCount == 1 ? '1 request' : '${row.itemCount} requests';
+    final countLabel = row.itemCount == 1
+        ? '1 request'
+        : '${row.itemCount} requests';
 
     return Padding(
       padding: const EdgeInsets.symmetric(

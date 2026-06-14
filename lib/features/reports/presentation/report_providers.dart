@@ -16,7 +16,11 @@ import '../domain/report_repository.dart';
 // Re-export the domain types the screens consume so existing presentation
 // imports (`report_providers.dart`) keep resolving from one place.
 export '../domain/report_export.dart'
-    show ReportExportFormat, ReportExportFormatX, ReportKind, ReportShareService;
+    show
+        ReportExportFormat,
+        ReportExportFormatX,
+        ReportKind,
+        ReportShareService;
 export '../domain/report_models.dart'
     show ReleasedRequestRow, ReplenishmentRow, ReportSummary;
 export '../domain/report_repository.dart' show ReportPage;
@@ -29,8 +33,10 @@ export '../domain/report_period.dart' show PeriodGranularity, ReportPeriod;
 /// anchor to now.
 class ReportPeriodNotifier extends Notifier<ReportPeriod> {
   @override
-  ReportPeriod build() =>
-      ReportPeriod(granularity: PeriodGranularity.month, anchor: DateTime.now());
+  ReportPeriod build() => ReportPeriod(
+    granularity: PeriodGranularity.month,
+    anchor: DateTime.now(),
+  );
 
   void setGranularity(PeriodGranularity g) =>
       state = ReportPeriod(granularity: g, anchor: DateTime.now());
@@ -46,8 +52,8 @@ class ReportPeriodNotifier extends Notifier<ReportPeriod> {
 
 final reportPeriodProvider =
     NotifierProvider<ReportPeriodNotifier, ReportPeriod>(
-  ReportPeriodNotifier.new,
-);
+      ReportPeriodNotifier.new,
+    );
 
 /// Human label for the active period (pure [periodLabel]).
 final periodLabelProvider = Provider<String>(
@@ -85,61 +91,57 @@ final reportShareServiceProvider = Provider<ReportShareService>(
 /// Released requests for the active period, mapped to display rows + grand
 /// total. Scoped by [reportCompanyIdProvider]; an admin with no active company
 /// yields an empty summary rather than a cross-tenant scan.
-final releasedReportProvider = FutureProvider.autoDispose<
-    ReportSummary<ReleasedRequestRow>>((ref) async {
-  final period = ref.watch(reportPeriodProvider);
-  final companyId = ref.watch(reportCompanyIdProvider);
-  if (companyId.isEmpty) {
-    return ReportSummary(rows: const [], grandTotal: _zero, period: period);
-  }
-  final window = periodWindow(period.granularity, period.anchor);
-  final result =
-      await ref.watch(reportRepositoryProvider).fetchReleasedForReport(
-            companyId,
-            window,
+final releasedReportProvider =
+    FutureProvider.autoDispose<ReportSummary<ReleasedRequestRow>>((ref) async {
+      final period = ref.watch(reportPeriodProvider);
+      final companyId = ref.watch(reportCompanyIdProvider);
+      if (companyId.isEmpty) {
+        return ReportSummary(rows: const [], grandTotal: _zero, period: period);
+      }
+      final window = periodWindow(period.granularity, period.anchor);
+      final result = await ref
+          .watch(reportRepositoryProvider)
+          .fetchReleasedForReport(companyId, window);
+      return result.when(
+        ok: (page) {
+          final rows = releasedRowsInWindow(page.items, window);
+          return ReportSummary(
+            rows: rows,
+            grandTotal: grandTotal(rows.map((r) => r.amount)),
+            period: period,
+            truncated: page.truncated,
           );
-  return result.when(
-    ok: (page) {
-      final rows = releasedRowsInWindow(page.items, window);
-      return ReportSummary(
-        rows: rows,
-        grandTotal: grandTotal(rows.map((r) => r.amount)),
-        period: period,
-        truncated: page.truncated,
+        },
+        err: (failure) => throw failure,
       );
-    },
-    err: (failure) => throw failure,
-  );
-});
+    });
 
 /// Approved replenishments for the active period, mapped to display rows +
 /// grand total. Scoped like [releasedReportProvider].
-final replenishmentReportProvider = FutureProvider.autoDispose<
-    ReportSummary<ReplenishmentRow>>((ref) async {
-  final period = ref.watch(reportPeriodProvider);
-  final companyId = ref.watch(reportCompanyIdProvider);
-  if (companyId.isEmpty) {
-    return ReportSummary(rows: const [], grandTotal: _zero, period: period);
-  }
-  final window = periodWindow(period.granularity, period.anchor);
-  final result =
-      await ref.watch(reportRepositoryProvider).fetchApprovedReplenishments(
-            companyId,
-            window,
+final replenishmentReportProvider =
+    FutureProvider.autoDispose<ReportSummary<ReplenishmentRow>>((ref) async {
+      final period = ref.watch(reportPeriodProvider);
+      final companyId = ref.watch(reportCompanyIdProvider);
+      if (companyId.isEmpty) {
+        return ReportSummary(rows: const [], grandTotal: _zero, period: period);
+      }
+      final window = periodWindow(period.granularity, period.anchor);
+      final result = await ref
+          .watch(reportRepositoryProvider)
+          .fetchApprovedReplenishments(companyId, window);
+      return result.when(
+        ok: (page) {
+          final rows = replenishmentRowsInWindow(page.items, window);
+          return ReportSummary(
+            rows: rows,
+            grandTotal: grandTotal(rows.map((r) => r.total)),
+            period: period,
+            truncated: page.truncated,
           );
-  return result.when(
-    ok: (page) {
-      final rows = replenishmentRowsInWindow(page.items, window);
-      return ReportSummary(
-        rows: rows,
-        grandTotal: grandTotal(rows.map((r) => r.total)),
-        period: period,
-        truncated: page.truncated,
+        },
+        err: (failure) => throw failure,
       );
-    },
-    err: (failure) => throw failure,
-  );
-});
+    });
 
 // Local alias so the empty-summary branches don't need a money import.
 const _zero = Money.zero;

@@ -122,7 +122,8 @@ class _ReportScreenState extends ConsumerState<ReportScreen>
                     ],
                   )
                 : const AdminSelectCompanyPrompt(
-                    message: 'Choose a company in the bar above to view its '
+                    message:
+                        'Choose a company in the bar above to view its '
                         'released requests and replenishment reports.',
                   ),
           ),
@@ -144,7 +145,8 @@ class _NotAuthorizedScaffold extends StatelessWidget {
       appBar: AppBar(title: const Text('Reports')),
       body: const EmptyState(
         title: 'Not available for your role',
-        message: 'Reports are visible to administrators, the CEO, and fund '
+        message:
+            'Reports are visible to administrators, the CEO, and fund '
             'custodians.',
         showMascot: false,
       ),
@@ -191,7 +193,9 @@ class _ExportAction extends ConsumerWidget {
     required String label,
     required int rowCount,
   }) async {
-    final kind = onReleasedTab ? ReportKind.released : ReportKind.replenishments;
+    final kind = onReleasedTab
+        ? ReportKind.released
+        : ReportKind.replenishments;
 
     // Step 1 — pick a file format. Dismissing the sheet (null) aborts before
     // any confirm, so nothing leaves the app.
@@ -218,11 +222,20 @@ class _ExportAction extends ConsumerWidget {
     if (onReleasedTab) {
       final summary = ref.read(releasedReportProvider).valueOrNull;
       if (summary == null) return;
-      final result =
-          await share.shareReport(format, ReportKind.released, summary, label);
+      final result = await share.shareReport(
+        format,
+        ReportKind.released,
+        summary,
+        label,
+      );
       if (!context.mounted) return;
-      _reportResult(context, result,
-          rowCount: summary.rows.length, format: format, label: label);
+      _reportResult(
+        context,
+        result,
+        rowCount: summary.rows.length,
+        format: format,
+        label: label,
+      );
       return;
     }
 
@@ -252,8 +265,10 @@ class _ExportAction extends ConsumerWidget {
 
     final page = pageRes.valueOrNull;
     if (page == null) {
-      context.showFailure(pageRes.failureOrNull ??
-          const UnexpectedFailure('Could not export the report.'));
+      context.showFailure(
+        pageRes.failureOrNull ??
+            const UnexpectedFailure('Could not export the report.'),
+      );
       return;
     }
     final summary = ReportSummary<ReplenishedLineRow>(
@@ -264,8 +279,13 @@ class _ExportAction extends ConsumerWidget {
     );
     final result = await share.shareReplenishmentDetail(format, summary, label);
     if (!context.mounted) return;
-    _reportResult(context, result,
-        rowCount: page.items.length, format: format, label: label);
+    _reportResult(
+      context,
+      result,
+      rowCount: page.items.length,
+      format: format,
+      label: label,
+    );
   }
 
   void _reportResult(
@@ -434,26 +454,18 @@ class ReportPeriodHeader extends ConsumerWidget {
             showSelectedIcon: false,
             style: SegmentedButton.styleFrom(
               minimumSize: const Size(0, 44),
-              shape:
-                  const RoundedRectangleBorder(borderRadius: AppTokens.brField),
+              shape: const RoundedRectangleBorder(
+                borderRadius: AppTokens.brField,
+              ),
             ),
             segments: const [
-              ButtonSegment(
-                value: PeriodGranularity.day,
-                label: Text('Day'),
-              ),
-              ButtonSegment(
-                value: PeriodGranularity.week,
-                label: Text('Week'),
-              ),
+              ButtonSegment(value: PeriodGranularity.day, label: Text('Day')),
+              ButtonSegment(value: PeriodGranularity.week, label: Text('Week')),
               ButtonSegment(
                 value: PeriodGranularity.month,
                 label: Text('Month'),
               ),
-              ButtonSegment(
-                value: PeriodGranularity.year,
-                label: Text('Year'),
-              ),
+              ButtonSegment(value: PeriodGranularity.year, label: Text('Year')),
             ],
             selected: {period.granularity},
             onSelectionChanged: (s) => notifier.setGranularity(s.first),

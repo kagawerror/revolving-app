@@ -30,8 +30,14 @@ class ReleasedRequestRow extends Equatable {
   final bool datePending;
 
   @override
-  List<Object?> get props =>
-      [requestId, beneficiaryName, purpose, amount, effectiveDate, datePending];
+  List<Object?> get props => [
+    requestId,
+    beneficiaryName,
+    purpose,
+    amount,
+    effectiveDate,
+    datePending,
+  ];
 }
 
 /// One approved (signed-off) replenishment in the active period window.
@@ -52,8 +58,13 @@ class ReplenishmentRow extends Equatable {
   final DateTime? createdDate;
 
   @override
-  List<Object?> get props =>
-      [replenishmentId, itemCount, total, approvedDate, createdDate];
+  List<Object?> get props => [
+    replenishmentId,
+    itemCount,
+    total,
+    approvedDate,
+    createdDate,
+  ];
 }
 
 /// One line of the detailed replenishment export: a single request being
@@ -89,9 +100,15 @@ class ReplenishedLineRow extends Equatable {
 
   @override
   List<Object?> get props => [
-        approvedDate, fundName, beneficiaryName, purpose,
-        amount, isPartial, remarks, replenishmentId,
-      ];
+    approvedDate,
+    fundName,
+    beneficiaryName,
+    purpose,
+    amount,
+    isPartial,
+    remarks,
+    replenishmentId,
+  ];
 }
 
 /// A report payload: the rows for the active window plus the summed grand total

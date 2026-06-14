@@ -19,7 +19,9 @@ String _pdfPeso(Money m) =>
 /// the human peso format (₱) since the PDF is human-facing. Async because
 /// `Document.save()` is.
 Future<Uint8List> releasedReportPdf(
-    ReportSummary<ReleasedRequestRow> summary, String periodLabel) async {
+  ReportSummary<ReleasedRequestRow> summary,
+  String periodLabel,
+) async {
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
 
@@ -62,7 +64,9 @@ Future<Uint8List> releasedReportPdf(
 
 /// Print-ready PDF for the replenishments report.
 Future<Uint8List> replenishmentReportPdf(
-    ReportSummary<ReplenishmentRow> summary, String periodLabel) async {
+  ReportSummary<ReplenishmentRow> summary,
+  String periodLabel,
+) async {
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
 
@@ -107,7 +111,9 @@ Future<Uint8List> replenishmentReportPdf(
 /// Print-ready PDF for the DETAILED replenishment report: a per-request table
 /// (date/fund/beneficiary/purpose/type/amount) + a bold GRAND TOTAL row.
 Future<Uint8List> replenishmentDetailPdf(
-    ReportSummary<ReplenishedLineRow> summary, String periodLabel) async {
+  ReportSummary<ReplenishedLineRow> summary,
+  String periodLabel,
+) async {
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
 
@@ -131,7 +137,12 @@ Future<Uint8List> replenishmentDetailPdf(
         pw.SizedBox(height: 12),
         pw.TableHelper.fromTextArray(
           headers: const [
-            'Approved date', 'Fund', 'Beneficiary', 'Purpose', 'Type', 'Amount',
+            'Approved date',
+            'Fund',
+            'Beneficiary',
+            'Purpose',
+            'Type',
+            'Amount',
           ],
           data: dataRows,
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
@@ -158,13 +169,19 @@ pw.Widget _header(String title, String periodLabel, int rowCount) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
-      pw.Text(title,
-          style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+      pw.Text(
+        title,
+        style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+      ),
       pw.SizedBox(height: 2),
-      pw.Text(periodLabel,
-          style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700)),
-      pw.Text(rowCount == 1 ? '1 row' : '$rowCount rows',
-          style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600)),
+      pw.Text(
+        periodLabel,
+        style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
+      ),
+      pw.Text(
+        rowCount == 1 ? '1 row' : '$rowCount rows',
+        style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
+      ),
     ],
   );
 }
@@ -172,7 +189,9 @@ pw.Widget _header(String title, String periodLabel, int rowCount) {
 pw.Widget _grandTotal(String formattedTotal) {
   return pw.Container(
     alignment: pw.Alignment.centerRight,
-    child: pw.Text('GRAND TOTAL   $formattedTotal',
-        style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold)),
+    child: pw.Text(
+      'GRAND TOTAL   $formattedTotal',
+      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
+    ),
   );
 }

@@ -45,9 +45,9 @@ class ReleasedReportBody extends ConsumerWidget {
           total: summary.grandTotal,
           itemCount: rows.length,
           truncated: summary.truncated,
-          itemBuilder: (context, i) => _ReleasedRow(row: rows[i])
-              .animate()
-              .fadeIn(duration: 200.ms, delay: (28 * i).ms),
+          itemBuilder: (context, i) => _ReleasedRow(
+            row: rows[i],
+          ).animate().fadeIn(duration: 200.ms, delay: (28 * i).ms),
         );
       },
     );

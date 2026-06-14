@@ -24,7 +24,9 @@ Future<ReportExportFormat?> showExportFormatSheet(BuildContext context) {
     // Match the app's sheet shape (large top radius) explicitly; the theme's
     // bottomSheetTheme already rounds, but we pin it so it can't drift.
     shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(AppTokens.rCard)),
+      borderRadius: BorderRadius.vertical(
+        top: Radius.circular(AppTokens.rCard),
+      ),
     ),
     builder: (sheetContext) => const _ExportFormatSheet(),
   );

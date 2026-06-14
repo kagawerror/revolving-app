@@ -43,10 +43,14 @@ class FirestoreReportRepository implements ReportRepository {
       // (companyId ASC, releasedAt DESC) composite index.
       final snap = await _requests
           .where('companyId', isEqualTo: companyId)
-          .where('releasedAt',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(window.start))
-          .where('releasedAt',
-              isLessThan: Timestamp.fromDate(window.endExclusive))
+          .where(
+            'releasedAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(window.start),
+          )
+          .where(
+            'releasedAt',
+            isLessThan: Timestamp.fromDate(window.endExclusive),
+          )
           .orderBy('releasedAt', descending: true)
           .limit(_limit)
           .get();
@@ -59,15 +63,18 @@ class FirestoreReportRepository implements ReportRepository {
           name: 'FirestoreReportRepository',
         );
       }
-      final all =
-          snap.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList();
+      final all = snap.docs
+          .map((d) => FundRequest.fromMap(d.id, d.data()))
+          .toList();
       // Re-apply the pure window filter defensively (timezone/edge safety).
       final rows = releasedRowsInWindow(all, window);
       final ids = rows.map((r) => r.requestId).toSet();
-      return Ok(ReportPage(
-        all.where((r) => ids.contains(r.id)).toList(),
-        truncated: truncated,
-      ));
+      return Ok(
+        ReportPage(
+          all.where((r) => ids.contains(r.id)).toList(),
+          truncated: truncated,
+        ),
+      );
     } catch (e, st) {
       developer.log(
         'fetchReleasedForReport failed',
@@ -91,10 +98,14 @@ class FirestoreReportRepository implements ReportRepository {
       final snap = await _reps
           .where('companyId', isEqualTo: companyId)
           .where('status', isEqualTo: ReplenishmentStatus.approved.name)
-          .where('decidedAt',
-              isGreaterThanOrEqualTo: Timestamp.fromDate(window.start))
-          .where('decidedAt',
-              isLessThan: Timestamp.fromDate(window.endExclusive))
+          .where(
+            'decidedAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(window.start),
+          )
+          .where(
+            'decidedAt',
+            isLessThan: Timestamp.fromDate(window.endExclusive),
+          )
           .orderBy('decidedAt', descending: true)
           .limit(_limit)
           .get();
@@ -106,15 +117,18 @@ class FirestoreReportRepository implements ReportRepository {
           name: 'FirestoreReportRepository',
         );
       }
-      final all =
-          snap.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList();
+      final all = snap.docs
+          .map((d) => Replenishment.fromMap(d.id, d.data()))
+          .toList();
       // Re-apply the pure filter (approved + window) defensively.
       final rows = replenishmentRowsInWindow(all, window);
       final ids = rows.map((r) => r.replenishmentId).toSet();
-      return Ok(ReportPage(
-        all.where((r) => ids.contains(r.id)).toList(),
-        truncated: truncated,
-      ));
+      return Ok(
+        ReportPage(
+          all.where((r) => ids.contains(r.id)).toList(),
+          truncated: truncated,
+        ),
+      );
     } catch (e, st) {
       developer.log(
         'fetchApprovedReplenishments failed',
@@ -138,9 +152,12 @@ class FirestoreReportRepository implements ReportRepository {
       final bundlesRes = await fetchApprovedReplenishments(companyId, window);
       final page = bundlesRes.valueOrNull;
       if (page == null) {
-        return Err(bundlesRes.failureOrNull ??
-            const UnexpectedFailure(
-                'Could not load the replenishment detail report.'));
+        return Err(
+          bundlesRes.failureOrNull ??
+              const UnexpectedFailure(
+                'Could not load the replenishment detail report.',
+              ),
+        );
       }
       final bundles = page.items;
 
@@ -153,9 +170,11 @@ class FirestoreReportRepository implements ReportRepository {
       final fundIds = <String>{for (final b in bundles) b.fundId};
 
       final reqSnaps = await Future.wait(
-          requestIds.map((id) => _requests.doc(id).get()));
-      final fundSnaps =
-          await Future.wait(fundIds.map((id) => _funds.doc(id).get()));
+        requestIds.map((id) => _requests.doc(id).get()),
+      );
+      final fundSnaps = await Future.wait(
+        fundIds.map((id) => _funds.doc(id).get()),
+      );
 
       final requestById = <String, FundRequest>{
         for (final s in reqSnaps)
@@ -166,8 +185,7 @@ class FirestoreReportRepository implements ReportRepository {
           if (s.exists) s.id: (s.data()?['name'] ?? '') as String,
       };
 
-      final allRows =
-          replenishmentLineRows(bundles, requestById, fundNameById);
+      final allRows = replenishmentLineRows(bundles, requestById, fundNameById);
       final truncated = page.truncated || allRows.length > _limit;
       final rows = truncated ? allRows.take(_limit).toList() : allRows;
       return Ok(ReportPage(rows, truncated: truncated));

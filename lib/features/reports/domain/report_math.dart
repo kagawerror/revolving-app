@@ -24,14 +24,16 @@ List<ReleasedRequestRow> releasedRowsInWindow(
     final effective = released ?? r.createdAt;
     if (effective == null) continue;
     if (!window.contains(effective)) continue;
-    rows.add(ReleasedRequestRow(
-      requestId: r.id,
-      beneficiaryName: r.beneficiaryName,
-      purpose: r.purpose,
-      amount: r.amount,
-      effectiveDate: effective,
-      datePending: released == null,
-    ));
+    rows.add(
+      ReleasedRequestRow(
+        requestId: r.id,
+        beneficiaryName: r.beneficiaryName,
+        purpose: r.purpose,
+        amount: r.amount,
+        effectiveDate: effective,
+        datePending: released == null,
+      ),
+    );
   }
   rows.sort((a, b) => b.effectiveDate.compareTo(a.effectiveDate));
   return rows;
@@ -50,13 +52,15 @@ List<ReplenishmentRow> replenishmentRowsInWindow(
     final effective = r.decidedAt ?? r.createdAt;
     if (effective == null) continue;
     if (!window.contains(effective)) continue;
-    rows.add(ReplenishmentRow(
-      replenishmentId: r.id,
-      itemCount: r.itemCount,
-      total: r.total,
-      approvedDate: r.decidedAt,
-      createdDate: r.createdAt,
-    ));
+    rows.add(
+      ReplenishmentRow(
+        replenishmentId: r.id,
+        itemCount: r.itemCount,
+        total: r.total,
+        approvedDate: r.decidedAt,
+        createdDate: r.createdAt,
+      ),
+    );
   }
   rows.sort((a, b) {
     final ad = a.approvedDate ?? a.createdDate;
@@ -87,16 +91,18 @@ List<ReplenishedLineRow> replenishmentLineRows(
     for (final item in rep.items) {
       final req = requestById[item.requestId];
       if (req == null) continue;
-      rows.add(ReplenishedLineRow(
-        approvedDate: date,
-        fundName: fundName,
-        beneficiaryName: req.beneficiaryName,
-        purpose: req.purpose,
-        amount: item.amount,
-        isPartial: item.isPartial,
-        remarks: item.remarks,
-        replenishmentId: rep.id,
-      ));
+      rows.add(
+        ReplenishedLineRow(
+          approvedDate: date,
+          fundName: fundName,
+          beneficiaryName: req.beneficiaryName,
+          purpose: req.purpose,
+          amount: item.amount,
+          isPartial: item.isPartial,
+          remarks: item.remarks,
+          replenishmentId: rep.id,
+        ),
+      );
     }
   }
   rows.sort((a, b) {

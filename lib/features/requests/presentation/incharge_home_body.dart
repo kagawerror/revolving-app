@@ -36,9 +36,10 @@ import 'widgets/request_breakdown_view.dart';
 /// Requests under a single fund. Keyed by (companyId, fundId) so the query is
 /// company-scoped for the sameCompany read rule — a fundId-only query is
 /// rejected with permission-denied on the device.
-final _fundRequestsProvider =
-    StreamProvider.family((ref, (String, String) key) =>
-        ref.watch(requestRepositoryProvider).watchByFund(key.$1, key.$2));
+final _fundRequestsProvider = StreamProvider.family(
+  (ref, (String, String) key) =>
+      ref.watch(requestRepositoryProvider).watchByFund(key.$1, key.$2),
+);
 
 /// Body of the incharge landing tab: the scrolling per-fund request list for the
 /// resolved company. Body-only — the [RoleShellScreen] owns the Scaffold,
@@ -64,8 +65,10 @@ class _InchargeBody extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final companyId =
-        effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+    final companyId = effectiveCompanyId(
+      user,
+      ref.watch(adminActiveCompanyProvider),
+    );
     // Admin superuser hasn't picked a company yet: prompt instead of an empty
     // list. Non-admins always have a non-empty companyId, so never see this.
     if (companyId.isEmpty) return const AdminSelectCompanyPrompt();
@@ -78,7 +81,9 @@ class _InchargeBody extends ConsumerWidget {
         const OfflineBanner(),
         const _ConflictsEntry(),
         Expanded(
-          child: ref.watch(companyFundsProvider(companyId)).when(
+          child: ref
+              .watch(companyFundsProvider(companyId))
+              .when(
                 loading: () => const Padding(
                   padding: EdgeInsets.all(AppTokens.lg),
                   child: SurfaceCard(child: SkeletonList()),
@@ -88,28 +93,30 @@ class _InchargeBody extends ConsumerWidget {
                   children: [
                     LowBalanceBanner(funds: funds),
                     Expanded(
-                child: funds.isEmpty
-                    ? const EmptyState(
-                        title: 'No funds yet',
-                        message: 'Once an admin sets up a fund for your '
-                            'company, it will appear here.',
-                      )
-                    : ListView(
-                        padding: const EdgeInsets.fromLTRB(
-                          AppTokens.lg,
-                          AppTokens.md,
-                          AppTokens.lg,
-                          AppTokens.bottomNavContentInset,
-                        ),
-                        children: [
-                          for (final f in funds)
-                            Padding(
-                              padding:
-                                  const EdgeInsets.only(bottom: AppTokens.lg),
-                              child: _FundSection(fund: f),
+                      child: funds.isEmpty
+                          ? const EmptyState(
+                              title: 'No funds yet',
+                              message:
+                                  'Once an admin sets up a fund for your '
+                                  'company, it will appear here.',
+                            )
+                          : ListView(
+                              padding: const EdgeInsets.fromLTRB(
+                                AppTokens.lg,
+                                AppTokens.md,
+                                AppTokens.lg,
+                                AppTokens.bottomNavContentInset,
+                              ),
+                              children: [
+                                for (final f in funds)
+                                  Padding(
+                                    padding: const EdgeInsets.only(
+                                      bottom: AppTokens.lg,
+                                    ),
+                                    child: _FundSection(fund: f),
+                                  ),
+                              ],
                             ),
-                        ],
-                      ),
                     ),
                   ],
                 ),
@@ -139,7 +146,11 @@ class _ConflictsEntry extends ConsumerWidget {
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
-          AppTokens.lg, AppTokens.md, AppTokens.lg, 0),
+        AppTokens.lg,
+        AppTokens.md,
+        AppTokens.lg,
+        0,
+      ),
       child: SurfaceCard(
         padding: const EdgeInsets.all(AppTokens.md),
         onTap: () => context.push('/incharge/conflicts'),
@@ -148,8 +159,10 @@ class _ConflictsEntry extends ConsumerWidget {
             Container(
               width: 44,
               height: 44,
-              decoration:
-                  BoxDecoration(color: bg, borderRadius: AppTokens.brField),
+              decoration: BoxDecoration(
+                color: bg,
+                borderRadius: AppTokens.brField,
+              ),
               child: Icon(Icons.error_outline_rounded, color: fg, size: 22),
             ),
             const SizedBox(width: AppTokens.md),
@@ -161,14 +174,16 @@ class _ConflictsEntry extends ConsumerWidget {
                     n == 1
                         ? '1 release needs resolving'
                         : '$n releases need resolving',
-                    style: textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     'These overdrew the fund on sync. Tap to re-release or void.',
-                    style: textTheme.bodySmall
-                        ?.copyWith(color: scheme.onSurfaceVariant),
+                    style: textTheme.bodySmall?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -195,9 +210,11 @@ class _FundSectionState extends ConsumerState<_FundSection> {
   Future<void> _replenish(String uid) async {
     setState(() => _busy = true);
     try {
-      final all = ref
-              .read(_fundRequestsProvider(
-                  (widget.fund.companyId, widget.fund.id)))
+      final all =
+          ref
+              .read(
+                _fundRequestsProvider((widget.fund.companyId, widget.fund.id)),
+              )
               .valueOrNull ??
           const <FundRequest>[];
       // Release-first: released cash may already be acknowledged/disputed by an
@@ -212,10 +229,8 @@ class _FundSectionState extends ConsumerState<_FundSection> {
         isScrollControlled: true,
         useSafeArea: true,
         backgroundColor: Colors.transparent,
-        builder: (_) => ReplenishSelectDialog(
-          fund: widget.fund,
-          releasable: releasable,
-        ),
+        builder: (_) =>
+            ReplenishSelectDialog(fund: widget.fund, releasable: releasable),
       );
       if (ok == true && mounted) {
         await SuccessOverlay.show(context, 'Submitted for approval');
@@ -230,14 +245,16 @@ class _FundSectionState extends ConsumerState<_FundSection> {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final fund = widget.fund;
-    final requests =
-        ref.watch(_fundRequestsProvider((fund.companyId, fund.id)));
+    final requests = ref.watch(
+      _fundRequestsProvider((fund.companyId, fund.id)),
+    );
     // Submitted-but-not-approved partial totals per request, derived from the
     // existing pending-replenishments stream (no extra Firestore read). Watched
     // once here, then the per-request Money is passed down to each row.
     final pendingByRequest = ref.watch(pendingPartialByRequestProvider);
     final user = ref.read(currentUserProvider).valueOrNull;
-    final canReplenish = (user?.role.canManageFundOrAdmin ?? false) &&
+    final canReplenish =
+        (user?.role.canManageFundOrAdmin ?? false) &&
         fund.status != FundStatus.replenishing;
 
     return SurfaceCard(
@@ -248,7 +265,11 @@ class _FundSectionState extends ConsumerState<_FundSection> {
           // Fund header: name, balance, replenish action.
           Padding(
             padding: const EdgeInsets.fromLTRB(
-                AppTokens.sm, AppTokens.sm, AppTokens.xs, AppTokens.xs),
+              AppTokens.sm,
+              AppTokens.sm,
+              AppTokens.xs,
+              AppTokens.xs,
+            ),
             child: Row(
               children: [
                 Container(
@@ -258,21 +279,28 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                     color: scheme.primaryContainer,
                     borderRadius: AppTokens.brField,
                   ),
-                  child: Icon(Icons.account_balance_wallet_rounded,
-                      color: scheme.onPrimaryContainer, size: 22),
+                  child: Icon(
+                    Icons.account_balance_wallet_rounded,
+                    color: scheme.onPrimaryContainer,
+                    size: 22,
+                  ),
                 ),
                 const SizedBox(width: AppTokens.md),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(fund.name,
-                          style: textTheme.titleMedium
-                              ?.copyWith(fontWeight: FontWeight.w700)),
+                      Text(
+                        fund.name,
+                        style: textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                       Text(
                         '${fund.availableBalance.format()} available',
-                        style: textTheme.bodySmall
-                            ?.copyWith(color: scheme.onSurfaceVariant),
+                        style: textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -307,49 +335,56 @@ class _FundSectionState extends ConsumerState<_FundSection> {
               // active fund worklist — they still appear in reports + detail.
               final list = rawList.where((r) => r.isActiveInFund).toList();
               return list.isEmpty
-                ? Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppTokens.sm, vertical: AppTokens.md),
-                    child: Row(
-                      children: [
-                        Icon(Icons.inbox_rounded,
-                            size: 20, color: scheme.onSurfaceVariant),
-                        const SizedBox(width: AppTokens.sm),
-                        Text('No requests yet',
-                            style: TextStyle(color: scheme.onSurfaceVariant)),
-                      ],
-                    ),
-                  )
-                : Column(
-                    children: [
-                      for (final r in list)
-                        AppListTile(
-                          title: r.beneficiaryName,
-                          subtitle: r.purpose,
-                          trailing: Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              RequestBreakdownView(
-                                breakdown: computeRequestBreakdown(
-                                  r,
-                                  pendingPartial: pendingByRequest[r.id] ??
-                                      Money.zero,
-                                ),
-                                compact: true,
-                              ),
-                              const SizedBox(height: AppTokens.xs),
-                              _RequestAction(request: r),
-                            ],
+                  ? Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppTokens.sm,
+                        vertical: AppTokens.md,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.inbox_rounded,
+                            size: 20,
+                            color: scheme.onSurfaceVariant,
                           ),
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (_) => RequestDetailScreen(request: r),
+                          const SizedBox(width: AppTokens.sm),
+                          Text(
+                            'No requests yet',
+                            style: TextStyle(color: scheme.onSurfaceVariant),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Column(
+                      children: [
+                        for (final r in list)
+                          AppListTile(
+                            title: r.beneficiaryName,
+                            subtitle: r.purpose,
+                            trailing: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                RequestBreakdownView(
+                                  breakdown: computeRequestBreakdown(
+                                    r,
+                                    pendingPartial:
+                                        pendingByRequest[r.id] ?? Money.zero,
+                                  ),
+                                  compact: true,
+                                ),
+                                const SizedBox(height: AppTokens.xs),
+                                _RequestAction(request: r),
+                              ],
+                            ),
+                            onTap: () => Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => RequestDetailScreen(request: r),
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  );
+                      ],
+                    );
             },
           ),
         ],
@@ -377,9 +412,11 @@ class _RequestAction extends ConsumerWidget {
       case RequestStatus.created:
       case RequestStatus.conflict:
         return FilledButton.icon(
-          onPressed: () => unawaited(ref
-              .read(releaseFlowControllerProvider.notifier)
-              .run(context, request, user!.uid)),
+          onPressed: () => unawaited(
+            ref
+                .read(releaseFlowControllerProvider.notifier)
+                .run(context, request, user!.uid),
+          ),
           icon: const Icon(Icons.payments_rounded, size: 18),
           label: const Text('Release'),
         );

@@ -15,11 +15,13 @@ String moneyPesosBare(Money m) {
 /// contains a comma, quote, CR/LF, or has leading/trailing whitespace — beneficiary
 /// names and purposes are free text and may contain any of these.
 String csvField(String value) {
-  final needsQuoting = value.contains(',') ||
+  final needsQuoting =
+      value.contains(',') ||
       value.contains('"') ||
       value.contains('\n') ||
       value.contains('\r') ||
-      (value.isNotEmpty && (value.trimLeft() != value || value.trimRight() != value));
+      (value.isNotEmpty &&
+          (value.trimLeft() != value || value.trimRight() != value));
   if (!needsQuoting) return value;
   return '"${value.replaceAll('"', '""')}"';
 }
@@ -30,38 +32,60 @@ String _row(List<String> fields) => fields.map(csvField).join(',');
 /// trailing GRAND TOTAL line. Amounts are bare pesos. The period label and date
 /// (ISO yyyy-MM-dd, with a `(pending)` marker for un-synced releases) make the
 /// file self-describing.
-String releasedReportCsv(ReportSummary<ReleasedRequestRow> summary,
-    String periodLabel) {
+String releasedReportCsv(
+  ReportSummary<ReleasedRequestRow> summary,
+  String periodLabel,
+) {
   final b = StringBuffer();
   b.writeln(_row(['Beneficiary', 'Purpose', 'Date', 'Amount', 'Pending sync']));
   for (final r in summary.rows) {
-    b.writeln(_row([
-      r.beneficiaryName,
-      r.purpose,
-      _isoDate(r.effectiveDate),
-      moneyPesosBare(r.amount),
-      r.datePending ? 'yes' : 'no',
-    ]));
+    b.writeln(
+      _row([
+        r.beneficiaryName,
+        r.purpose,
+        _isoDate(r.effectiveDate),
+        moneyPesosBare(r.amount),
+        r.datePending ? 'yes' : 'no',
+      ]),
+    );
   }
-  b.writeln(_row(['GRAND TOTAL', periodLabel, '', moneyPesosBare(summary.grandTotal), '']));
+  b.writeln(
+    _row([
+      'GRAND TOTAL',
+      periodLabel,
+      '',
+      moneyPesosBare(summary.grandTotal),
+      '',
+    ]),
+  );
   return b.toString();
 }
 
 /// CSV for the replenishments report. Header + one row per approved
 /// replenishment + a trailing GRAND TOTAL line.
-String replenishmentReportCsv(ReportSummary<ReplenishmentRow> summary,
-    String periodLabel) {
+String replenishmentReportCsv(
+  ReportSummary<ReplenishmentRow> summary,
+  String periodLabel,
+) {
   final b = StringBuffer();
   b.writeln(_row(['Approved date', 'Requests', 'Total']));
   for (final r in summary.rows) {
     final date = r.approvedDate ?? r.createdDate;
-    b.writeln(_row([
-      date == null ? '' : _isoDate(date),
-      r.itemCount.toString(),
-      moneyPesosBare(r.total),
-    ]));
+    b.writeln(
+      _row([
+        date == null ? '' : _isoDate(date),
+        r.itemCount.toString(),
+        moneyPesosBare(r.total),
+      ]),
+    );
   }
-  b.writeln(_row(['GRAND TOTAL ($periodLabel)', '', moneyPesosBare(summary.grandTotal)]));
+  b.writeln(
+    _row([
+      'GRAND TOTAL ($periodLabel)',
+      '',
+      moneyPesosBare(summary.grandTotal),
+    ]),
+  );
   return b.toString();
 }
 
@@ -69,22 +93,35 @@ String replenishmentReportCsv(ReportSummary<ReplenishmentRow> summary,
 /// (full or partial installment) + a trailing GRAND TOTAL line. Amounts are
 /// bare pesos so spreadsheets read them as numbers.
 String replenishmentDetailCsv(
-    ReportSummary<ReplenishedLineRow> summary, String periodLabel) {
+  ReportSummary<ReplenishedLineRow> summary,
+  String periodLabel,
+) {
   final b = StringBuffer();
-  b.writeln(_row(
-      ['Approved date', 'Fund', 'Beneficiary', 'Purpose', 'Type', 'Amount']));
+  b.writeln(
+    _row(['Approved date', 'Fund', 'Beneficiary', 'Purpose', 'Type', 'Amount']),
+  );
   for (final r in summary.rows) {
-    b.writeln(_row([
-      r.approvedDate == null ? '' : _isoDate(r.approvedDate!),
-      r.fundName,
-      r.beneficiaryName,
-      r.purpose,
-      r.isPartial ? 'Partial' : 'Full',
-      moneyPesosBare(r.amount),
-    ]));
+    b.writeln(
+      _row([
+        r.approvedDate == null ? '' : _isoDate(r.approvedDate!),
+        r.fundName,
+        r.beneficiaryName,
+        r.purpose,
+        r.isPartial ? 'Partial' : 'Full',
+        moneyPesosBare(r.amount),
+      ]),
+    );
   }
-  b.writeln(_row(
-      ['GRAND TOTAL ($periodLabel)', '', '', '', '', moneyPesosBare(summary.grandTotal)]));
+  b.writeln(
+    _row([
+      'GRAND TOTAL ($periodLabel)',
+      '',
+      '',
+      '',
+      '',
+      moneyPesosBare(summary.grandTotal),
+    ]),
+  );
   return b.toString();
 }
 

@@ -13,7 +13,9 @@ double _pesos(Money m) => m.centavos / 100.0;
 /// release (amount as a number), and a bold-ish GRAND TOTAL row. Returns the
 /// encoded bytes (PK zip).
 Uint8List releasedReportXlsx(
-    ReportSummary<ReleasedRequestRow> summary, String periodLabel) {
+  ReportSummary<ReleasedRequestRow> summary,
+  String periodLabel,
+) {
   final excel = Excel.createExcel();
   final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
   excel.rename(sheetName, 'Released');
@@ -48,7 +50,9 @@ Uint8List releasedReportXlsx(
 
 /// .xlsx workbook for the replenishments report.
 Uint8List replenishmentReportXlsx(
-    ReportSummary<ReplenishmentRow> summary, String periodLabel) {
+  ReportSummary<ReplenishmentRow> summary,
+  String periodLabel,
+) {
   final excel = Excel.createExcel();
   final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
   excel.rename(sheetName, 'Replenishments');
@@ -79,7 +83,9 @@ Uint8List replenishmentReportXlsx(
 /// .xlsx workbook for the DETAILED replenishment report: one data row per
 /// replenished request (amount numeric) + a GRAND TOTAL row.
 Uint8List replenishmentDetailXlsx(
-    ReportSummary<ReplenishedLineRow> summary, String periodLabel) {
+  ReportSummary<ReplenishedLineRow> summary,
+  String periodLabel,
+) {
   final excel = Excel.createExcel();
   final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
   excel.rename(sheetName, 'Replenishment detail');
@@ -105,7 +111,10 @@ Uint8List replenishmentDetailXlsx(
   }
   sheet.appendRow(<CellValue?>[
     TextCellValue('GRAND TOTAL ($periodLabel)'),
-    null, null, null, null,
+    null,
+    null,
+    null,
+    null,
     DoubleCellValue(_pesos(summary.grandTotal)),
   ]);
 
