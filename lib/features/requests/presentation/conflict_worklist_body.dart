@@ -279,6 +279,10 @@ class ConflictResolutionSheet extends ConsumerWidget {
           request: request,
           to: RequestStatus.rejected,
           actorUid: user.uid,
+          // Display-only on the incharge's requestRejected alert. The sheet's
+          // build already watches the fund (via optimisticFundBalanceProvider),
+          // so it's warm here; null-safe if it somehow hasn't loaded.
+          fundName: ref.read(fundByIdProvider(request.fundId)).valueOrNull?.name,
         );
     if (!context.mounted) return;
     if (res.showOnError(context)) {
@@ -296,6 +300,10 @@ class ConflictResolutionSheet extends ConsumerWidget {
     final balance = ref.watch(optimisticFundBalanceProvider(request.fundId));
     final canCover = !balance.isNegative &&
         balance.centavos >= request.amount.centavos;
+    // Pre-warm the fund stream so its display-only name is already resolved when
+    // _void threads it onto the incharge's requestRejected notification (read
+    // null-safely there). Never gates the action.
+    ref.watch(fundByIdProvider(request.fundId));
 
     return DraggableScrollableSheet(
       expand: false,

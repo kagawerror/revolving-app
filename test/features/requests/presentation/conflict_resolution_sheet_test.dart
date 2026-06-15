@@ -6,6 +6,7 @@ import 'package:rev_app/core/error/result.dart';
 import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/auth/presentation/auth_providers.dart';
+import 'package:rev_app/features/companies/domain/fund.dart';
 import 'package:rev_app/features/requests/domain/fund_request.dart';
 import 'package:rev_app/features/requests/domain/request_repository.dart';
 import 'package:rev_app/features/requests/domain/request_status.dart';
@@ -60,6 +61,20 @@ void main() {
           // Healthy balance so the "can cover" hint renders; never gates.
           optimisticFundBalanceProvider.overrideWith(
               (ref, fundId) => const OptimisticBalance(100000)),
+          // Fund stream resolves the display-only name threaded onto the
+          // requestRejected notification (void path). Avoids touching real
+          // Firestore via fundRepositoryProvider in this widget test.
+          fundByIdProvider.overrideWith((ref, fundId) => Stream.value(
+                Fund(
+                  id: fundId,
+                  companyId: 'c1',
+                  name: 'Petty Cash',
+                  originalBudget: Money.fromCentavos(10000000),
+                  availableBalance: Money.fromCentavos(100000),
+                  lowBalanceThresholdPct: 3,
+                  status: FundStatus.active,
+                ),
+              )),
         ],
         child: MaterialApp(
           home: Consumer(
@@ -124,6 +139,7 @@ void main() {
           request: any(named: 'request'),
           to: any(named: 'to'),
           actorUid: any(named: 'actorUid'),
+          fundName: any(named: 'fundName'),
         )).thenAnswer((_) async => const Ok(null));
 
     await pumpSheet(tester, repo);
@@ -142,8 +158,9 @@ void main() {
           request: any(named: 'request'),
           to: captureAny(named: 'to'),
           actorUid: 'i1',
+          fundName: captureAny(named: 'fundName'),
         )).captured;
-    expect(captured.single, RequestStatus.rejected);
+    expect(captured, [RequestStatus.rejected, 'Petty Cash']);
   });
 
   testWidgets('cancelling the confirm dialog moves no money', (tester) async {

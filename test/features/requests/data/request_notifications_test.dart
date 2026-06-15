@@ -163,6 +163,7 @@ void main() {
       expect((n['recipientRoles'] as List), ['incharge']);
       expect(n['requestId'], 'r1');
       expect(n['actorName'], 'Approver Ann');
+      expect(n['fundName'], 'Petty Cash');
       // PII guard: neither the body nor any field carries the reason.
       expect(n['body'], 'A cash release was disputed.');
       expect(n.values.contains('secret amount mismatch detail'), isFalse);
@@ -179,6 +180,7 @@ void main() {
         request: req,
         to: RequestStatus.rejected,
         actorUid: 'inc1',
+        fundName: 'Petty Cash',
       );
       expect(res.isOk, isTrue);
 
@@ -188,6 +190,8 @@ void main() {
       expect((n['recipientRoles'] as List), ['incharge']);
       expect(n['requestId'], 'r1');
       expect(n['requestAmountCentavos'], 200000);
+      expect(n['requestBeneficiaryName'], 'Ben');
+      expect(n['fundName'], 'Petty Cash');
       expect(await fundBalance(), 500000);
     });
   });

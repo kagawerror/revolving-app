@@ -197,6 +197,7 @@ class _FakeRequestRepo implements RequestRepository {
     required FundRequest request,
     required RequestStatus to,
     required String actorUid,
+    String? fundName,
   }) async => const Ok(null);
 }
 

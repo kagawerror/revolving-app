@@ -10,6 +10,7 @@ import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../sync/presentation/sync_providers.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_breakdown.dart';
 import '../domain/request_status.dart';
@@ -58,9 +59,11 @@ class RequestDetailScreen extends ConsumerWidget {
           request: request,
           actorUid: user.uid,
           // Denormalized onto the incharge's notification (display-only). The
-          // fund isn't in scope on this screen, so fundName stays null (the
-          // alert row null-guards it).
+          // fund (same company as the approver) is resolved reactively; if it
+          // hasn't loaded yet, fundName stays null and the alert row null-guards
+          // it — never block or throw on a loading fund.
           actorName: user.displayName,
+          fundName: ref.read(fundByIdProvider(request.fundId)).valueOrNull?.name,
         );
     if (!context.mounted) return;
     if (res.showOnError(context)) Navigator.of(context).pop();
@@ -77,9 +80,12 @@ class RequestDetailScreen extends ConsumerWidget {
           request: request,
           actorUid: user.uid,
           reason: reason,
-          // actorName is denormalized onto the incharge's notification; the
-          // reason itself is PII and never travels to the notification.
+          // actorName + fundName are denormalized onto the incharge's
+          // notification (display-only); the reason itself is PII and never
+          // travels to the notification. fundName resolves from the same-company
+          // fund and is null-safe while the fund is still loading.
           actorName: user.displayName,
+          fundName: ref.read(fundByIdProvider(request.fundId)).valueOrNull?.name,
         );
     if (!context.mounted) return;
     if (res.showOnError(context)) Navigator.of(context).pop();
@@ -95,6 +101,11 @@ class RequestDetailScreen extends ConsumerWidget {
     final visual = requestStatusVisual(request.status);
     final canDecide =
         canApprove && request.status == RequestStatus.released;
+    // Pre-warm the fund stream while a decision is possible so the fund name is
+    // already resolved (not AsyncLoading) when the approver taps Acknowledge /
+    // Dispute — _acknowledge/_dispute read it null-safely for the incharge's
+    // denormalized notification. Display-only; never feeds money/transition.
+    if (canDecide) ref.watch(fundByIdProvider(request.fundId));
     // An offline release captured on this device but not yet server-confirmed.
     final isLocalPending = request.releaseState == 'localPending';
     // A conflicted (overdraft-on-sync) release the incharge can resolve.

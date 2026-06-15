@@ -152,9 +152,13 @@ abstract interface class RequestRepository {
   /// be [RequestStatus.released] (re-runs the release transaction so the money
   /// re-validates via computeRelease) or [RequestStatus.rejected] (plain
   /// update + history, no money).
+  /// [fundName] is an optional display value denormalized onto the
+  /// `requestRejected` notification (reject path only); it never affects money
+  /// or the transition. The release path sources the fund name itself.
   Future<Result<void>> resolveConflict({
     required FundRequest request,
     required RequestStatus to,
     required String actorUid,
+    String? fundName,
   });
 }

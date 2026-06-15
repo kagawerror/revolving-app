@@ -665,6 +665,7 @@ class FirestoreRequestRepository implements RequestRepository {
     required FundRequest request,
     required RequestStatus to,
     required String actorUid,
+    String? fundName,
   }) {
     if (to == RequestStatus.released) {
       // Re-run the full release transaction so the money re-validates against
@@ -694,8 +695,11 @@ class FirestoreRequestRepository implements RequestRepository {
           body: 'A request was rejected.',
           requestId: request.id,
           requestAmountCentavos: request.amount.centavos,
-          // fundName is not read on the conflict-reject path; null is fine —
-          // the alert row null-guards it.
+          requestBeneficiaryName: request.beneficiaryName,
+          // Display-only fund name for the incharge's alert row; resolved by the
+          // caller (the conflict sheet already has the fund stream warm). Null is
+          // tolerated — the alert row null-guards it.
+          fundName: fundName,
         ),
       );
     }

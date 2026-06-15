@@ -6,6 +6,7 @@ import 'package:rev_app/core/error/result.dart';
 import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/auth/presentation/auth_providers.dart';
+import 'package:rev_app/features/companies/domain/fund.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
 import 'package:rev_app/features/replenishment/presentation/replenishment_providers.dart';
 import 'package:rev_app/features/requests/domain/fund_request.dart';
@@ -14,6 +15,7 @@ import 'package:rev_app/features/requests/domain/request_status.dart';
 import 'package:rev_app/features/requests/presentation/post_release_review_body.dart';
 import 'package:rev_app/features/requests/presentation/request_detail_screen.dart';
 import 'package:rev_app/features/requests/presentation/request_providers.dart';
+import 'package:rev_app/features/sync/presentation/sync_providers.dart';
 
 class _MockRepo extends Mock implements RequestRepository {}
 
@@ -55,6 +57,21 @@ void main() {
           // Drives pendingPartialByRequestProvider to empty (no breakdown card).
           pendingReplenishmentsProvider
               .overrideWith((ref) => Stream.value(const <Replenishment>[])),
+          // The detail screen pre-warms the fund stream while a decision is
+          // possible (to resolve the display-only fundName for the incharge's
+          // notification). Override it so this widget test never touches real
+          // Firestore via fundRepositoryProvider.
+          fundByIdProvider.overrideWith((ref, fundId) => Stream.value(
+                Fund(
+                  id: fundId,
+                  companyId: 'c1',
+                  name: 'Petty Cash',
+                  originalBudget: Money.fromCentavos(10000000),
+                  availableBalance: Money.fromCentavos(100000),
+                  lowBalanceThresholdPct: 3,
+                  status: FundStatus.active,
+                ),
+              )),
         ],
         child: MaterialApp(home: RequestDetailScreen(request: _released())),
       ),
