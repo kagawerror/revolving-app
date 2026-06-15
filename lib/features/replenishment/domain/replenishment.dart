@@ -75,6 +75,12 @@ class Replenishment extends Equatable {
   /// approved-replenishment date.
   final DateTime? decidedAt;
 
+  /// Sum of the selected requests' OUTSTANDING original amounts at submit time
+  /// (the full owed total before any partial). Persisted so approve/reject can
+  /// echo it back onto the incharge's outcome notification, where a partial
+  /// hero is shown "of {original}". Null on drafts/legacy docs and full fills.
+  final int? originalAmountCentavos;
+
   const Replenishment({
     required this.id,
     required this.companyId,
@@ -91,9 +97,15 @@ class Replenishment extends Equatable {
     this.createdAt,
     this.submittedAt,
     this.decidedAt,
+    this.originalAmountCentavos,
   });
 
   int get itemCount => requestIds.length;
+
+  /// Original (pre-partial) total owed as [Money], or null when absent.
+  Money? get originalTotal => originalAmountCentavos == null
+      ? null
+      : Money.fromCentavos(originalAmountCentavos!);
 
   factory Replenishment.fromMap(String id, Map<String, dynamic> m) => Replenishment(
         id: id,
@@ -114,6 +126,7 @@ class Replenishment extends Equatable {
         createdAt: (m['createdAt'] as Timestamp?)?.toDate(),
         submittedAt: (m['submittedAt'] as Timestamp?)?.toDate(),
         decidedAt: (m['decidedAt'] as Timestamp?)?.toDate(),
+        originalAmountCentavos: m['originalAmountCentavos'] as int?,
       );
 
   Map<String, dynamic> toCreateMap() => {
@@ -133,5 +146,6 @@ class Replenishment extends Equatable {
   @override
   List<Object?> get props =>
       [id, companyId, fundId, status, requestIds, total, reportNotes, createdByUid,
-       submittedByUid, submittedByName, approvedByUid, items, createdAt, submittedAt, decidedAt];
+       submittedByUid, submittedByName, approvedByUid, items, createdAt, submittedAt, decidedAt,
+       originalAmountCentavos];
 }

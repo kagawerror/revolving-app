@@ -156,6 +156,20 @@ class FirestoreRequestRepository implements RequestRepository {
       .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
+  Future<Result<FundRequest>> getById(String id) async {
+    try {
+      final snap = await _requests.doc(id).get();
+      if (!snap.exists) {
+        return const Err(NotFoundFailure('This request is no longer available.'));
+      }
+      return Ok(FundRequest.fromMap(snap.id, snap.data()!));
+    } catch (e, st) {
+      developer.log('getById failed', name: 'requests', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not load the request.'));
+    }
+  }
+
+  @override
   Future<Result<String>> create(FundRequest request) async {
     // Online create requires a proof image up front. An offline create defers
     // the image (carries a pendingImageRef instead) and backfills the URL on
@@ -285,11 +299,13 @@ class FirestoreRequestRepository implements RequestRepository {
     }
     ReleaseSyncResult? result;
     _LowBalanceAlert? alert;
+    _RequestAlert? requestAlert;
     try {
       await _db.runTransaction((tx) async {
         // Reset per-attempt so a transaction RETRY never re-fires a stale push.
         result = null;
         alert = null;
+        requestAlert = null;
         // ALL reads before ANY writes (Firestore transaction rule).
         final reqRef = _requests.doc(request.id);
         final reqSnap = await tx.get(reqRef);
@@ -368,6 +384,24 @@ class FirestoreRequestRepository implements RequestRepository {
               'at': FieldValue.serverTimestamp(),
             });
             alert = _stageLowBalanceAlert(tx, fund, fundIsLow);
+            // Offline release reaching the server: notify approvers exactly here
+            // (applied branch only — NOT on a conflict outcome). The offline
+            // capture (captureLocalRelease) stages nothing, and _runRelease is
+            // not reused by this path, so an offline release fires exactly one
+            // requestReleased notification, at confirm time.
+            requestAlert = _stageRequestNotification(
+              tx,
+              companyId: fund.companyId,
+              recipientRoles: const ['superior', 'manager', 'ceo'],
+              type: 'requestReleased',
+              title: 'New release to review',
+              body: 'A cash release needs your review.',
+              requestId: request.id,
+              requestAmountCentavos: request.amount.centavos,
+              requestBeneficiaryName: request.beneficiaryName,
+              requestPurpose: request.purpose,
+              fundName: fund.name,
+            );
             result = ReleaseSyncResult.confirmed;
           case ReconcileConflictInsufficient():
             tx.update(reqRef, {
@@ -393,6 +427,7 @@ class FirestoreRequestRepository implements RequestRepository {
         }
       });
       _firePush(alert);
+      _fireRequestPush(requestAlert);
       return Ok(result!);
     } on _NotFound catch (e) {
       return Err(NotFoundFailure(e.message));
@@ -475,10 +510,12 @@ class FirestoreRequestRepository implements RequestRepository {
           'Request cannot be released from ${request.status.name}.'));
     }
     _LowBalanceAlert? alert;
+    _RequestAlert? requestAlert;
     try {
       await _db.runTransaction((tx) async {
         // Reset per-attempt so a transaction RETRY never re-fires a stale push.
         alert = null;
+        requestAlert = null;
         // ALL reads before ANY writes (Firestore transaction rule). Re-read the
         // request against current server state so two users tapping RELEASE on
         // the same worklist row can't both deduct the fund.
@@ -524,10 +561,29 @@ class FirestoreRequestRepository implements RequestRepository {
           'at': FieldValue.serverTimestamp(),
         });
         alert = _stageLowBalanceAlert(tx, fund, outcome.fundIsLow);
+        // Notify approvers a release now needs their post-hoc review. Staged in
+        // the SAME transaction (mirrors low-balance) so it commits atomically
+        // with the release. This is the ONLY online-release notify site; the
+        // offline path notifies once at confirm time (confirmPendingRelease),
+        // so a single release fires exactly one requestReleased notification.
+        requestAlert = _stageRequestNotification(
+          tx,
+          companyId: fund.companyId,
+          recipientRoles: const ['superior', 'manager', 'ceo'],
+          type: 'requestReleased',
+          title: 'New release to review',
+          body: 'A cash release needs your review.',
+          requestId: request.id,
+          requestAmountCentavos: request.amount.centavos,
+          requestBeneficiaryName: request.beneficiaryName,
+          requestPurpose: request.purpose,
+          fundName: fund.name,
+        );
       });
       // Best-effort push AFTER the money transaction commits — only when the
       // fund NEWLY flipped to low. Not awaited; failures never affect release.
       _firePush(alert);
+      _fireRequestPush(requestAlert);
       return const Ok(null);
     } on StateError catch (e) {
       return Err(ValidationFailure(e.message));
@@ -541,6 +597,8 @@ class FirestoreRequestRepository implements RequestRepository {
   Future<Result<void>> acknowledgePostRelease({
     required FundRequest request,
     required String actorUid,
+    String? actorName,
+    String? fundName,
   }) =>
       _plainTransition(
         request: request,
@@ -551,6 +609,19 @@ class FirestoreRequestRepository implements RequestRepository {
           'approverDecisionAt': FieldValue.serverTimestamp(),
         },
         failureMessage: 'Could not acknowledge the release.',
+        stageNotification: (tx) => _stageRequestNotification(
+          tx,
+          companyId: request.companyId,
+          recipientRoles: const ['incharge'],
+          type: 'requestAcknowledged',
+          title: 'Release acknowledged',
+          body: 'An approver acknowledged a cash release.',
+          requestId: request.id,
+          requestAmountCentavos: request.amount.centavos,
+          requestBeneficiaryName: request.beneficiaryName,
+          fundName: fundName,
+          actorName: actorName,
+        ),
       );
 
   @override
@@ -558,6 +629,8 @@ class FirestoreRequestRepository implements RequestRepository {
     required FundRequest request,
     required String actorUid,
     required String reason,
+    String? actorName,
+    String? fundName,
   }) =>
       _plainTransition(
         request: request,
@@ -570,6 +643,21 @@ class FirestoreRequestRepository implements RequestRepository {
           'disputedAt': FieldValue.serverTimestamp(),
         },
         failureMessage: 'Could not record the dispute.',
+        // The dispute reason is PII — it is NEVER passed to the notification
+        // (generic body + no reason field). It stays on the detail screen.
+        stageNotification: (tx) => _stageRequestNotification(
+          tx,
+          companyId: request.companyId,
+          recipientRoles: const ['incharge'],
+          type: 'requestDisputed',
+          title: 'Release disputed',
+          body: 'A cash release was disputed.',
+          requestId: request.id,
+          requestAmountCentavos: request.amount.centavos,
+          requestBeneficiaryName: request.beneficiaryName,
+          fundName: fundName,
+          actorName: actorName,
+        ),
       );
 
   @override
@@ -597,6 +685,18 @@ class FirestoreRequestRepository implements RequestRepository {
         to: RequestStatus.rejected,
         actorUid: actorUid,
         failureMessage: 'Could not reject the conflicted release.',
+        stageNotification: (tx) => _stageRequestNotification(
+          tx,
+          companyId: request.companyId,
+          recipientRoles: const ['incharge'],
+          type: 'requestRejected',
+          title: 'Request rejected',
+          body: 'A request was rejected.',
+          requestId: request.id,
+          requestAmountCentavos: request.amount.centavos,
+          // fundName is not read on the conflict-reject path; null is fine —
+          // the alert row null-guards it.
+        ),
       );
     }
     return Future.value(
@@ -615,13 +715,17 @@ class FirestoreRequestRepository implements RequestRepository {
     String? note,
     Map<String, dynamic> extraUpdate = const {},
     required String failureMessage,
+    _RequestAlert? Function(Transaction tx)? stageNotification,
   }) async {
     if (!request.status.canTransitionTo(to)) {
       return Err(ValidationFailure(
           'Cannot move ${request.status.name} → ${to.name}.'));
     }
+    _RequestAlert? alert;
     try {
       await _db.runTransaction((tx) async {
+        // Reset per-attempt so a transaction RETRY never re-fires a stale push.
+        alert = null;
         final ref = _requests.doc(request.id);
         final snap = await tx.get(ref);
         if (!snap.exists) throw StateError('Request not found.');
@@ -639,7 +743,12 @@ class FirestoreRequestRepository implements RequestRepository {
           'note': note,
           'at': FieldValue.serverTimestamp(),
         });
+        // Stage the caller's notification in the SAME transaction so it commits
+        // atomically with the status change. No money here, ever.
+        if (stageNotification != null) alert = stageNotification(tx);
       });
+      // Best-effort push AFTER commit. Not awaited; never affects the result.
+      _fireRequestPush(alert);
       return const Ok(null);
     } on StateError catch (e) {
       return Err(ValidationFailure(e.message));
@@ -707,6 +816,66 @@ class FirestoreRequestRepository implements RequestRepository {
       body: alert.body,
     ));
   }
+
+  /// Stages a request-lifecycle notification doc INSIDE the transaction (mirrors
+  /// [_stageLowBalanceAlert]) and returns the alert to push AFTER commit.
+  ///
+  /// PRIVACY: the [body] is GENERIC — it carries no amount, name, purpose, or
+  /// reason. The amount/beneficiary/purpose live in denormalized fields read
+  /// only inside the app's own alert list (rule-scoped to the recipient roles);
+  /// they are NEVER sent to the push relay. Disputes pass no reason at all.
+  _RequestAlert _stageRequestNotification(
+    Transaction tx, {
+    required String companyId,
+    required List<String> recipientRoles,
+    required String type,
+    required String title,
+    required String body,
+    required String requestId,
+    int? requestAmountCentavos,
+    String? requestBeneficiaryName,
+    String? requestPurpose,
+    String? fundName,
+    String? actorName,
+  }) {
+    final notifRef = _db.collection('notifications').doc();
+    tx.set(notifRef, {
+      'companyId': companyId,
+      'recipientRoles': recipientRoles,
+      'type': type,
+      'title': title,
+      'body': body,
+      'fundId': null,
+      'replenishmentId': null,
+      'requestId': requestId,
+      'requestAmountCentavos': requestAmountCentavos,
+      'requestBeneficiaryName': requestBeneficiaryName,
+      'requestPurpose': requestPurpose,
+      'fundName': fundName,
+      'actorName': actorName,
+      'readAt': null,
+      'createdAt': FieldValue.serverTimestamp(),
+    });
+    return _RequestAlert(
+      companyId: companyId,
+      recipientRoles: recipientRoles,
+      title: title,
+      body: body,
+    );
+  }
+
+  /// Best-effort push for a staged request alert, AFTER the transaction commits.
+  /// Not awaited; a push failure never affects the committed write. The push
+  /// body is the same generic, PII-free text written to the notification doc.
+  void _fireRequestPush(_RequestAlert? alert) {
+    if (alert == null) return;
+    unawaited(_push.notify(
+      companyId: alert.companyId,
+      recipientRoles: alert.recipientRoles,
+      title: alert.title,
+      body: alert.body,
+    ));
+  }
 }
 
 /// A staged low-balance alert to push after the transaction commits.
@@ -716,6 +885,22 @@ class _LowBalanceAlert {
   final String body;
   const _LowBalanceAlert({
     required this.companyId,
+    required this.title,
+    required this.body,
+  });
+}
+
+/// A staged request-lifecycle alert to push after the transaction commits.
+/// Carries the recipient roles (unlike [_LowBalanceAlert], which is always
+/// incharge-only) since request alerts target approvers OR the incharge.
+class _RequestAlert {
+  final String companyId;
+  final List<String> recipientRoles;
+  final String title;
+  final String body;
+  const _RequestAlert({
+    required this.companyId,
+    required this.recipientRoles,
     required this.title,
     required this.body,
   });

@@ -40,6 +40,7 @@ abstract interface class ReplenishmentRepository {
     String? submitterName,
     String? fundName,
     int? fundAvailableBalanceCentavos,
+    int? originalAmountCentavos,
   });
 
   /// One-tap selection→submit for the incharge popup: creates the draft from
@@ -53,6 +54,7 @@ abstract interface class ReplenishmentRepository {
     String? submitterName,
     String? fundName,
     int? fundAvailableBalanceCentavos,
+    int? originalAmountCentavos,
   });
 
   /// Atomic: tag the bundled requests `replenished`, ADD their total back to the

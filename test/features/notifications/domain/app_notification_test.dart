@@ -35,6 +35,42 @@ void main() {
     expect(n.replenishAmount, isNull);
     expect(n.availableBalance, isNull);
     expect(n.fill, isNull);
+    // New request-lifecycle getters are also null for a legacy doc.
+    expect(n.requestId, isNull);
+    expect(n.requestAmount, isNull);
+    expect(n.requestPurpose, isNull);
+    expect(n.requestBeneficiaryName, isNull);
+    expect(n.originalAmount, isNull);
+  });
+
+  test('request-type map → request getters populated', () {
+    final n = AppNotification.fromMap('n7', {
+      'companyId': 'c1', 'recipientRoles': ['superior', 'manager', 'ceo'],
+      'type': 'requestReleased', 'title': 'New release to review',
+      'body': 'A cash release needs your review.', 'readAt': null,
+      'requestId': 'req-1', 'requestAmountCentavos': 200000,
+      'requestPurpose': 'Office supplies', 'requestBeneficiaryName': 'Ben',
+      'fundName': 'Petty Cash',
+    });
+    expect(n.requestId, 'req-1');
+    expect(n.requestAmount, Money.fromCentavos(200000));
+    expect(n.requestPurpose, 'Office supplies');
+    expect(n.requestBeneficiaryName, 'Ben');
+    expect(n.fundName, 'Petty Cash');
+    // Not a replenishment → no replenish hero / fill.
+    expect(n.replenishAmount, isNull);
+    expect(n.fill, isNull);
+  });
+
+  test('originalAmount round-trips from originalAmountCentavos', () {
+    final n = AppNotification.fromMap('n8', {
+      'companyId': 'c1', 'recipientRoles': ['incharge'],
+      'type': 'replenishmentApproved', 'title': 'T', 'body': 'b',
+      'replenishAmountCentavos': 100000, 'originalAmountCentavos': 250000,
+      'fillType': 'partial',
+    });
+    expect(n.replenishAmount, Money.fromCentavos(100000));
+    expect(n.originalAmount, Money.fromCentavos(250000));
   });
 
   test('full map → correct Money getters + fill enum', () {

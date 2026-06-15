@@ -57,6 +57,10 @@ class RequestDetailScreen extends ConsumerWidget {
     final res = await ref.read(requestRepositoryProvider).acknowledgePostRelease(
           request: request,
           actorUid: user.uid,
+          // Denormalized onto the incharge's notification (display-only). The
+          // fund isn't in scope on this screen, so fundName stays null (the
+          // alert row null-guards it).
+          actorName: user.displayName,
         );
     if (!context.mounted) return;
     if (res.showOnError(context)) Navigator.of(context).pop();
@@ -73,6 +77,9 @@ class RequestDetailScreen extends ConsumerWidget {
           request: request,
           actorUid: user.uid,
           reason: reason,
+          // actorName is denormalized onto the incharge's notification; the
+          // reason itself is PII and never travels to the notification.
+          actorName: user.displayName,
         );
     if (!context.mounted) return;
     if (res.showOnError(context)) Navigator.of(context).pop();

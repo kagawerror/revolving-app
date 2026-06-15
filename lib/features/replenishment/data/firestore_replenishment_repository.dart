@@ -193,6 +193,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     String? submitterName,
     String? fundName,
     int? fundAvailableBalanceCentavos,
+    int? originalAmountCentavos,
   }) async {
     final draftRes =
         await createDraft(fundId: fundId, items: items, createdByUid: actorUid);
@@ -205,6 +206,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       submitterName: submitterName,
       fundName: fundName,
       fundAvailableBalanceCentavos: fundAvailableBalanceCentavos,
+      originalAmountCentavos: originalAmountCentavos,
     );
     if (submitRes.failureOrNull != null) {
       // Roll the draft back so the fund isn't left locked in `replenishing`.
@@ -222,6 +224,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     String? submitterName,
     String? fundName,
     int? fundAvailableBalanceCentavos,
+    int? originalAmountCentavos,
   }) async {
     if (!replenishment.status.canTransitionTo(ReplenishmentStatus.submitted)) {
       return const Err(ValidationFailure('Only a draft can be submitted.'));
@@ -233,6 +236,9 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         'submittedByUid': actorUid,
         'submittedByName': submitterName,
         'submittedAt': FieldValue.serverTimestamp(),
+        // Persist the original (pre-partial) total so approve/reject can echo it
+        // onto the incharge's outcome notification (additive nullable field).
+        'originalAmountCentavos': originalAmountCentavos,
       });
       final companyName = await _resolveCompanyName(replenishment.companyId);
       await _addNotification(
@@ -249,6 +255,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         replenishAmountCentavos: replenishment.total.centavos,
         availableBalanceCentavos: fundAvailableBalanceCentavos,
         fillType: computeFill(replenishment.items).name,
+        originalAmountCentavos: originalAmountCentavos,
       );
       return const Ok(null);
     } catch (e, st) {
@@ -361,6 +368,8 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         // POST-credit balance — the figure the incharge most cares about.
         availableBalanceCentavos: newBalanceCentavos,
         fillType: computeFill(replenishment.items).name,
+        // Echo the original (pre-partial) total persisted at submit time.
+        originalAmountCentavos: replenishment.originalAmountCentavos,
       );
       return const Ok(null);
     } on StateError catch (e) {
@@ -410,6 +419,8 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         // Unchanged balance — reject does not credit the fund.
         availableBalanceCentavos: balanceCentavos,
         fillType: computeFill(replenishment.items).name,
+        // Echo the original (pre-partial) total persisted at submit time.
+        originalAmountCentavos: replenishment.originalAmountCentavos,
       );
       return const Ok(null);
     } on StateError catch (e) {
@@ -503,6 +514,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     int? replenishAmountCentavos,
     int? availableBalanceCentavos,
     String? fillType,
+    int? originalAmountCentavos,
   }) async {
     try {
       await _db.collection('notifications').add({
@@ -519,6 +531,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         'replenishAmountCentavos': replenishAmountCentavos,
         'availableBalanceCentavos': availableBalanceCentavos,
         'fillType': fillType,
+        'originalAmountCentavos': originalAmountCentavos,
         'readAt': null,
         'createdAt': FieldValue.serverTimestamp(),
       });

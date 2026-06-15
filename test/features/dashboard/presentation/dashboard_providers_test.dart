@@ -146,6 +146,9 @@ class _FakeRequestRepo implements RequestRepository {
   Stream<List<FundRequest>> watchByFund(String companyId, String fundId) =>
       const Stream.empty();
   @override
+  Future<Result<FundRequest>> getById(String id) async =>
+      const Err(NotFoundFailure('not found'));
+  @override
   Future<Result<String>> create(FundRequest request) async => const Ok('');
   @override
   Future<Result<void>> release({
@@ -178,12 +181,16 @@ class _FakeRequestRepo implements RequestRepository {
   Future<Result<void>> acknowledgePostRelease({
     required FundRequest request,
     required String actorUid,
+    String? actorName,
+    String? fundName,
   }) async => const Ok(null);
   @override
   Future<Result<void>> dispute({
     required FundRequest request,
     required String actorUid,
     required String reason,
+    String? actorName,
+    String? fundName,
   }) async => const Ok(null);
   @override
   Future<Result<void>> resolveConflict({
@@ -238,7 +245,8 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
           required String notes,
           String? submitterName,
           String? fundName,
-          int? fundAvailableBalanceCentavos}) async =>
+          int? fundAvailableBalanceCentavos,
+          int? originalAmountCentavos}) async =>
       const Ok(null);
   @override
   Future<Result<void>> submit(
@@ -247,7 +255,8 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
           required String notes,
           String? submitterName,
           String? fundName,
-          int? fundAvailableBalanceCentavos}) async =>
+          int? fundAvailableBalanceCentavos,
+          int? originalAmountCentavos}) async =>
       const Ok(null);
   @override
   Future<Result<void>> approve(

@@ -10,6 +10,7 @@ import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../requests/domain/fund_request.dart';
 import '../../sync/presentation/sync_providers.dart';
+import '../domain/original_amount.dart';
 import '../domain/replenishment.dart';
 import 'replenishment_providers.dart';
 
@@ -100,6 +101,12 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
         ));
       return;
     }
+    // Original (pre-partial) total of the selected requests — persisted on the
+    // report and echoed onto the incharge's outcome notification so a partial
+    // hero reads "of {original}". Display-only; never affects money math.
+    final selectedRequests =
+        widget.releasable.where((r) => _selected.contains(r.id)).toList();
+    final originalAmountCentavos = sumOriginalCentavos(selectedRequests);
     final items = <ReplenishmentItem>[];
     for (final r in widget.releasable) {
       if (!_selected.contains(r.id)) continue;
@@ -136,6 +143,7 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
           submitterName: user.displayName,
           fundName: widget.fund.name,
           fundAvailableBalanceCentavos: widget.fund.availableBalance.centavos,
+          originalAmountCentavos: originalAmountCentavos,
         );
     if (!mounted) return;
     setState(() => _busy = false);

@@ -45,6 +45,10 @@ abstract interface class RequestRepository {
   /// at [limit] — the source for the grouped admin aging view.
   Stream<List<FundRequest>> watchReleasedAll(int limit);
 
+  /// Single-doc fetch by id (for the alert tap-to-open flow). Missing →
+  /// [NotFoundFailure]; failure → [UnexpectedFailure].
+  Future<Result<FundRequest>> getById(String id);
+
   Future<Result<String>> create(FundRequest request);
 
   /// RELEASE: atomically validates balance, deducts, flips fund to `low` if
@@ -85,18 +89,28 @@ abstract interface class RequestRepository {
   /// POST-HOC ACKNOWLEDGE: an approver acknowledges an already-released spend
   /// (`released → acknowledged`). Plain update, NO money movement; appends a
   /// history event.
+  /// [actorName]/[fundName] are optional display values denormalized onto the
+  /// `requestAcknowledged` notification for the incharge's alert list. They
+  /// never affect money or the transition.
   Future<Result<void>> acknowledgePostRelease({
     required FundRequest request,
     required String actorUid,
+    String? actorName,
+    String? fundName,
   });
 
   /// DISPUTE: an approver flags a released/acknowledged spend
   /// (`released | acknowledged → disputed`). Records the reason + actor; NO
   /// balance change. Disputed cash is still reconcilable via replenishment.
+  /// [actorName]/[fundName] are optional display values denormalized onto the
+  /// `requestDisputed` notification. The dispute [reason] is NEVER put in the
+  /// notification body (PII) — it stays on the detail screen.
   Future<Result<void>> dispute({
     required FundRequest request,
     required String actorUid,
     required String reason,
+    String? actorName,
+    String? fundName,
   });
 
   /// REPLAY of a captured offline release (Phase 5 sync engine). Inside a

@@ -204,12 +204,14 @@ void main() {
       submitterName: 'Ada Incharge',
       fundName: 'PC',
       fundAvailableBalanceCentavos: 200000,
+      originalAmountCentavos: 750000,
     );
     expect(res.isOk, isTrue);
 
-    // submittedByName landed on the report.
+    // submittedByName + originalAmountCentavos landed on the report.
     final rp = await db.collection('replenishments').doc(id).get();
     expect(rp.data()!['submittedByName'], 'Ada Incharge');
+    expect(rp.data()!['originalAmountCentavos'], 750000);
 
     // The submitted notification carries the denormalized display fields.
     final notifs = await db
@@ -225,6 +227,7 @@ void main() {
     expect(n['replenishAmountCentavos'], 500000);
     expect(n['availableBalanceCentavos'], 200000);
     expect(n['fillType'], 'mixed');
+    expect(n['originalAmountCentavos'], 750000);
     expect((n['recipientRoles'] as List), ['superior', 'manager', 'ceo']);
   });
 
@@ -245,6 +248,7 @@ void main() {
       submitterName: 'Ada Incharge',
       fundName: 'PC',
       fundAvailableBalanceCentavos: 200000,
+      originalAmountCentavos: 800000,
     );
     final submitted = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
@@ -265,6 +269,8 @@ void main() {
     // POST-credit balance: 200000 + 800000.
     expect(n['availableBalanceCentavos'], 1000000);
     expect(n['fillType'], 'full');
+    // Original (pre-partial) total echoed back from the persisted report.
+    expect(n['originalAmountCentavos'], 800000);
     expect((n['recipientRoles'] as List), ['incharge']);
   });
 

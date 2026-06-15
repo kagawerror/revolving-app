@@ -10,6 +10,9 @@ import 'package:rev_app/features/notifications/presentation/notification_provide
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment_status.dart';
 import 'package:rev_app/features/replenishment/presentation/replenishment_providers.dart';
+import 'package:rev_app/features/requests/domain/fund_request.dart';
+import 'package:rev_app/features/requests/domain/request_status.dart';
+import 'package:rev_app/features/requests/presentation/approver_inbox_providers.dart';
 
 class _FakeRepo implements NotificationRepository {
   @override
@@ -68,31 +71,50 @@ void main() {
         createdByUid: 'inc',
       );
 
-  test('pendingApprovalCountProvider returns N submitted reports', () async {
+  FundRequest released(String id) => FundRequest(
+        id: id,
+        companyId: 'c1',
+        fundId: 'f1',
+        createdByUid: 'inc',
+        beneficiaryName: 'Ben',
+        amount: Money.fromCentavos(1000),
+        purpose: 'x',
+        proofImageUrl: 'https://img/x.jpg',
+        status: RequestStatus.released,
+      );
+
+  test('pendingApprovalCountProvider sums submitted reports + released requests',
+      () async {
     final container = ProviderContainer(overrides: [
       pendingReplenishmentsProvider.overrideWith(
           (ref) => Stream.value([submitted('a'), submitted('b'), submitted('c')])),
+      pendingRequestsProvider
+          .overrideWith((ref) => Stream.value([released('r1'), released('r2')])),
     ]);
     addTearDown(container.dispose);
     container.listen(pendingApprovalCountProvider, (_, _) {});
     await container.read(pendingReplenishmentsProvider.future);
-    expect(container.read(pendingApprovalCountProvider), 3);
+    await container.read(pendingRequestsProvider.future);
+    // 3 reports + 2 released requests = 5.
+    expect(container.read(pendingApprovalCountProvider), 5);
   });
 
-  test('pendingApprovalCountProvider is 0 while loading', () {
+  test('pendingApprovalCountProvider is 0 while both sides load', () {
     final container = ProviderContainer(overrides: [
       pendingReplenishmentsProvider
           .overrideWith((ref) => const Stream.empty()),
+      pendingRequestsProvider.overrideWith((ref) => const Stream.empty()),
     ]);
     addTearDown(container.dispose);
     container.listen(pendingApprovalCountProvider, (_, _) {});
     expect(container.read(pendingApprovalCountProvider), 0);
   });
 
-  test('pendingApprovalCountProvider is 0 for an empty list', () {
+  test('pendingApprovalCountProvider is 0 for two empty lists', () {
     final container = ProviderContainer(overrides: [
       pendingReplenishmentsProvider
           .overrideWith((ref) => Stream.value(const [])),
+      pendingRequestsProvider.overrideWith((ref) => Stream.value(const [])),
     ]);
     addTearDown(container.dispose);
     container.listen(pendingApprovalCountProvider, (_, _) {});

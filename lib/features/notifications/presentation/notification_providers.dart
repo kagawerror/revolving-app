@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../services/firebase/firebase_providers.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../requests/presentation/approver_inbox_providers.dart';
 import '../data/firestore_notification_repository.dart';
 import '../domain/app_notification.dart';
 import '../domain/notification_repository.dart';
@@ -21,10 +22,13 @@ final unreadCountProvider = Provider<int>((ref) {
   return list.where((n) => n.isUnread).length;
 });
 
-/// Approver bell count: how many replenishment reports await this approver's
-/// decision. Derived purely from the existing [pendingReplenishmentsProvider]
-/// stream (company-scoped `status == submitted`) — adds no Firestore query or
-/// index. Loading/empty resolves to 0.
+/// Approver bell count: ALL pending approvals — submitted replenishment reports
+/// PLUS released requests awaiting post-hoc review. Derived purely from the two
+/// existing company-scoped streams ([pendingReplenishmentsProvider] = `status ==
+/// submitted`; [pendingRequestsProvider] = `status == released`) so it adds no
+/// Firestore query or index. Either side loading/empty contributes 0.
 final pendingApprovalCountProvider = Provider<int>((ref) {
-  return ref.watch(pendingReplenishmentsProvider).valueOrNull?.length ?? 0;
+  final reps = ref.watch(pendingReplenishmentsProvider).valueOrNull?.length ?? 0;
+  final reqs = ref.watch(pendingRequestsProvider).valueOrNull?.length ?? 0;
+  return reps + reqs;
 });

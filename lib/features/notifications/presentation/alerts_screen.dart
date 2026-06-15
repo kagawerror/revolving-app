@@ -14,6 +14,9 @@ import '../../replenishment/domain/replenishment.dart';
 import '../../replenishment/domain/replenishment_fill.dart';
 import '../../replenishment/presentation/replenishment_detail_screen.dart';
 import '../../replenishment/presentation/replenishment_providers.dart';
+import '../../requests/domain/fund_request.dart';
+import '../../requests/presentation/request_detail_screen.dart';
+import '../../requests/presentation/request_providers.dart';
 import '../domain/app_notification.dart';
 import 'notification_providers.dart';
 
@@ -57,6 +60,34 @@ _AlertVisual _visualFor(AppNotification n) {
         Icons.cancel_rounded,
         'Rejected',
         'Replenishment',
+      );
+    case 'requestReleased':
+      return const _AlertVisual(
+        StatusTone.info,
+        Icons.payments_rounded,
+        'To review',
+        'Release',
+      );
+    case 'requestAcknowledged':
+      return const _AlertVisual(
+        StatusTone.success,
+        Icons.verified_rounded,
+        'Acknowledged',
+        'Release',
+      );
+    case 'requestDisputed':
+      return const _AlertVisual(
+        StatusTone.warning,
+        Icons.report_problem_rounded,
+        'Disputed',
+        'Release',
+      );
+    case 'requestRejected':
+      return const _AlertVisual(
+        StatusTone.danger,
+        Icons.cancel_rounded,
+        'Rejected',
+        'Request',
       );
     default:
       return const _AlertVisual(
@@ -158,6 +189,24 @@ class _AlertCardState extends ConsumerState<_AlertCard> {
       _n.type == 'replenishmentSubmitted' &&
       _n.replenishmentId != null;
 
+  /// A request alert that opens the request detail screen on tap.
+  ///  - `requestReleased` is the approver's "to review" affordance.
+  ///  - the incharge-facing decision alerts (acknowledged/disputed/rejected)
+  ///    open the incharge's own request for context.
+  /// Both load the [FundRequest] by id and push [RequestDetailScreen].
+  bool get _isOpenableRequest {
+    if (_n.requestId == null) return false;
+    if (_n.type == 'requestReleased') return widget.isApprover;
+    return !widget.isApprover &&
+        (_n.type == 'requestAcknowledged' ||
+            _n.type == 'requestDisputed' ||
+            _n.type == 'requestRejected');
+  }
+
+  /// Whether a tap loads + navigates (vs. just marking read). Drives the busy
+  /// spinner affordance and the disabled-while-busy guard.
+  bool get _isActionable => _isReviewable || _isOpenableRequest;
+
   void _markReadOnly() {
     if (_n.isUnread) {
       ref.read(notificationRepositoryProvider).markRead(_n.id).ignore();
@@ -196,14 +245,51 @@ class _AlertCardState extends ConsumerState<_AlertCard> {
     );
   }
 
+  /// Loads the [FundRequest] by id and opens [RequestDetailScreen]. Mirrors
+  /// [_openReview] (busy flag, mark-read, NotFound-vs-offline SnackBar split,
+  /// mounted guards). Used by both the approver's "to review" release alert and
+  /// the incharge's decision alerts.
+  Future<void> _openRequest() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    if (_n.isUnread) {
+      ref.read(notificationRepositoryProvider).markRead(_n.id).ignore();
+    }
+    final res =
+        await ref.read(requestRepositoryProvider).getById(_n.requestId!);
+    if (!mounted) return;
+    setState(() => _busy = false);
+    final FundRequest? req = res.valueOrNull;
+    if (req == null) {
+      final gone = res.failureOrNull is NotFoundFailure;
+      final msg = gone
+          ? 'This request is no longer available.'
+          : 'Can’t open this right now. Check your connection and try again.';
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(content: Text(msg)));
+      return;
+    }
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => RequestDetailScreen(request: req),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final visual = _visualFor(_n);
-    final hasEnriched = _n.replenishAmount != null;
+    // Enriched layout when the alert carries a denormalized hero amount — either
+    // a replenishment total or a request amount.
+    final hasEnriched =
+        _n.replenishAmount != null || _n.requestAmount != null;
 
     final VoidCallback? onTap = _isReviewable
         ? (_busy ? null : _openReview)
-        : (_n.isUnread ? _markReadOnly : null);
+        : _isOpenableRequest
+            ? (_busy ? null : _openRequest)
+            : (_n.isUnread ? _markReadOnly : null);
 
     if (!hasEnriched) {
       // Legacy / lowBalance layout — unchanged.
@@ -232,7 +318,12 @@ class _AlertCardState extends ConsumerState<_AlertCard> {
     return _EnrichedAlertCard(
       notification: _n,
       visual: visual,
-      isReviewable: _isReviewable,
+      // Show the open/review affordance for any alert whose tap navigates —
+      // replenishment review OR request open.
+      showAffordance: _isActionable,
+      // The puck reads "Review" for the approver's release queue, "Open"
+      // otherwise (incharge decision alerts).
+      affordanceIsReview: _isReviewable,
       busy: _busy,
       onTap: onTap,
     );
@@ -246,14 +337,16 @@ class _EnrichedAlertCard extends StatelessWidget {
   const _EnrichedAlertCard({
     required this.notification,
     required this.visual,
-    required this.isReviewable,
+    required this.showAffordance,
+    required this.affordanceIsReview,
     required this.busy,
     required this.onTap,
   });
 
   final AppNotification notification;
   final _AlertVisual visual;
-  final bool isReviewable;
+  final bool showAffordance;
+  final bool affordanceIsReview;
   final bool busy;
   final VoidCallback? onTap;
 
@@ -262,7 +355,17 @@ class _EnrichedAlertCard extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final n = notification;
-    final amount = n.replenishAmount!;
+    // Hero amount = replenishment total, else request amount. One of the two is
+    // non-null here (the enriched branch requires it).
+    final amount = n.replenishAmount ?? n.requestAmount!;
+    // A request alert renders beneficiary/purpose instead of a fill chip +
+    // fund-balance meta (which are null on request docs and self-hide).
+    final isRequestRow = n.requestAmount != null;
+    // Original (pre-partial) total line, for partial/mixed replenishments only.
+    final showOriginal = !isRequestRow &&
+        n.fill != null &&
+        n.fill != ReplenishmentFill.full &&
+        n.originalAmount != null;
 
     return SurfaceCard(
       onTap: onTap,
@@ -327,18 +430,52 @@ class _EnrichedAlertCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
+              // Replenishment rows carry a fill chip; request rows don't.
               if (n.fill != null) ...[
                 const SizedBox(width: AppTokens.sm),
                 _FillChip(label: _fillLabel(n.fill!)),
               ],
             ],
           ),
-          // Context line: fund · company.
-          if (n.fundName != null || n.companyName != null) ...[
+          // Original (pre-partial) total, under a partial/mixed hero only.
+          if (showOriginal) ...[
+            const SizedBox(height: 2),
+            Text(
+              'of ${n.originalAmount!.format()}',
+              style: textTheme.bodySmall?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+          // Context line: for replenishments, fund · company; for requests,
+          // beneficiary · fund (beneficiary surfaced via companyName slot of
+          // the same two-part line for layout parity).
+          if (isRequestRow) ...[
+            if (n.requestBeneficiaryName != null || n.fundName != null) ...[
+              const SizedBox(height: AppTokens.sm),
+              _ContextLine(
+                fundName: n.requestBeneficiaryName,
+                companyName: n.fundName,
+              ),
+            ],
+            // Purpose line (request rows only).
+            if (n.requestPurpose != null && n.requestPurpose!.isNotEmpty) ...[
+              const SizedBox(height: AppTokens.xs),
+              Text(
+                n.requestPurpose!,
+                style: textTheme.bodySmall
+                    ?.copyWith(color: scheme.onSurfaceVariant),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ] else if (n.fundName != null || n.companyName != null) ...[
             const SizedBox(height: AppTokens.sm),
             _ContextLine(fundName: n.fundName, companyName: n.companyName),
           ],
-          // Meta line: by {actor} · fund balance {x}.
+          // Meta line: by {actor} · fund balance {x}. For request decision rows
+          // this carries the "by {approver}"; availableBalance is null there.
           if (n.actorName != null || n.availableBalance != null) ...[
             const SizedBox(height: AppTokens.xs),
             _MetaLine(
@@ -346,11 +483,11 @@ class _EnrichedAlertCard extends StatelessWidget {
               balanceText: n.availableBalance?.format(),
             ),
           ],
-          if (isReviewable) ...[
+          if (showAffordance) ...[
             const SizedBox(height: AppTokens.md),
             Align(
               alignment: Alignment.centerLeft,
-              child: _ReviewAffordance(busy: busy),
+              child: _ReviewAffordance(busy: busy, isReview: affordanceIsReview),
             ),
           ],
         ],
@@ -453,10 +590,12 @@ class _MetaLine extends StatelessWidget {
   }
 }
 
-/// Primary-container puck inviting the approver to open the report.
+/// Primary-container puck inviting the user to open the report/request. Reads
+/// "Review" for the approver's queue, "Open" for an incharge's own item.
 class _ReviewAffordance extends StatelessWidget {
-  const _ReviewAffordance({required this.busy});
+  const _ReviewAffordance({required this.busy, this.isReview = true});
   final bool busy;
+  final bool isReview;
 
   @override
   Widget build(BuildContext context) {
@@ -475,7 +614,7 @@ class _ReviewAffordance extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            busy ? 'Opening…' : 'Review',
+            busy ? 'Opening…' : (isReview ? 'Review' : 'Open'),
             style: textTheme.labelLarge?.copyWith(
               color: scheme.onPrimaryContainer,
               fontWeight: FontWeight.w800,

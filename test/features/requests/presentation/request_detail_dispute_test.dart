@@ -70,6 +70,8 @@ void main() {
           request: any(named: 'request'),
           actorUid: any(named: 'actorUid'),
           reason: any(named: 'reason'),
+          actorName: any(named: 'actorName'),
+          fundName: any(named: 'fundName'),
         )).thenAnswer((_) async => const Ok(null));
 
     await pumpDetail(tester, repo);
@@ -96,6 +98,8 @@ void main() {
           request: any(named: 'request'),
           actorUid: 'm1',
           reason: captureAny(named: 'reason'),
+          actorName: any(named: 'actorName'),
+          fundName: any(named: 'fundName'),
         )).captured;
     expect(captured.single, reason);
     expect(captured.single, isNot('Disputed by approver'));
@@ -106,6 +110,8 @@ void main() {
     when(() => repo.acknowledgePostRelease(
           request: any(named: 'request'),
           actorUid: any(named: 'actorUid'),
+          actorName: any(named: 'actorName'),
+          fundName: any(named: 'fundName'),
         )).thenAnswer((_) async => const Ok(null));
 
     await pumpDetail(tester, repo);
@@ -114,13 +120,21 @@ void main() {
     await tester.pumpAndSettle();
     // Confirm dialog up; nothing called yet.
     verifyNever(() => repo.acknowledgePostRelease(
-        request: any(named: 'request'), actorUid: any(named: 'actorUid')));
+          request: any(named: 'request'),
+          actorUid: any(named: 'actorUid'),
+          actorName: any(named: 'actorName'),
+          fundName: any(named: 'fundName'),
+        ));
 
     // Confirm via the dialog's Acknowledge button (the second one in the tree).
     await tester.tap(find.widgetWithText(FilledButton, 'Acknowledge').last);
     await tester.pumpAndSettle();
 
     verify(() => repo.acknowledgePostRelease(
-        request: any(named: 'request'), actorUid: 'm1')).called(1);
+          request: any(named: 'request'),
+          actorUid: 'm1',
+          actorName: any(named: 'actorName'),
+          fundName: any(named: 'fundName'),
+        )).called(1);
   });
 }

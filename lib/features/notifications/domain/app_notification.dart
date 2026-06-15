@@ -33,6 +33,17 @@ class AppNotification extends Equatable {
   /// 'full' | 'partial' | 'mixed' — see [ReplenishmentFill].
   final String? fillType;
 
+  // --- Request-lifecycle denormalized fields (release/acknowledge/dispute/
+  // reject alerts). All optional; replenishment + legacy docs parse as null.
+  final String? requestId;
+  final int? requestAmountCentavos;
+  final String? requestPurpose;
+  final String? requestBeneficiaryName;
+
+  /// Original (pre-partial) replenishment total, so the incharge sees the full
+  /// owed amount alongside a partial hero. Null on full fills + non-replen docs.
+  final int? originalAmountCentavos;
+
   const AppNotification({
     required this.id,
     required this.companyId,
@@ -49,6 +60,11 @@ class AppNotification extends Equatable {
     this.replenishAmountCentavos,
     this.availableBalanceCentavos,
     this.fillType,
+    this.requestId,
+    this.requestAmountCentavos,
+    this.requestPurpose,
+    this.requestBeneficiaryName,
+    this.originalAmountCentavos,
   });
 
   bool get isUnread => readAt == null;
@@ -66,6 +82,16 @@ class AppNotification extends Equatable {
   /// Parsed fill classification, or null for legacy/garbage/absent values.
   ReplenishmentFill? get fill => ReplenishmentFill.fromName(fillType);
 
+  /// Request amount as [Money], or null when not a request-lifecycle alert.
+  Money? get requestAmount => requestAmountCentavos == null
+      ? null
+      : Money.fromCentavos(requestAmountCentavos!);
+
+  /// Original (pre-partial) replenishment total as [Money], or null when absent.
+  Money? get originalAmount => originalAmountCentavos == null
+      ? null
+      : Money.fromCentavos(originalAmountCentavos!);
+
   factory AppNotification.fromMap(String id, Map<String, dynamic> m) => AppNotification(
         id: id,
         companyId: (m['companyId'] ?? '') as String,
@@ -82,6 +108,11 @@ class AppNotification extends Equatable {
         replenishAmountCentavos: m['replenishAmountCentavos'] as int?,
         availableBalanceCentavos: m['availableBalanceCentavos'] as int?,
         fillType: m['fillType'] as String?,
+        requestId: m['requestId'] as String?,
+        requestAmountCentavos: m['requestAmountCentavos'] as int?,
+        requestPurpose: m['requestPurpose'] as String?,
+        requestBeneficiaryName: m['requestBeneficiaryName'] as String?,
+        originalAmountCentavos: m['originalAmountCentavos'] as int?,
       );
 
   @override
@@ -101,5 +132,10 @@ class AppNotification extends Equatable {
         replenishAmountCentavos,
         availableBalanceCentavos,
         fillType,
+        requestId,
+        requestAmountCentavos,
+        requestPurpose,
+        requestBeneficiaryName,
+        originalAmountCentavos,
       ];
 }
