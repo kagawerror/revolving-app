@@ -121,10 +121,10 @@ class _FakeRequestRepo implements RequestRepository {
   Stream<List<FundRequest>> watchRecentAll(int limit) => Stream.value(allRecent);
 
   @override
-  Stream<List<FundRequest>> watchReleasedByCompany(String companyId) =>
+  Stream<List<FundRequest>> watchOutstandingByCompany(String companyId) =>
       const Stream.empty();
   @override
-  Stream<List<FundRequest>> watchReleasedAll(int limit) => const Stream.empty();
+  Stream<List<FundRequest>> watchOutstandingAll(int limit) => const Stream.empty();
   @override
   Stream<List<FundRequest>> watchConflicts(String companyId) =>
       const Stream.empty();

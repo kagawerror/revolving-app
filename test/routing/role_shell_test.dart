@@ -84,7 +84,7 @@ void main() {
           // settled empty so their empty states render and pumpAndSettle ends.
           agingRequestsProvider
               .overrideWith((ref) => Stream.value(const [])),
-          allReleasedRequestsProvider
+          allOutstandingRequestsProvider
               .overrideWith((ref) => Stream.value(const [])),
         ],
         child: MaterialApp(home: RoleShellScreen(role: role)),
@@ -227,7 +227,7 @@ void main() {
                   .overrideWith((ref) => Stream.value(const [])),
               agingRequestsProvider
                   .overrideWith((ref) => Stream.value(const [])),
-              allReleasedRequestsProvider
+              allOutstandingRequestsProvider
                   .overrideWith((ref) => Stream.value(const [])),
             ],
             child: const MaterialApp(

@@ -3,9 +3,9 @@ import 'package:equatable/equatable.dart';
 import '../../companies/domain/company.dart';
 import 'fund_request.dart';
 
-/// Aging severity for a released-but-not-yet-replenished request, by calendar
-/// days outstanding. Pure mapping; the presentation layer maps these onto the
-/// shared status palette.
+/// Aging severity for an outstanding (released/acknowledged/disputed)
+/// not-yet-replenished request, by calendar days outstanding. Pure mapping; the
+/// presentation layer maps these onto the shared status palette.
 enum AgingBucket { green, amber, red }
 
 /// Whole calendar days between [createdAt] and [today], ignoring time-of-day:
@@ -26,7 +26,7 @@ AgingBucket bucketFor(int days) {
   return AgingBucket.red;
 }
 
-/// One company's released requests, for the admin grouped aging view.
+/// One company's outstanding requests, for the admin grouped aging view.
 class AgingGroup extends Equatable {
   final Company company;
   final List<FundRequest> requests;
@@ -36,20 +36,20 @@ class AgingGroup extends Equatable {
   List<Object?> get props => [company, requests];
 }
 
-/// Synthetic company used when a released request's companyId matches no known
-/// company (e.g. a deleted company). Such requests are bucketed together and
-/// rendered last so they're never silently dropped.
+/// Synthetic company used when an outstanding request's companyId matches no
+/// known company (e.g. a deleted company). Such requests are bucketed together
+/// and rendered last so they're never silently dropped.
 const _unknownCompany = Company(id: '', name: 'Unknown company');
 
-/// Folds [released] requests into one [AgingGroup] per company that actually has
-/// released requests, sorted by company name (case-insensitive). Companies with
-/// zero released requests are skipped. Requests whose companyId matches no
-/// company are collected into a single synthetic "Unknown company" group placed
-/// LAST. Request order within each group is preserved (callers pass
-/// createdAt-DESC).
-List<AgingGroup> groupReleasedByCompany(
+/// Folds [outstanding] requests into one [AgingGroup] per company that actually
+/// has outstanding requests, sorted by company name (case-insensitive).
+/// Companies with zero outstanding requests are skipped. Requests whose
+/// companyId matches no company are collected into a single synthetic "Unknown
+/// company" group placed LAST. Request order within each group is preserved
+/// (callers pass createdAt-DESC).
+List<AgingGroup> groupOutstandingByCompany(
   List<Company> companies,
-  List<FundRequest> released,
+  List<FundRequest> outstanding,
 ) {
   final byId = {for (final c in companies) c.id: c};
 
@@ -58,7 +58,7 @@ List<AgingGroup> groupReleasedByCompany(
   final known = <String, List<FundRequest>>{};
   final orphans = <FundRequest>[];
 
-  for (final r in released) {
+  for (final r in outstanding) {
     if (byId.containsKey(r.companyId)) {
       (known[r.companyId] ??= <FundRequest>[]).add(r);
     } else {

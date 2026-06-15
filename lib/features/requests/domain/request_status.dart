@@ -77,6 +77,12 @@ enum RequestStatus {
     RequestStatus.disputed,
   };
 
+  /// Status names (for Firestore `whereIn` queries) whose released cash is still
+  /// outstanding/unreplenished. Derived from [replenishable] so the query and the
+  /// lifecycle can never drift. Order is stable for test assertions.
+  static final List<String> outstandingStatusNames =
+      replenishable.map((s) => s.name).toList(growable: false);
+
   /// Whether this request's released cash is still reconcilable via a
   /// replenishment. See [replenishable].
   bool get isReplenishable => replenishable.contains(this);

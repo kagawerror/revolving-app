@@ -116,12 +116,14 @@ class FirestoreRequestRepository implements RequestRepository {
       .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
-  Stream<List<FundRequest>> watchReleasedByCompany(String companyId) => _requests
-      .where('companyId', isEqualTo: companyId)
-      .where('status', isEqualTo: RequestStatus.released.name)
-      .orderBy('createdAt', descending: true)
-      .snapshots()
-      .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
+  Stream<List<FundRequest>> watchOutstandingByCompany(String companyId) =>
+      _requests
+          .where('companyId', isEqualTo: companyId)
+          .where('status', whereIn: RequestStatus.outstandingStatusNames)
+          .orderBy('createdAt', descending: true)
+          .snapshots()
+          .map((s) =>
+              s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
   Stream<List<FundRequest>> watchConflicts(String companyId) => _requests
@@ -148,8 +150,8 @@ class FirestoreRequestRepository implements RequestRepository {
       .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
 
   @override
-  Stream<List<FundRequest>> watchReleasedAll(int limit) => _requests
-      .where('status', isEqualTo: RequestStatus.released.name)
+  Stream<List<FundRequest>> watchOutstandingAll(int limit) => _requests
+      .where('status', whereIn: RequestStatus.outstandingStatusNames)
       .orderBy('createdAt', descending: true)
       .limit(limit)
       .snapshots()

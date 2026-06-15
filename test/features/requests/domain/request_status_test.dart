@@ -107,6 +107,20 @@ void main() {
     });
   });
 
+  group('outstandingStatusNames', () {
+    test('is EXACTLY [released, acknowledged, disputed]', () {
+      expect(RequestStatus.outstandingStatusNames,
+          ['released', 'acknowledged', 'disputed']);
+    });
+
+    test('never drifts from replenishable (derived, same names + order)', () {
+      expect(
+        RequestStatus.outstandingStatusNames,
+        RequestStatus.replenishable.map((s) => s.name).toList(),
+      );
+    });
+  });
+
   group('ensureTransition', () {
     test('throws StateError on an illegal move', () {
       expect(() => RequestStatus.created.ensureTransition(RequestStatus.acknowledged),

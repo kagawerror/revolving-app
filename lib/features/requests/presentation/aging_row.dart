@@ -5,14 +5,22 @@ import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../domain/aging.dart';
 import '../domain/fund_request.dart';
+import '../domain/request_status.dart';
 import 'request_detail_screen.dart';
+import 'request_status_visual.dart';
 
-/// A single aging row for a released request: beneficiary, tabular amount,
-/// truncated purpose, and an [AgingChip] showing how long the cash has been
-/// outstanding. Tapping opens the shared [RequestDetailScreen].
+/// A single aging row for an outstanding request: beneficiary, tabular amount,
+/// truncated purpose, a [RequestStatusBadge] (where the cash stands —
+/// released / acknowledged / disputed) and an [AgingChip] showing how long the
+/// cash has been outstanding. Tapping opens the shared [RequestDetailScreen].
 ///
 /// Shared by both the incharge [AgingBody] (flat list) and the
 /// [AdminAgingBody] (grouped by company), so the row always reads the same.
+///
+/// The aging report lists ALL cash that is out and not yet replenished, so a
+/// row can be [RequestStatus.released], [RequestStatus.acknowledged] or
+/// [RequestStatus.disputed]. The status badge below the amount tells those
+/// three apart at a glance without competing with the days chip.
 class AgingRow extends StatelessWidget {
   const AgingRow({super.key, required this.request, required this.today});
 
@@ -45,6 +53,8 @@ class AgingRow extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
+          const SizedBox(height: AppTokens.xs),
+          RequestStatusBadge(status: request.status),
           const SizedBox(height: AppTokens.xs),
           AgingChip(days: days, hasDate: hasDate),
         ],
@@ -106,6 +116,75 @@ class AgingChip extends StatelessWidget {
       label: label,
       tone: tone,
       icon: Icons.schedule_rounded,
+    );
+  }
+}
+
+/// Stadium chip showing WHERE the outstanding cash stands in the post-release
+/// review flow — released (handed out, not yet reviewed), acknowledged (an
+/// approver confirmed it), or disputed (an approver flagged it). Built on the
+/// app-wide [StatusPill] so it shares shape, padding and typography with every
+/// other status chip, and pulls its tone/label/icon from the single
+/// source of truth in [requestStatusVisual] so the same status reads the same
+/// here as on the dashboard and the request detail screen.
+///
+/// Aging rows only ever carry [RequestStatus.released],
+/// [RequestStatus.acknowledged] or [RequestStatus.disputed] (the
+/// `isReplenishable` set — cash that is out and not yet replenished). The
+/// mapping switches exhaustively over the enum and asserts on anything else
+/// rather than silently rendering a stray status in a `default` branch.
+///
+/// Accessibility: never color-only — the chip always carries a text label
+/// ("Released" / "Acknowledged" / "Disputed") plus a reinforcing icon, and the
+/// underlying [StatusPill] wraps both in a `Semantics(label: 'Status: …')`. The
+/// success / info / danger tones are brightness-aware and WCAG-AA in both
+/// themes.
+class RequestStatusBadge extends StatelessWidget {
+  const RequestStatusBadge({super.key, required this.status});
+
+  final RequestStatus status;
+
+  /// Pure, unit-testable mapping for the three outstanding-cash statuses an
+  /// aging row can show, in the spirit of [AgingChip.toneFor]. It delegates to
+  /// the app-wide [requestStatusVisual] so there is no parallel palette or
+  /// wording — it only narrows the exhaustive enum switch to the statuses this
+  /// row is contracted to receive, asserting loudly on any other value.
+  ///
+  /// Tones (from [requestStatusVisual]) read as escalating concern:
+  ///   * released     → success — cash correctly handed out, nothing wrong yet
+  ///   * acknowledged → info    — reviewed and confirmed, settled/neutral
+  ///   * disputed     → danger  — flagged, needs attention
+  static ({String label, StatusTone tone, IconData icon}) visualFor(
+    RequestStatus status,
+  ) {
+    switch (status) {
+      case RequestStatus.released:
+      case RequestStatus.acknowledged:
+      case RequestStatus.disputed:
+        return requestStatusVisual(status);
+      case RequestStatus.created:
+      case RequestStatus.conflict:
+      case RequestStatus.rejected:
+      case RequestStatus.replenished:
+        assert(
+          false,
+          'RequestStatusBadge received non-outstanding status '
+          '"${status.name}"; aging rows only show released / acknowledged / '
+          'disputed.',
+        );
+        // Defensive fallback for release builds (asserts are stripped): show
+        // the canonical visual rather than crashing a custodian's list.
+        return requestStatusVisual(status);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final visual = visualFor(status);
+    return StatusPill(
+      label: visual.label,
+      tone: visual.tone,
+      icon: visual.icon,
     );
   }
 }

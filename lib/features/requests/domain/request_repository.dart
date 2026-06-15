@@ -27,8 +27,9 @@ abstract interface class RequestRepository {
   /// Admin-only: most-recent requests across every company (unscoped).
   Stream<List<FundRequest>> watchRecentAll(int limit);
 
-  /// Released requests for one company, newest-first — the incharge aging list.
-  Stream<List<FundRequest>> watchReleasedByCompany(String companyId);
+  /// Outstanding (released/acknowledged/disputed) requests for one company,
+  /// newest-first — the incharge aging list.
+  Stream<List<FundRequest>> watchOutstandingByCompany(String companyId);
 
   /// Overdraft conflicts for one company (status == conflict), newest-first —
   /// the incharge resolution queue.
@@ -41,9 +42,10 @@ abstract interface class RequestRepository {
   /// Disputed releases for one company (status == disputed), newest-first.
   Stream<List<FundRequest>> watchDisputed(String companyId);
 
-  /// Admin-only: released requests across every company, newest-first, capped
-  /// at [limit] — the source for the grouped admin aging view.
-  Stream<List<FundRequest>> watchReleasedAll(int limit);
+  /// Admin-only: outstanding (released/acknowledged/disputed) requests across
+  /// every company, newest-first, capped at [limit] — the source for the grouped
+  /// admin aging view.
+  Stream<List<FundRequest>> watchOutstandingAll(int limit);
 
   /// Single-doc fetch by id (for the alert tap-to-open flow). Missing →
   /// [NotFoundFailure]; failure → [UnexpectedFailure].

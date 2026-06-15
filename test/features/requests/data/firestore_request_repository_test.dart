@@ -34,18 +34,27 @@ void main() {
     repo = FirestoreRequestRepository(db);
   });
 
-  group('watchReleasedByCompany', () {
-    test('returns only that company\'s released requests, newest first', () async {
-      await seed('r-old', companyId: 'c1', status: 'released', createdAt: DateTime(2026, 1, 1));
-      await seed('r-new', companyId: 'c1', status: 'released', createdAt: DateTime(2026, 1, 5));
+  group('watchOutstandingByCompany', () {
+    test('returns the company\'s outstanding (released/acknowledged/disputed) '
+        'requests, newest first', () async {
+      await seed('rel', companyId: 'c1', status: 'released', createdAt: DateTime(2026, 1, 1));
       await seed('ack', companyId: 'c1', status: 'acknowledged', createdAt: DateTime(2026, 1, 9));
+      await seed('disp', companyId: 'c1', status: 'disputed', createdAt: DateTime(2026, 1, 5));
+      // Excluded statuses for the same company.
+      await seed('created', companyId: 'c1', status: 'created', createdAt: DateTime(2026, 1, 11));
+      await seed('rejected', companyId: 'c1', status: 'rejected', createdAt: DateTime(2026, 1, 10));
+      await seed('replenished', companyId: 'c1', status: 'replenished', createdAt: DateTime(2026, 1, 8));
+      // Other company is never returned.
       await seed('other', companyId: 'c2', status: 'released', createdAt: DateTime(2026, 1, 7));
 
-      final list = await repo.watchReleasedByCompany('c1').first;
+      final list = await repo.watchOutstandingByCompany('c1').first;
 
-      expect(list.map((r) => r.id).toList(), ['r-new', 'r-old']);
-      expect(list.every((r) => r.status == RequestStatus.released), isTrue);
+      expect(list.map((r) => r.id).toList(), ['ack', 'disp', 'rel']);
       expect(list.every((r) => r.companyId == 'c1'), isTrue);
+      expect(
+        list.every((r) => RequestStatus.replenishable.contains(r.status)),
+        isTrue,
+      );
     });
   });
 
@@ -86,25 +95,32 @@ void main() {
     });
   });
 
-  group('watchReleasedAll', () {
-    test('returns released across all companies, newest first', () async {
+  group('watchOutstandingAll', () {
+    test('returns outstanding (released/acknowledged/disputed) across all '
+        'companies, newest first', () async {
       await seed('a', companyId: 'c1', status: 'released', createdAt: DateTime(2026, 1, 1));
-      await seed('b', companyId: 'c2', status: 'released', createdAt: DateTime(2026, 1, 3));
+      await seed('b', companyId: 'c2', status: 'acknowledged', createdAt: DateTime(2026, 1, 3));
+      await seed('d', companyId: 'c3', status: 'disputed', createdAt: DateTime(2026, 1, 2));
+      // Excluded statuses (any company).
       await seed('c', companyId: 'c1', status: 'pendingAck', createdAt: DateTime(2026, 1, 4));
-      await seed('d', companyId: 'c3', status: 'released', createdAt: DateTime(2026, 1, 2));
+      await seed('rej', companyId: 'c2', status: 'rejected', createdAt: DateTime(2026, 1, 5));
+      await seed('repl', companyId: 'c3', status: 'replenished', createdAt: DateTime(2026, 1, 6));
 
-      final list = await repo.watchReleasedAll(100).first;
+      final list = await repo.watchOutstandingAll(100).first;
 
       expect(list.map((r) => r.id).toList(), ['b', 'd', 'a']);
-      expect(list.every((r) => r.status == RequestStatus.released), isTrue);
+      expect(
+        list.every((r) => RequestStatus.replenishable.contains(r.status)),
+        isTrue,
+      );
     });
 
     test('respects the limit, keeping the newest', () async {
       await seed('a', companyId: 'c1', status: 'released', createdAt: DateTime(2026, 1, 1));
-      await seed('b', companyId: 'c2', status: 'released', createdAt: DateTime(2026, 1, 3));
-      await seed('c', companyId: 'c3', status: 'released', createdAt: DateTime(2026, 1, 2));
+      await seed('b', companyId: 'c2', status: 'acknowledged', createdAt: DateTime(2026, 1, 3));
+      await seed('c', companyId: 'c3', status: 'disputed', createdAt: DateTime(2026, 1, 2));
 
-      final list = await repo.watchReleasedAll(2).first;
+      final list = await repo.watchOutstandingAll(2).first;
 
       expect(list.map((r) => r.id).toList(), ['b', 'c']);
     });
