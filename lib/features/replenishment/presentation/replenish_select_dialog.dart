@@ -130,6 +130,12 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
           items: items,
           actorUid: user.uid,
           notes: _notes.text.trim(),
+          // Denormalized display values for the submitted-report doc and the
+          // approver's notification (Parts 2 & 5). They never affect money math:
+          // the pre-replenish fund balance is a display snapshot only.
+          submitterName: user.displayName,
+          fundName: widget.fund.name,
+          fundAvailableBalanceCentavos: widget.fund.availableBalance.centavos,
         );
     if (!mounted) return;
     setState(() => _busy = false);

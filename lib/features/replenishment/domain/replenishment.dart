@@ -54,6 +54,12 @@ class Replenishment extends Equatable {
   final String reportNotes;
   final String createdByUid;
   final String? submittedByUid;
+
+  /// Denormalized display name of the submitting incharge, stamped at submit
+  /// time. Lets the approver's app (which writes the approved/rejected
+  /// notifications) carry the submitter's name without reading the user doc.
+  /// Null on drafts and legacy docs.
+  final String? submittedByName;
   final String? approvedByUid;
   final List<ReplenishmentItem> items;
   final DateTime? createdAt;
@@ -79,6 +85,7 @@ class Replenishment extends Equatable {
     required this.reportNotes,
     required this.createdByUid,
     this.submittedByUid,
+    this.submittedByName,
     this.approvedByUid,
     this.items = const [],
     this.createdAt,
@@ -98,6 +105,7 @@ class Replenishment extends Equatable {
         reportNotes: (m['reportNotes'] ?? '') as String,
         createdByUid: (m['createdByUid'] ?? '') as String,
         submittedByUid: m['submittedByUid'] as String?,
+        submittedByName: m['submittedByName'] as String?,
         approvedByUid: m['approvedByUid'] as String?,
         items: ((m['items'] ?? const []) as List)
             .map((e) => ReplenishmentItem.fromMap(
@@ -125,5 +133,5 @@ class Replenishment extends Equatable {
   @override
   List<Object?> get props =>
       [id, companyId, fundId, status, requestIds, total, reportNotes, createdByUid,
-       submittedByUid, approvedByUid, items, createdAt, submittedAt, decidedAt];
+       submittedByUid, submittedByName, approvedByUid, items, createdAt, submittedAt, decidedAt];
 }

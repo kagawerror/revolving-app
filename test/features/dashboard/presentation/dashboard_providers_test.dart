@@ -235,13 +235,19 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
           {required String fundId,
           required List<ReplenishmentItem> items,
           required String actorUid,
-          required String notes}) async =>
+          required String notes,
+          String? submitterName,
+          String? fundName,
+          int? fundAvailableBalanceCentavos}) async =>
       const Ok(null);
   @override
   Future<Result<void>> submit(
           {required Replenishment replenishment,
           required String actorUid,
-          required String notes}) async =>
+          required String notes,
+          String? submitterName,
+          String? fundName,
+          int? fundAvailableBalanceCentavos}) async =>
       const Ok(null);
   @override
   Future<Result<void>> approve(
@@ -255,6 +261,9 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
   Future<Result<void>> discardDraft(
           {required Replenishment replenishment}) async =>
       const Ok(null);
+  @override
+  Future<Result<Replenishment>> getById(String id) async =>
+      const Err(NotFoundFailure('unused'));
 }
 
 AppUser _user(

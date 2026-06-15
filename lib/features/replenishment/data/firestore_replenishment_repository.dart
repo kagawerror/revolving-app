@@ -9,6 +9,7 @@ import '../../companies/domain/fund.dart';
 import '../../messaging/domain/push_sender.dart';
 import '../../requests/domain/request_status.dart';
 import '../domain/replenishment.dart';
+import '../domain/replenishment_fill.dart';
 import '../domain/replenishment_status.dart';
 import '../domain/replenishment_repository.dart';
 
@@ -189,12 +190,22 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     required List<ReplenishmentItem> items,
     required String actorUid,
     required String notes,
+    String? submitterName,
+    String? fundName,
+    int? fundAvailableBalanceCentavos,
   }) async {
     final draftRes =
         await createDraft(fundId: fundId, items: items, createdByUid: actorUid);
     final draft = draftRes.valueOrNull;
     if (draft == null) return Err(draftRes.failureOrNull!);
-    final submitRes = await submit(replenishment: draft, actorUid: actorUid, notes: notes);
+    final submitRes = await submit(
+      replenishment: draft,
+      actorUid: actorUid,
+      notes: notes,
+      submitterName: submitterName,
+      fundName: fundName,
+      fundAvailableBalanceCentavos: fundAvailableBalanceCentavos,
+    );
     if (submitRes.failureOrNull != null) {
       // Roll the draft back so the fund isn't left locked in `replenishing`.
       await discardDraft(replenishment: draft);
@@ -204,7 +215,14 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
   }
 
   @override
-  Future<Result<void>> submit({required Replenishment replenishment, required String actorUid, required String notes}) async {
+  Future<Result<void>> submit({
+    required Replenishment replenishment,
+    required String actorUid,
+    required String notes,
+    String? submitterName,
+    String? fundName,
+    int? fundAvailableBalanceCentavos,
+  }) async {
     if (!replenishment.status.canTransitionTo(ReplenishmentStatus.submitted)) {
       return const Err(ValidationFailure('Only a draft can be submitted.'));
     }
@@ -213,8 +231,10 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         'status': ReplenishmentStatus.submitted.name,
         'reportNotes': notes,
         'submittedByUid': actorUid,
+        'submittedByName': submitterName,
         'submittedAt': FieldValue.serverTimestamp(),
       });
+      final companyName = await _resolveCompanyName(replenishment.companyId);
       await _addNotification(
         companyId: replenishment.companyId,
         recipientRoles: const ['superior', 'manager', 'ceo'],
@@ -223,6 +243,12 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         body: 'A replenishment report needs your approval.',
         fundId: replenishment.fundId,
         replenishmentId: replenishment.id,
+        fundName: fundName,
+        companyName: companyName,
+        actorName: submitterName,
+        replenishAmountCentavos: replenishment.total.centavos,
+        availableBalanceCentavos: fundAvailableBalanceCentavos,
+        fillType: computeFill(replenishment.items).name,
       );
       return const Ok(null);
     } catch (e, st) {
@@ -236,6 +262,9 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     if (!replenishment.status.canTransitionTo(ReplenishmentStatus.approved)) {
       return const Err(ValidationFailure('Only a submitted report can be approved.'));
     }
+    // Captured inside the tx for the post-commit denormalized notification.
+    String? fundName;
+    int? newBalanceCentavos;
     try {
       await _db.runTransaction((tx) async {
         final repRef = _reps.doc(replenishment.id);
@@ -248,6 +277,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         final fundSnap = await tx.get(_fundRef(replenishment.fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
+        fundName = fund.name;
         // Read every line-item's request BEFORE any write (tx reads-before-writes)
         // and re-validate each against current server state. A stale report must
         // never replenish a request beyond its original amount (and the fund
@@ -270,6 +300,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         }
         // --- writes ---
         final newBalance = fund.availableBalance + replenishment.total;
+        newBalanceCentavos = newBalance.centavos;
         final replenished = Fund(
           id: fund.id,
           companyId: fund.companyId,
@@ -314,6 +345,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
           'decidedAt': FieldValue.serverTimestamp(),
         });
       });
+      final companyName = await _resolveCompanyName(replenishment.companyId);
       await _addNotification(
         companyId: replenishment.companyId,
         recipientRoles: const ['incharge'],
@@ -322,6 +354,13 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         body: 'The fund has been replenished and is ready for requests.',
         fundId: replenishment.fundId,
         replenishmentId: replenishment.id,
+        fundName: fundName,
+        companyName: companyName,
+        actorName: replenishment.submittedByName,
+        replenishAmountCentavos: replenishment.total.centavos,
+        // POST-credit balance — the figure the incharge most cares about.
+        availableBalanceCentavos: newBalanceCentavos,
+        fillType: computeFill(replenishment.items).name,
       );
       return const Ok(null);
     } on StateError catch (e) {
@@ -337,11 +376,17 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     if (!replenishment.status.canTransitionTo(ReplenishmentStatus.rejected)) {
       return const Err(ValidationFailure('Only a submitted report can be rejected.'));
     }
+    // Captured inside the tx for the post-commit denormalized notification.
+    String? fundName;
+    int? balanceCentavos;
     try {
       await _db.runTransaction((tx) async {
         final fundSnap = await tx.get(_fundRef(replenishment.fundId));
         if (!fundSnap.exists) throw StateError('Fund not found.');
         final fund = Fund.fromMap(fundSnap.id, fundSnap.data()!);
+        fundName = fund.name;
+        // Reject does not credit the fund — the balance is unchanged.
+        balanceCentavos = fund.availableBalance.centavos;
         tx.update(_fundRef(replenishment.fundId), {'status': _restoredStatus(fund).name});
         tx.update(_reps.doc(replenishment.id), {
           'status': ReplenishmentStatus.rejected.name,
@@ -349,6 +394,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
           'decidedAt': FieldValue.serverTimestamp(),
         });
       });
+      final companyName = await _resolveCompanyName(replenishment.companyId);
       await _addNotification(
         companyId: replenishment.companyId,
         recipientRoles: const ['incharge'],
@@ -357,6 +403,13 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         body: 'Your replenishment report was rejected.',
         fundId: replenishment.fundId,
         replenishmentId: replenishment.id,
+        fundName: fundName,
+        companyName: companyName,
+        actorName: replenishment.submittedByName,
+        replenishAmountCentavos: replenishment.total.centavos,
+        // Unchanged balance — reject does not credit the fund.
+        availableBalanceCentavos: balanceCentavos,
+        fillType: computeFill(replenishment.items).name,
       );
       return const Ok(null);
     } on StateError catch (e) {
@@ -398,6 +451,36 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     }
   }
 
+  @override
+  Future<Result<Replenishment>> getById(String id) async {
+    try {
+      final snap = await _reps.doc(id).get();
+      if (!snap.exists) {
+        return const Err(NotFoundFailure('This replenishment is no longer available.'));
+      }
+      return Ok(Replenishment.fromMap(snap.id, snap.data()!));
+    } catch (e, st) {
+      developer.log('getById failed', name: 'replenishment', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not load the replenishment.'));
+    }
+  }
+
+  /// Best-effort company-name lookup for notification denormalization. A failure
+  /// (offline, permission, missing doc) returns null so the notification still
+  /// writes — companyName simply stays null. Never throws; never reads inside a
+  /// money transaction.
+  Future<String?> _resolveCompanyName(String companyId) async {
+    try {
+      final snap = await _db.collection('companies').doc(companyId).get();
+      if (!snap.exists) return null;
+      return (snap.data()?['name'] ?? '') as String?;
+    } catch (e, st) {
+      developer.log('company name lookup failed',
+          name: 'replenishment', error: e, stackTrace: st);
+      return null;
+    }
+  }
+
   /// Derives fund status (active/low) from the given fund's balance. Used when a
   /// replenishment is rejected/discarded (unchanged balance) and on approval
   /// (a fund carrying the new, added-back balance). The prior status is not
@@ -414,6 +497,12 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
     required String body,
     String? fundId,
     String? replenishmentId,
+    String? fundName,
+    String? companyName,
+    String? actorName,
+    int? replenishAmountCentavos,
+    int? availableBalanceCentavos,
+    String? fillType,
   }) async {
     try {
       await _db.collection('notifications').add({
@@ -424,6 +513,12 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         'body': body,
         'fundId': fundId,
         'replenishmentId': replenishmentId,
+        'fundName': fundName,
+        'companyName': companyName,
+        'actorName': actorName,
+        'replenishAmountCentavos': replenishAmountCentavos,
+        'availableBalanceCentavos': availableBalanceCentavos,
+        'fillType': fillType,
         'readAt': null,
         'createdAt': FieldValue.serverTimestamp(),
       });

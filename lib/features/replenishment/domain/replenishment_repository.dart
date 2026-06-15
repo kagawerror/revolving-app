@@ -28,7 +28,19 @@ abstract interface class ReplenishmentRepository {
     required String createdByUid,
   });
 
-  Future<Result<void>> submit({required Replenishment replenishment, required String actorUid, required String notes});
+  /// Submits a draft for approval. The optional display values are denormalized
+  /// onto the submitter's `submittedByName` (the report) and the
+  /// `replenishmentSubmitted` notification (fund name + pre-replenish balance
+  /// snapshot) so the approver's alert list renders without extra reads. They
+  /// never affect money logic.
+  Future<Result<void>> submit({
+    required Replenishment replenishment,
+    required String actorUid,
+    required String notes,
+    String? submitterName,
+    String? fundName,
+    int? fundAvailableBalanceCentavos,
+  });
 
   /// One-tap selection→submit for the incharge popup: creates the draft from
   /// [items], then submits it for approval. Rolls the draft back (so the fund is
@@ -38,6 +50,9 @@ abstract interface class ReplenishmentRepository {
     required List<ReplenishmentItem> items,
     required String actorUid,
     required String notes,
+    String? submitterName,
+    String? fundName,
+    int? fundAvailableBalanceCentavos,
   });
 
   /// Atomic: tag the bundled requests `replenished`, ADD their total back to the
@@ -48,4 +63,8 @@ abstract interface class ReplenishmentRepository {
 
   /// Cancels a draft and returns the fund to active/low.
   Future<Result<void>> discardDraft({required Replenishment replenishment});
+
+  /// Single-doc fetch by id (for the approver tap-to-review flow). Missing →
+  /// [NotFoundFailure]; failure → [UnexpectedFailure].
+  Future<Result<Replenishment>> getById(String id);
 }

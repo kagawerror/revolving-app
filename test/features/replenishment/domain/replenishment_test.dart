@@ -33,6 +33,22 @@ void main() {
     });
     expect(r.createdAt, isNull);
   });
+  test('fromMap reads submittedByName when present', () {
+    final r = Replenishment.fromMap('rp1', {
+      'companyId': 'c1', 'fundId': 'f1', 'status': 'submitted',
+      'requestIds': ['a'], 'totalCentavos': 1000, 'reportNotes': '',
+      'createdByUid': 'u1', 'submittedByName': 'Ada Incharge',
+    });
+    expect(r.submittedByName, 'Ada Incharge');
+  });
+  test('fromMap tolerates a missing submittedByName (legacy → null)', () {
+    final r = Replenishment.fromMap('rp1', {
+      'companyId': 'c1', 'fundId': 'f1', 'status': 'submitted',
+      'requestIds': ['a'], 'totalCentavos': 1000, 'reportNotes': '',
+      'createdByUid': 'u1',
+    });
+    expect(r.submittedByName, isNull);
+  });
   test('toCreateMap seeds draft fields and omits id', () {
     final r = Replenishment(
       id: '', companyId: 'c1', fundId: 'f1', status: ReplenishmentStatus.draft,

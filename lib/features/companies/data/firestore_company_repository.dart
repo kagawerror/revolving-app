@@ -19,6 +19,20 @@ class FirestoreCompanyRepository implements CompanyRepository {
       );
 
   @override
+  Future<Result<Company>> getById(String id) async {
+    try {
+      final snap = await _col.doc(id).get();
+      if (!snap.exists) {
+        return const Err(NotFoundFailure('Company not found.'));
+      }
+      return Ok(Company.fromMap(snap.id, snap.data()!));
+    } catch (e, st) {
+      developer.log('getById failed', name: 'companies', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not load the company.'));
+    }
+  }
+
+  @override
   Future<Result<String>> create(String name) async {
     try {
       final ref = await _col

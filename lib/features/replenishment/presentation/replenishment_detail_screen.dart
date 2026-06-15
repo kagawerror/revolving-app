@@ -27,9 +27,51 @@ class _ReplenishmentDetailScreenState
     extends ConsumerState<ReplenishmentDetailScreen> {
   bool _busy = false;
 
+  /// Confirms an approve/reject before any side effect. Both decisions are
+  /// terminal business actions (approve CREDITS the fund; reject is final), so
+  /// each routes through a confirmation dialog matching the app's
+  /// `showDialog<bool>` + `AlertDialog` pattern (cf. request acknowledge /
+  /// release cash). The dialog shows BEFORE the in-flight busy state is set, so
+  /// no spinner appears underneath it; cancel returns without side effects.
+  Future<bool> _confirm(bool approve) async {
+    final r = widget.replenishment;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: Icon(
+            approve ? Icons.account_balance_wallet_rounded : Icons.cancel_rounded),
+        title: Text(approve ? 'Approve & replenish?' : 'Reject replenishment?'),
+        content: Text(
+          approve
+              ? 'This credits ${r.total.format()} back to the fund and closes '
+                  'this report. It bundles ${r.itemCount} '
+                  '${r.itemCount == 1 ? 'request' : 'requests'} and is final — '
+                  'it cannot be undone.'
+              : 'This rejects the ${r.total.format()} replenishment report. No '
+                  'money moves, but the decision is final and cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: Icon(approve ? Icons.check_rounded : Icons.block_rounded,
+                size: 18),
+            label: Text(approve ? 'Approve & replenish' : 'Reject'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _decide(bool approve) async {
     final user = ref.read(currentUserProvider).valueOrNull;
     if (user == null) return;
+    if (!await _confirm(approve)) return;
+    if (!mounted) return;
     setState(() => _busy = true);
     final repo = ref.read(replenishmentRepositoryProvider);
     final res = approve

@@ -152,6 +152,23 @@ void main() {
     }
   });
 
+  test('getById returns Ok for an existing replenishment', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = (await repo.createDraft(
+            fundId: 'f1', items: [full('r1')], createdByUid: 'inc'))
+        .valueOrNull!
+        .id;
+    final res = await repo.getById(id);
+    expect(res.isOk, isTrue);
+    expect(res.valueOrNull!.id, id);
+  });
+
+  test('getById returns NotFoundFailure for a missing replenishment', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final res = await repo.getById('nope');
+    expect(res.failureOrNull, isA<NotFoundFailure>());
+  });
+
   test('submit rejects a non-draft replenishment', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final rep = Replenishment(
@@ -166,6 +183,122 @@ void main() {
     );
     final res = await repo.submit(replenishment: rep, actorUid: 'inc', notes: 'x');
     expect(res.failureOrNull, isA<ValidationFailure>());
+  });
+
+  test('submit stamps submittedByName and denormalizes the notification', () async {
+    await db.collection('companies').doc('c1').set({'name': 'Acme Corp'});
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = (await repo.createDraft(
+            fundId: 'f1',
+            items: [full('r1'), partial('r2', 100000, 'half')],
+            createdByUid: 'inc'))
+        .valueOrNull!
+        .id;
+    final draft = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+
+    final res = await repo.submit(
+      replenishment: draft,
+      actorUid: 'inc',
+      notes: 'June',
+      submitterName: 'Ada Incharge',
+      fundName: 'PC',
+      fundAvailableBalanceCentavos: 200000,
+    );
+    expect(res.isOk, isTrue);
+
+    // submittedByName landed on the report.
+    final rp = await db.collection('replenishments').doc(id).get();
+    expect(rp.data()!['submittedByName'], 'Ada Incharge');
+
+    // The submitted notification carries the denormalized display fields.
+    final notifs = await db
+        .collection('notifications')
+        .where('type', isEqualTo: 'replenishmentSubmitted')
+        .get();
+    expect(notifs.docs.length, 1);
+    final n = notifs.docs.first.data();
+    expect(n['fundName'], 'PC');
+    expect(n['companyName'], 'Acme Corp');
+    expect(n['actorName'], 'Ada Incharge');
+    // Full r1 (400000) + partial r2 (100000) = 500000.
+    expect(n['replenishAmountCentavos'], 500000);
+    expect(n['availableBalanceCentavos'], 200000);
+    expect(n['fillType'], 'mixed');
+    expect((n['recipientRoles'] as List), ['superior', 'manager', 'ceo']);
+  });
+
+  test('approve denormalizes the incharge notification with post-credit balance',
+      () async {
+    await db.collection('companies').doc('c1').set({'name': 'Acme Corp'});
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = (await repo.createDraft(
+            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
+        .valueOrNull!
+        .id;
+    final draft = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    await repo.submit(
+      replenishment: draft,
+      actorUid: 'inc',
+      notes: 'June',
+      submitterName: 'Ada Incharge',
+      fundName: 'PC',
+      fundAvailableBalanceCentavos: 200000,
+    );
+    final submitted = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
+    expect(res.isOk, isTrue);
+
+    final notifs = await db
+        .collection('notifications')
+        .where('type', isEqualTo: 'replenishmentApproved')
+        .get();
+    expect(notifs.docs.length, 1);
+    final n = notifs.docs.first.data();
+    expect(n['fundName'], 'PC');
+    expect(n['companyName'], 'Acme Corp');
+    // actorName comes from the report's submittedByName (loaded by the approver).
+    expect(n['actorName'], 'Ada Incharge');
+    expect(n['replenishAmountCentavos'], 800000);
+    // POST-credit balance: 200000 + 800000.
+    expect(n['availableBalanceCentavos'], 1000000);
+    expect(n['fillType'], 'full');
+    expect((n['recipientRoles'] as List), ['incharge']);
+  });
+
+  test('reject denormalizes the incharge notification with unchanged balance',
+      () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = (await repo.createDraft(
+            fundId: 'f1', items: [full('r1')], createdByUid: 'inc'))
+        .valueOrNull!
+        .id;
+    final draft = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    await repo.submit(
+      replenishment: draft,
+      actorUid: 'inc',
+      notes: 'June',
+      submitterName: 'Ada Incharge',
+      fundName: 'PC',
+      fundAvailableBalanceCentavos: 200000,
+    );
+    final submitted = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    final res = await repo.reject(replenishment: submitted, actorUid: 'mgr');
+    expect(res.isOk, isTrue);
+
+    final notifs = await db
+        .collection('notifications')
+        .where('type', isEqualTo: 'replenishmentRejected')
+        .get();
+    final n = notifs.docs.first.data();
+    expect(n['actorName'], 'Ada Incharge');
+    // Reject does not credit — balance stays at 200000.
+    expect(n['availableBalanceCentavos'], 200000);
+    expect(n['fillType'], 'full');
   });
 
   test('watchByStatusAll returns submitted reps across all companies, excluding other statuses',
