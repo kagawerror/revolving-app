@@ -6,6 +6,7 @@ import 'package:rev_app/features/companies/domain/fund.dart';
 import 'package:rev_app/features/replenishment/presentation/replenish_select_dialog.dart';
 import 'package:rev_app/features/requests/domain/fund_request.dart';
 import 'package:rev_app/features/requests/domain/request_status.dart';
+import 'package:rev_app/features/sync/presentation/sync_providers.dart';
 
 Fund _fund() => Fund(
       id: 'f1',
@@ -29,7 +30,15 @@ FundRequest _req(String id, int centavos) => FundRequest(
       status: RequestStatus.released,
     );
 
-Widget _host(List<FundRequest> releasable) => ProviderScope(
+/// Hosts the dialog with connectivity pinned. The bare `connectivityProvider`
+/// emits `false` (offline) in tests because there is no signed-in user, so
+/// every form-validity test must explicitly run ONLINE to exercise the submit
+/// gating it cares about. The offline path has its own test below.
+Widget _host(List<FundRequest> releasable, {bool online = true}) =>
+    ProviderScope(
+      overrides: [
+        connectivityProvider.overrideWith((ref) => Stream<bool>.value(online)),
+      ],
       child: MaterialApp(
         home: Scaffold(
           body: ReplenishSelectDialog(fund: _fund(), releasable: releasable),
@@ -135,6 +144,24 @@ void main() {
                 find.widgetWithText(FilledButton, 'Submit for approval'))
             .onPressed,
         isNull);
+  });
+
+  testWidgets('offline gates submit and shows an offline notice', (tester) async {
+    await tester.pumpWidget(
+        _host([_req('r1', 400000), _req('r2', 300000)], online: false));
+    // Select a request so the form would otherwise be valid/submittable.
+    await tester.tap(find.text('Bene r1'));
+    await tester.pump();
+
+    // Even with a valid selection, being offline must keep submit disabled —
+    // a replenishment can only be created against a live server, so a tap must
+    // never hang on an unresolvable Firestore transaction.
+    final submit = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Submit for approval'));
+    expect(submit.onPressed, isNull);
+
+    // And the incharge is told WHY, rather than facing a dead button.
+    expect(find.textContaining('offline'), findsWidgets);
   });
 
   testWidgets('a partial amount equal to or above remaining keeps submit disabled',

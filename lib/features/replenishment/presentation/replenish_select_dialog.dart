@@ -9,6 +9,7 @@ import '../../../core/widgets/empty_state.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../requests/domain/fund_request.dart';
+import '../../sync/presentation/sync_providers.dart';
 import '../domain/replenishment.dart';
 import 'replenishment_providers.dart';
 
@@ -84,6 +85,21 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
   Future<void> _submit() async {
     final user = ref.read(currentUserProvider).valueOrNull;
     if (user == null || !_canSubmit) return;
+    // A replenishment is created via a Firestore transaction, which can only run
+    // against a live server — offline it never resolves and the button would
+    // appear to do nothing. Guard here too (not just in the disabled button) in
+    // case connectivity dropped between build and tap.
+    final online = ref.read(connectivityProvider).valueOrNull ?? false;
+    if (!online) {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(const SnackBar(
+          content: Text(
+              'You\'re offline — a replenishment needs a connection. '
+              'Reconnect and try again.'),
+        ));
+      return;
+    }
     final items = <ReplenishmentItem>[];
     for (final r in widget.releasable) {
       if (!_selected.contains(r.id)) continue;
@@ -128,6 +144,10 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
     final scheme = Theme.of(context).colorScheme;
     final maxHeight = media.size.height * 0.85;
     final empty = widget.releasable.isEmpty;
+    // Watch (not read) so the footer reactively enables/disables as connectivity
+    // changes while the sheet is open, and the probe stays warm for the
+    // submit-time guard. Loading/unknown is treated as offline (safer).
+    final online = ref.watch(connectivityProvider).valueOrNull ?? false;
 
     return AnimatedPadding(
       duration: const Duration(milliseconds: 150),
@@ -186,9 +206,12 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
                 notes: _notes,
                 busy: _busy,
                 showNotes: !empty,
+                online: online,
                 canSubmit: _canSubmit,
                 onCancel: _busy ? null : () => Navigator.of(context).pop(false),
-                onSubmit: _canSubmit ? _submit : null,
+                // Offline disables submit entirely: the create transaction can
+                // only run against a live server, so allowing the tap would hang.
+                onSubmit: (_canSubmit && online) ? _submit : null,
               ),
             ],
           ),
@@ -458,6 +481,7 @@ class _Footer extends StatelessWidget {
     required this.notes,
     required this.busy,
     required this.showNotes,
+    required this.online,
     required this.canSubmit,
     required this.onCancel,
     required this.onSubmit,
@@ -466,6 +490,7 @@ class _Footer extends StatelessWidget {
   final TextEditingController notes;
   final bool busy;
   final bool showNotes;
+  final bool online;
   final bool canSubmit;
   final VoidCallback? onCancel;
   final VoidCallback? onSubmit;
@@ -484,6 +509,10 @@ class _Footer extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          if (!online) ...[
+            _OfflineNotice(scheme: scheme),
+            const SizedBox(height: AppTokens.md),
+          ],
           if (showNotes) ...[
             TextField(
               controller: notes,
@@ -526,6 +555,44 @@ class _Footer extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Inline banner shown in the footer when the device is offline, explaining why
+/// the submit button is disabled (a replenishment must be created against a live
+/// server). Styled with the scheme's tertiary container so it reads as an
+/// informational notice rather than an error.
+class _OfflineNotice extends StatelessWidget {
+  const _OfflineNotice({required this.scheme});
+
+  final ColorScheme scheme;
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.all(AppTokens.md),
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer.withValues(alpha: 0.5),
+        borderRadius: AppTokens.brCard,
+        border: Border.all(color: scheme.outlineVariant),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.cloud_off_rounded,
+              size: 20, color: scheme.onTertiaryContainer),
+          const SizedBox(width: AppTokens.md),
+          Expanded(
+            child: Text(
+              'You\'re offline. Replenishing needs a connection — reconnect to '
+              'submit this report.',
+              style: textTheme.bodySmall
+                  ?.copyWith(color: scheme.onTertiaryContainer),
+            ),
           ),
         ],
       ),
