@@ -43,6 +43,15 @@ const _employee = AppUser(
   email: 'emma@acme.com',
 );
 
+const _forced = AppUser(
+  uid: 'f',
+  companyId: 'c1',
+  role: UserRole.incharge,
+  displayName: 'Fred',
+  email: 'fred@acme.com',
+  mustChangePassword: true,
+);
+
 void main() {
   test('homeFor routes each role to its shell', () {
     expect(homeFor(UserRole.admin), '/admin');
@@ -51,6 +60,51 @@ void main() {
     expect(homeFor(UserRole.ceo), '/approvals');
     expect(homeFor(UserRole.superior), '/approvals');
     expect(homeFor(UserRole.employee), '/incharge');
+  });
+
+  group('forced password change gate', () {
+    test('forced user anywhere is redirected to /change-password', () {
+      expect(
+        redirectFor(auth: const AsyncData(_forced), location: '/incharge'),
+        '/change-password',
+      );
+      expect(
+        redirectFor(auth: const AsyncData(_forced), location: '/login'),
+        '/change-password',
+      );
+    });
+
+    test('forced user already on /change-password stays put', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_forced), location: '/change-password'),
+        isNull,
+      );
+    });
+
+    test('non-forced user on /change-password is sent to their role home', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(_incharge), location: '/change-password'),
+        '/incharge',
+      );
+    });
+
+    test('loading on /change-password stays null (no flicker)', () {
+      expect(
+        redirectFor(
+            auth: const AsyncLoading(), location: '/change-password'),
+        isNull,
+      );
+    });
+
+    test('signed-out on /change-password goes to /login', () {
+      expect(
+        redirectFor(
+            auth: const AsyncData(null), location: '/change-password'),
+        '/login',
+      );
+    });
   });
 
   group('redirectFor', () {

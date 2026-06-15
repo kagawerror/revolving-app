@@ -9,6 +9,7 @@ import '../../../core/error/result.dart';
 import '../domain/app_user.dart';
 import '../domain/auth_repository.dart';
 import '../domain/bootstrap_rules.dart';
+import '../domain/password_change_rules.dart';
 
 class FirebaseAuthRepository implements AuthRepository {
   final FirebaseAuth _auth;
@@ -199,6 +200,86 @@ class FirebaseAuthRepository implements AuthRepository {
       );
     }
   }
+
+  @override
+  Future<Result<void>> changeOwnPassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    // a. Pure validation first (min-length + reuse). Confirm-match is a UI
+    // concern; pass newPassword for the confirm slot so this stays a no-op here.
+    final invalid = validatePasswordChange(
+      currentPassword: currentPassword,
+      newPassword: newPassword,
+      confirmPassword: newPassword,
+    );
+    if (invalid != null) return Err(invalid);
+
+    // b. Must be signed in with a known email to reauthenticate.
+    final user = _auth.currentUser;
+    final email = user?.email;
+    if (user == null || email == null) {
+      return const Err(
+        AuthFailure('You must be signed in to change your password.'),
+      );
+    }
+
+    try {
+      // c. Reauthenticate with the current password (Firebase requires a recent
+      // login for updatePassword). A wrong/expired credential surfaces here.
+      final cred =
+          EmailAuthProvider.credential(email: email, password: currentPassword);
+      await user.reauthenticateWithCredential(cred);
+
+      // d. Set the new password.
+      await user.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      // Log the CODE only — never the password or email.
+      developer.log('changeOwnPassword auth failed', name: 'auth', error: e.code);
+      return Err(_changePasswordFailure(e.code));
+    } catch (e) {
+      developer.log('changeOwnPassword failed', name: 'auth', error: e);
+      return const Err(
+        UnexpectedFailure('Could not change your password. Please try again.'),
+      );
+    }
+
+    // e. Clear the forced-rotation flag AFTER Auth succeeds. The owner rule in
+    // firestore.rules permits this single-field true->false self-write.
+    try {
+      await _firestore.collection('users').doc(user.uid).set(
+        {'mustChangePassword': false},
+        SetOptions(merge: true),
+      );
+    } catch (e) {
+      developer.log('changeOwnPassword clear-flag failed',
+          name: 'auth', error: e);
+      // The password DID change; the live profile listener will retry on the
+      // next snapshot. Surface a recoverable message so the user knows it took.
+      return const Err(
+        UnexpectedFailure(
+          'Your password changed, but we could not refresh your account. '
+          'Please sign in again.',
+        ),
+      );
+    }
+
+    return const Ok(null);
+  }
+
+  /// Maps a reauth/update-password `code` to a user-safe [Failure]. Wrong or
+  /// expired credentials read as a current-password problem.
+  Failure _changePasswordFailure(String code) => switch (code) {
+        'wrong-password' || 'invalid-credential' =>
+          const ValidationFailure('Your current password is incorrect.'),
+        'weak-password' => const ValidationFailure(
+            'That password is too weak '
+            '(min $kBootstrapMinPasswordLength characters).'),
+        'requires-recent-login' => const AuthFailure(
+            'Please sign in again, then change your password.'),
+        _ => const UnexpectedFailure(
+            'Could not change your password. Please try again.'),
+      };
 
   String _signUpMessage(String code) => switch (code) {
         'email-already-in-use' => 'That email address is already in use.',

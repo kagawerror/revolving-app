@@ -53,6 +53,20 @@ service cloud.firestore {
                .hasOnly(['displayName', 'photoUrl', 'themeMode', 'accentId'])
           && request.resource.data.role == resource.data.role
           && request.resource.data.companyId == resource.data.companyId
+        )
+        // Owner clears their OWN forced-rotation flag (true -> false ONLY) after
+        // a successful self-service password change. mustChangePassword is the
+        // sole mutable key; role + companyId stay pinned. The owner can never
+        // set the flag true (admin-only) — only flip an existing true to false.
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['mustChangePassword'])
+          && resource.data.get('mustChangePassword', false) == true
+          && request.resource.data.mustChangePassword == false
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.companyId == resource.data.companyId
         );
       // First-time setup: the founding user creates their own admin profile,
       // allowed only while the app has not been bootstrapped yet.

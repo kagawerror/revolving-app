@@ -103,6 +103,9 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
         'email': cleanEmail,
         'themeMode': 'system',
         'accentId': 'forest',
+        // Force a first-login password change: the admin typed a temporary
+        // password, so the user is gated to ChangePasswordScreen on first sign-in.
+        'mustChangePassword': true,
         'createdAt': FieldValue.serverTimestamp(),
       });
     } catch (e, st) {
@@ -144,6 +147,26 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
       developer.log('updateAssignment failed',
           name: 'admin_users', error: e, stackTrace: st);
       return const Err(UnexpectedFailure('Could not update the profile.'));
+    }
+  }
+
+  @override
+  Future<Result<void>> setMustChangePassword({
+    required String uid,
+    required bool value,
+  }) async {
+    try {
+      await _col.doc(uid).set(
+        {'mustChangePassword': value},
+        SetOptions(merge: true),
+      );
+      return const Ok(null);
+    } catch (e, st) {
+      developer.log('setMustChangePassword failed',
+          name: 'admin_users', error: e, stackTrace: st);
+      return const Err(
+        UnexpectedFailure('Could not update the account flag.'),
+      );
     }
   }
 }

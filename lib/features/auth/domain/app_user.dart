@@ -61,6 +61,13 @@ class AppUser extends Equatable {
   final ThemeMode themeMode;
   final String accentId;
 
+  /// When true, the user is gated to [ChangePasswordScreen] until they set a new
+  /// password. Stamped on admin account creation and on any admin-initiated
+  /// password set (reset action + inline edit-form reset); cleared by the user's
+  /// own successful [AuthRepository.changeOwnPassword]. Defaults false for legacy
+  /// docs that predate the field.
+  final bool mustChangePassword;
+
   const AppUser({
     required this.uid,
     required this.companyId,
@@ -71,6 +78,7 @@ class AppUser extends Equatable {
     this.photoUrl,
     this.themeMode = ThemeMode.system,
     this.accentId = 'forest',
+    this.mustChangePassword = false,
   });
 
   factory AppUser.fromMap(String uid, Map<String, dynamic> map) => AppUser(
@@ -83,6 +91,7 @@ class AppUser extends Equatable {
         photoUrl: map['photoUrl'] as String?,
         themeMode: _parseThemeMode(map['themeMode']),
         accentId: (map['accentId'] ?? 'forest') as String,
+        mustChangePassword: (map['mustChangePassword'] ?? false) as bool,
       );
 
   /// The companies this user may operate in, resolved with backward-compat:
@@ -107,6 +116,7 @@ class AppUser extends Equatable {
         if (photoUrl != null) 'photoUrl': photoUrl,
         'themeMode': themeModeName(themeMode),
         'accentId': accentId,
+        'mustChangePassword': mustChangePassword,
       };
 
   /// Stable string token for a [ThemeMode]: 'light' | 'dark' | 'system'.
@@ -133,5 +143,6 @@ class AppUser extends Equatable {
         photoUrl,
         themeMode,
         accentId,
+        mustChangePassword,
       ];
 }

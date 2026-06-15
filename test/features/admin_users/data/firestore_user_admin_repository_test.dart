@@ -60,6 +60,9 @@ void main() {
       expect(data['email'], 'jane@acme.com');
       expect(data['themeMode'], 'system');
       expect(data['accentId'], 'forest');
+      // Admin-created accounts use a temporary password, so the user is forced
+      // to set a new one on first sign-in.
+      expect(data['mustChangePassword'], true);
       // The password must never be persisted.
       expect(data.containsKey('password'), isFalse);
     });
@@ -191,6 +194,43 @@ void main() {
       expect(data['themeMode'], 'dark');
       expect(data['accentId'], 'sunset');
       expect(data['photoUrl'], 'http://img');
+    });
+  });
+
+  group('setMustChangePassword', () {
+    test('merges the flag without disturbing other profile fields', () async {
+      await db.collection('users').doc('u1').set({
+        'role': 'incharge',
+        'companyId': 'c1',
+        'displayName': 'Jane',
+        'email': 'jane@acme.com',
+        'themeMode': 'dark',
+        'accentId': 'sunset',
+      });
+      final repo = FirestoreUserAdminRepository(db);
+      final res = await repo.setMustChangePassword(uid: 'u1', value: true);
+      expect(res.isOk, isTrue);
+      final data = (await db.collection('users').doc('u1').get()).data()!;
+      expect(data['mustChangePassword'], true);
+      // Other fields preserved (merge, not overwrite).
+      expect(data['displayName'], 'Jane');
+      expect(data['themeMode'], 'dark');
+      expect(data['accentId'], 'sunset');
+    });
+
+    test('can clear the flag (false)', () async {
+      await db.collection('users').doc('u1').set({
+        'role': 'incharge',
+        'companyId': 'c1',
+        'displayName': 'Jane',
+        'email': 'jane@acme.com',
+        'mustChangePassword': true,
+      });
+      final repo = FirestoreUserAdminRepository(db);
+      final res = await repo.setMustChangePassword(uid: 'u1', value: false);
+      expect(res.isOk, isTrue);
+      final data = (await db.collection('users').doc('u1').get()).data()!;
+      expect(data['mustChangePassword'], false);
     });
   });
 

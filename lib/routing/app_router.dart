@@ -6,6 +6,7 @@ import '../app_keys.dart';
 import '../features/auth/domain/app_user.dart';
 import '../features/auth/presentation/auth_providers.dart';
 import '../features/auth/presentation/bootstrap_screen.dart';
+import '../features/auth/presentation/change_password_screen.dart';
 import '../features/auth/presentation/login_screen.dart';
 import '../features/admin_users/presentation/user_admin_screen.dart';
 import '../features/companies/presentation/adjust_fund_screen.dart';
@@ -42,6 +43,18 @@ String? redirectFor({
   final user = auth.valueOrNull;
   final onAuthScreen = location == '/login' || location == '/setup';
   if (user == null) return onAuthScreen ? null : '/login';
+
+  // Forced password rotation: a signed-in user carrying `mustChangePassword`
+  // (admin-created or admin-reset) is gated to /change-password until they set a
+  // new password. This precedes ALL role routing so no role home can dodge it.
+  // The gate itself is reachable (return null when already there).
+  if (user.mustChangePassword) {
+    return location == '/change-password' ? null : '/change-password';
+  }
+  // Conversely, a user who is NOT forced should not linger on the gate: send
+  // them to their role home.
+  if (location == '/change-password') return homeFor(user.role);
+
   final home = homeFor(user.role);
   if (onAuthScreen) return home;
 
@@ -107,6 +120,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/setup', builder: (context, _) => const BootstrapScreen()),
+      GoRoute(
+        // Forced first-login / post-reset password gate. redirectFor lands the
+        // user here whenever their profile carries mustChangePassword.
+        path: '/change-password',
+        builder: (_, _) => const ChangePasswordScreen(),
+      ),
       GoRoute(
         path: '/admin',
         builder: (_, _) => const RoleShellScreen(role: UserRole.admin),

@@ -15,6 +15,7 @@ import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/company.dart';
 import '../../companies/presentation/admin_providers.dart';
+import 'reset_password_dialog.dart';
 import 'submit_user_form.dart';
 import 'user_admin_providers.dart';
 import 'user_form_dialog.dart';
@@ -64,6 +65,32 @@ class UserAdminScreen extends ConsumerWidget {
     if (result != null && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(isCreate ? 'User added' : 'User updated')),
+      );
+    }
+  }
+
+  /// Opens the dedicated reset-password dialog for [user]. The dialog mirrors
+  /// the form's `Future<String?>` contract (null == success, message == inline
+  /// error). Orchestration lives in a provider-injected, unit-testable seam so
+  /// the dialog stays presentation-only.
+  Future<void> _openResetPassword(
+    BuildContext context,
+    WidgetRef ref,
+    AppUser user,
+  ) async {
+    final ok = await showResetPasswordDialog(
+      context,
+      target: user,
+      // Orchestration (validate -> set password -> flag rotation) lives in the
+      // provider-injected, unit-testable [resetUserPassword] seam, so the dialog
+      // stays presentation-only and returns the `Future<String?>` it expects.
+      onSubmit: (newPassword) =>
+          ref.read(resetUserPasswordProvider)(user, newPassword),
+    );
+
+    if (ok == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password reset')),
       );
     }
   }
@@ -130,6 +157,11 @@ class UserAdminScreen extends ConsumerWidget {
                         companyNames: companyNames,
                         onTap: () =>
                             _openForm(context, ref, existing: list[i]),
+                        // Dedicated reset action — shown only when the admin
+                        // relay is configured (graceful degradation otherwise).
+                        onResetPassword: AppSecrets.hasAdminRelay
+                            ? () => _openResetPassword(context, ref, list[i])
+                            : null,
                       ),
                     ],
                   ],
@@ -149,12 +181,18 @@ class _UserTile extends StatelessWidget {
     required this.user,
     required this.companyNames,
     required this.onTap,
+    this.onResetPassword,
   });
   final AppUser user;
 
   /// Company id -> display name, shared across the list.
   final Map<String, String> companyNames;
   final VoidCallback onTap;
+
+  /// Dedicated "Reset password" action. Null hides it entirely (e.g. when the
+  /// admin relay isn't configured), so the overflow menu only appears when there
+  /// is an action to offer.
+  final VoidCallback? onResetPassword;
 
   /// Full membership in primary-first order. Built from the real
   /// [AppUser.companyMemberships] (which already resolves legacy `companyId`-only
@@ -201,30 +239,82 @@ class _UserTile extends StatelessWidget {
       ),
       title: user.displayName.isEmpty ? '(no name)' : user.displayName,
       subtitle: user.email,
-      trailing: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 160),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            StatusPill(
-              label: userRoleLabel(user.role),
-              tone: user.role.isAdmin ? StatusTone.info : StatusTone.neutral,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 160),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                StatusPill(
+                  label: userRoleLabel(user.role),
+                  tone:
+                      user.role.isAdmin ? StatusTone.info : StatusTone.neutral,
+                ),
+                if (primaryName != null) ...[
+                  const SizedBox(height: AppTokens.xs),
+                  _CompanyMembershipLabel(
+                    primaryName: primaryName,
+                    extraCount: extra,
+                    // The full list powers the tooltip/semantics so an admin can
+                    // read every company without opening the editor.
+                    allNames: [for (final id in ids) _nameFor(id)],
+                  ),
+                ],
+              ],
             ),
-            if (primaryName != null) ...[
-              const SizedBox(height: AppTokens.xs),
-              _CompanyMembershipLabel(
-                primaryName: primaryName,
-                extraCount: extra,
-                // The full list powers the tooltip/semantics so an admin can
-                // read every company without opening the editor.
-                allNames: [for (final id in ids) _nameFor(id)],
-              ),
-            ],
-          ],
-        ),
+          ),
+          if (onResetPassword != null)
+            _UserRowMenu(
+              userName:
+                  user.displayName.isEmpty ? user.email : user.displayName,
+              onResetPassword: onResetPassword!,
+            ),
+        ],
       ),
+    );
+  }
+}
+
+/// Per-row overflow menu. Today it offers a single dedicated "Reset password"
+/// action (only mounted when the admin relay is configured); kept as a menu so
+/// future per-user actions slot in without re-touching the tile layout. The
+/// >=48dp tap target and a [Semantics]-friendly tooltip come from
+/// [PopupMenuButton] for free.
+class _UserRowMenu extends StatelessWidget {
+  const _UserRowMenu({
+    required this.userName,
+    required this.onResetPassword,
+  });
+
+  final String userName;
+  final VoidCallback onResetPassword;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.more_vert_rounded),
+      tooltip: 'More actions for $userName',
+      shape: const RoundedRectangleBorder(borderRadius: AppTokens.brField),
+      onSelected: (value) {
+        if (value == 'reset') onResetPassword();
+      },
+      itemBuilder: (context) => [
+        PopupMenuItem<String>(
+          value: 'reset',
+          child: Row(
+            children: [
+              Icon(Icons.lock_reset_rounded, size: 20, color: scheme.primary),
+              const SizedBox(width: AppTokens.md),
+              const Text('Reset password'),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -33,4 +33,14 @@ abstract interface class AuthRepository {
     ThemeMode? themeMode,
     String? accentId,
   });
+
+  /// Changes the signed-in user's own password (the forced-rotation gate). Re-
+  /// authenticates with [currentPassword], sets [newPassword], then clears the
+  /// caller's `mustChangePassword` flag. Validates min-length / reuse before
+  /// touching Auth. Returns a user-safe [Failure] on any step. Passwords are
+  /// transient and never logged.
+  Future<Result<void>> changeOwnPassword({
+    required String currentPassword,
+    required String newPassword,
+  });
 }

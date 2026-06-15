@@ -180,6 +180,36 @@ void main() {
       expect(u.toMap()['companyIds'], ['c1', 'c2']);
     });
 
+    test('fromMap reads mustChangePassword; absent defaults to false', () {
+      final forced = AppUser.fromMap('u1', {
+        'companyId': 'c1',
+        'role': 'incharge',
+        'displayName': 'Ana',
+        'email': 'ana@x.com',
+        'mustChangePassword': true,
+      });
+      expect(forced.mustChangePassword, isTrue);
+      final legacy = AppUser.fromMap('u1', {
+        'companyId': 'c1',
+        'role': 'incharge',
+        'displayName': 'Ana',
+        'email': 'ana@x.com',
+      });
+      expect(legacy.mustChangePassword, isFalse);
+    });
+
+    test('toMap includes mustChangePassword', () {
+      const u = AppUser(
+        uid: 'u1',
+        companyId: 'c1',
+        role: UserRole.incharge,
+        displayName: 'Ana',
+        email: 'ana@x.com',
+        mustChangePassword: true,
+      );
+      expect(u.toMap()['mustChangePassword'], true);
+    });
+
     test('toMap round-trips themeMode as a string', () {
       final u = AppUser.fromMap('u1', {
         'companyId': 'c1',

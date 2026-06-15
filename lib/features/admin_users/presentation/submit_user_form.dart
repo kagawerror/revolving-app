@@ -86,7 +86,19 @@ Future<String?> submitUserForm({
       uid: existing.uid,
       newPassword: s.newPassword,
     );
-    return pwRes.failureOrNull?.message; // null == success
+    if (pwRes.failureOrNull != null) return pwRes.failureOrNull!.message;
+
+    // Inline resets ALSO force rotation: stamp mustChangePassword AFTER the
+    // password set succeeds (same ordering as the dedicated reset action). A
+    // failed flag write is recoverable — the password is already reset.
+    final flagRes = await userAdminRepository.setMustChangePassword(
+      uid: existing.uid,
+      value: true,
+    );
+    if (flagRes.failureOrNull != null) {
+      return "Password was reset, but couldn't flag the account. Try again.";
+    }
+    return null; // profile saved + password reset + flagged
   }
   return null; // profile saved, no reset requested
 }
