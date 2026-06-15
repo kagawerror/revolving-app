@@ -149,26 +149,6 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
       return const Err(UnexpectedFailure('Could not update the profile.'));
     }
   }
-
-  @override
-  Future<Result<void>> setMustChangePassword({
-    required String uid,
-    required bool value,
-  }) async {
-    try {
-      await _col.doc(uid).set(
-        {'mustChangePassword': value},
-        SetOptions(merge: true),
-      );
-      return const Ok(null);
-    } catch (e, st) {
-      developer.log('setMustChangePassword failed',
-          name: 'admin_users', error: e, stackTrace: st);
-      return const Err(
-        UnexpectedFailure('Could not update the account flag.'),
-      );
-    }
-  }
 }
 
 /// Maps a [FirebaseAuthException] sign-up `code` to a user-safe [Failure].

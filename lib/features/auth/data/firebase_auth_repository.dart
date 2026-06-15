@@ -2,6 +2,7 @@ import 'dart:developer' as developer;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/material.dart' show ThemeMode;
 
 import '../../../core/error/failure.dart';
@@ -267,6 +268,23 @@ class FirebaseAuthRepository implements AuthRepository {
     return const Ok(null);
   }
 
+  @override
+  Future<Result<void>> sendPasswordResetEmail({required String email}) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      return const Ok(null);
+    } on FirebaseAuthException catch (e) {
+      // Log the CODE only — never the email (PII).
+      developer.log('sendPasswordResetEmail failed', name: 'auth', error: e.code);
+      return Err(resetEmailFailureFor(e.code));
+    } catch (e) {
+      developer.log('sendPasswordResetEmail failed', name: 'auth', error: e);
+      return const Err(
+        UnexpectedFailure('Could not send the reset email. Please try again.'),
+      );
+    }
+  }
+
   /// Maps a reauth/update-password `code` to a user-safe [Failure]. Wrong or
   /// expired credentials read as a current-password problem.
   Failure _changePasswordFailure(String code) => switch (code) {
@@ -296,3 +314,18 @@ class FirebaseAuthRepository implements AuthRepository {
         _ => 'Unable to sign in. Please try again.',
       };
 }
+
+/// Maps a `sendPasswordResetEmail` Firebase Auth `code` to a user-safe
+/// [Failure]. Top-level + pure so it is exhaustively unit-testable without
+/// Firebase. The email address never reaches this function (only the code).
+@visibleForTesting
+Failure resetEmailFailureFor(String code) => switch (code) {
+      'invalid-email' =>
+        const ValidationFailure('That email address is invalid.'),
+      'user-not-found' =>
+        const NotFoundFailure('No account uses that email address.'),
+      'too-many-requests' => const UnexpectedFailure(
+          'Too many attempts. Please wait and try again.'),
+      _ => const UnexpectedFailure(
+          'Could not send the reset email. Please try again.'),
+    };

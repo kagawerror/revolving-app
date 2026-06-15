@@ -29,12 +29,4 @@ abstract interface class UserAdminRepository {
     required List<String> companyIds,
     required String displayName,
   });
-
-  /// Sets the forced-rotation flag on [uid]'s profile. Admins stamp `true` after
-  /// an admin-initiated password set (reset action / inline edit-form reset) so
-  /// the target hits the change-password gate on next sign-in.
-  Future<Result<void>> setMustChangePassword({
-    required String uid,
-    required bool value,
-  });
 }

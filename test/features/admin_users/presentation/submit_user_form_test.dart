@@ -54,13 +54,6 @@ void main() {
     registerFallbackValue(UserRole.incharge);
   });
 
-  void stubFlagOk() {
-    when(() => userRepo.setMustChangePassword(
-          uid: any(named: 'uid'),
-          value: any(named: 'value'),
-        )).thenAnswer((_) async => const Ok(null));
-  }
-
   setUp(() {
     userRepo = _MockUserAdminRepository();
     passwordRepo = _MockAdminPasswordRepository();
@@ -89,7 +82,6 @@ void main() {
         'profile ok + password ok: success, both called in order with right args',
         () async {
       stubUpdateOk();
-      stubFlagOk();
       when(() => passwordRepo.setUserPassword(
             uid: any(named: 'uid'),
             newPassword: any(named: 'newPassword'),
@@ -100,9 +92,10 @@ void main() {
       // null == success, nothing surfaced to the admin.
       expect(message, isNull);
 
-      // Ordering is load-bearing: profile FIRST, password SECOND, then the
-      // forced-rotation flag — each called once with the right args.
-      // verifyInOrder asserts presence, count, and relative order in one pass.
+      // Ordering is load-bearing: profile FIRST, password SECOND — and each is
+      // called exactly once with the right args (edited profile fields; the
+      // target uid + entered password). verifyInOrder asserts both presence,
+      // count, and relative order in a single pass.
       verifyInOrder([
         () => userRepo.updateAssignment(
               uid: 'u1',
@@ -115,7 +108,6 @@ void main() {
               uid: 'u1',
               newPassword: 'newpass123',
             ),
-        () => userRepo.setMustChangePassword(uid: 'u1', value: true),
       ]);
     });
 
@@ -147,11 +139,6 @@ void main() {
             uid: 'u1',
             newPassword: 'newpass123',
           )).called(1);
-      // The flag is stamped only after a SUCCESSFUL password set.
-      verifyNever(() => userRepo.setMustChangePassword(
-            uid: any(named: 'uid'),
-            value: any(named: 'value'),
-          ));
     });
 
     test('no new password entered: setUserPassword is never called', () async {

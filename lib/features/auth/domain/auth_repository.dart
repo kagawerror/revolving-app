@@ -43,4 +43,9 @@ abstract interface class AuthRepository {
     required String currentPassword,
     required String newPassword,
   });
+
+  /// Sends Firebase Auth's built-in password-reset email to [email] (the user
+  /// receives a secure link to set a new password). Admin-initiated. The email
+  /// address is PII and is never logged. Returns a user-safe [Failure] on error.
+  Future<Result<void>> sendPasswordResetEmail({required String email});
 }

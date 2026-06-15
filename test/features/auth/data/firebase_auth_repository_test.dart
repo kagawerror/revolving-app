@@ -91,6 +91,56 @@ void main() {
     expect(resNotFound.failureOrNull!.message, 'Incorrect email or password.');
   });
 
+  group('sendPasswordResetEmail', () {
+    test('success returns Ok and calls Auth with the trimmed email', () async {
+      when(() => auth.sendPasswordResetEmail(email: any(named: 'email')))
+          .thenAnswer((_) async {});
+      final repo = FirebaseAuthRepository(auth, firestore);
+
+      final res = await repo.sendPasswordResetEmail(email: '  a@b.com  ');
+
+      expect(res.isOk, isTrue);
+      verify(() => auth.sendPasswordResetEmail(email: 'a@b.com')).called(1);
+    });
+
+    test('invalid-email maps to ValidationFailure', () async {
+      when(() => auth.sendPasswordResetEmail(email: any(named: 'email')))
+          .thenThrow(FirebaseAuthException(code: 'invalid-email'));
+      final repo = FirebaseAuthRepository(auth, firestore);
+
+      final res = await repo.sendPasswordResetEmail(email: 'nope');
+      expect(res.failureOrNull, isA<ValidationFailure>());
+    });
+
+    test('user-not-found maps to NotFoundFailure', () async {
+      when(() => auth.sendPasswordResetEmail(email: any(named: 'email')))
+          .thenThrow(FirebaseAuthException(code: 'user-not-found'));
+      final repo = FirebaseAuthRepository(auth, firestore);
+
+      final res = await repo.sendPasswordResetEmail(email: 'a@b.com');
+      expect(res.failureOrNull, isA<NotFoundFailure>());
+    });
+
+    test('too-many-requests maps to UnexpectedFailure', () async {
+      when(() => auth.sendPasswordResetEmail(email: any(named: 'email')))
+          .thenThrow(FirebaseAuthException(code: 'too-many-requests'));
+      final repo = FirebaseAuthRepository(auth, firestore);
+
+      final res = await repo.sendPasswordResetEmail(email: 'a@b.com');
+      expect(res.failureOrNull, isA<UnexpectedFailure>());
+    });
+  });
+
+  group('resetEmailFailureFor mapper', () {
+    test('maps known codes to their Failure types', () {
+      expect(resetEmailFailureFor('invalid-email'), isA<ValidationFailure>());
+      expect(resetEmailFailureFor('user-not-found'), isA<NotFoundFailure>());
+      expect(
+          resetEmailFailureFor('too-many-requests'), isA<UnexpectedFailure>());
+      expect(resetEmailFailureFor('something-else'), isA<UnexpectedFailure>());
+    });
+  });
+
   group('bootstrap', () {
     late _MockAuth auth;
     late FakeFirebaseFirestore firestore;

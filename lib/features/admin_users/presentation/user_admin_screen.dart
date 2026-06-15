@@ -11,11 +11,11 @@ import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../../core/widgets/user_role_label.dart';
+import '../../../core/error/failure_ui.dart';
 import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/company.dart';
 import '../../companies/presentation/admin_providers.dart';
-import 'reset_password_dialog.dart';
 import 'submit_user_form.dart';
 import 'user_admin_providers.dart';
 import 'user_form_dialog.dart';
@@ -69,28 +69,49 @@ class UserAdminScreen extends ConsumerWidget {
     }
   }
 
-  /// Opens the dedicated reset-password dialog for [user]. The dialog mirrors
-  /// the form's `Future<String?>` contract (null == success, message == inline
-  /// error). Orchestration lives in a provider-injected, unit-testable seam so
-  /// the dialog stays presentation-only.
-  Future<void> _openResetPassword(
+  /// Triggers Firebase Auth's built-in password-reset email for [user]: the
+  /// user receives a secure link to set a new password (no admin-typed password,
+  /// no relay). Confirms first, then sends. The email address is PII and is
+  /// never logged.
+  Future<void> _sendResetEmail(
     BuildContext context,
     WidgetRef ref,
     AppUser user,
   ) async {
-    final ok = await showResetPasswordDialog(
-      context,
-      target: user,
-      // Orchestration (validate -> set password -> flag rotation) lives in the
-      // provider-injected, unit-testable [resetUserPassword] seam, so the dialog
-      // stays presentation-only and returns the `Future<String?>` it expects.
-      onSubmit: (newPassword) =>
-          ref.read(resetUserPasswordProvider)(user, newPassword),
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Send password reset email'),
+        content: Text(
+          'Send a password reset email to ${user.displayName} (${user.email})? '
+          "They'll get a secure link to set a new password.",
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Send email'),
+          ),
+        ],
+      ),
     );
+    if (confirmed != true || !context.mounted) return;
 
-    if (ok == true && context.mounted) {
+    final result =
+        await ref.read(authRepositoryProvider).sendPasswordResetEmail(
+              email: user.email,
+            );
+    if (!context.mounted) return;
+
+    final failure = result.failureOrNull;
+    if (failure != null) {
+      context.showFailure(failure);
+    } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Password reset')),
+        SnackBar(content: Text('Password reset email sent to ${user.email}')),
       );
     }
   }
@@ -157,11 +178,10 @@ class UserAdminScreen extends ConsumerWidget {
                         companyNames: companyNames,
                         onTap: () =>
                             _openForm(context, ref, existing: list[i]),
-                        // Dedicated reset action — shown only when the admin
-                        // relay is configured (graceful degradation otherwise).
-                        onResetPassword: AppSecrets.hasAdminRelay
-                            ? () => _openResetPassword(context, ref, list[i])
-                            : null,
+                        // Always available to admins now: Firebase Auth's
+                        // built-in reset-email flow needs no relay.
+                        onResetPassword: () =>
+                            _sendResetEmail(context, ref, list[i]),
                       ),
                     ],
                   ],
@@ -189,9 +209,8 @@ class _UserTile extends StatelessWidget {
   final Map<String, String> companyNames;
   final VoidCallback onTap;
 
-  /// Dedicated "Reset password" action. Null hides it entirely (e.g. when the
-  /// admin relay isn't configured), so the overflow menu only appears when there
-  /// is an action to offer.
+  /// "Send password reset email" action. Always wired for admins (the built-in
+  /// Firebase Auth reset-email flow needs no relay); null would hide the menu.
   final VoidCallback? onResetPassword;
 
   /// Full membership in primary-first order. Built from the real
@@ -279,11 +298,10 @@ class _UserTile extends StatelessWidget {
   }
 }
 
-/// Per-row overflow menu. Today it offers a single dedicated "Reset password"
-/// action (only mounted when the admin relay is configured); kept as a menu so
-/// future per-user actions slot in without re-touching the tile layout. The
-/// >=48dp tap target and a [Semantics]-friendly tooltip come from
-/// [PopupMenuButton] for free.
+/// Per-row overflow menu. Today it offers a single "Send password reset email"
+/// action (Firebase Auth's built-in flow); kept as a menu so future per-user
+/// actions slot in without re-touching the tile layout. The >=48dp tap target
+/// and a [Semantics]-friendly tooltip come from [PopupMenuButton] for free.
 class _UserRowMenu extends StatelessWidget {
   const _UserRowMenu({
     required this.userName,
@@ -310,7 +328,7 @@ class _UserRowMenu extends StatelessWidget {
             children: [
               Icon(Icons.lock_reset_rounded, size: 20, color: scheme.primary),
               const SizedBox(width: AppTokens.md),
-              const Text('Reset password'),
+              const Text('Send password reset email'),
             ],
           ),
         ),
