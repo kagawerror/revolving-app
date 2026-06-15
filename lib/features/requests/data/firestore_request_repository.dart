@@ -392,7 +392,7 @@ class FirestoreRequestRepository implements RequestRepository {
             requestAlert = _stageRequestNotification(
               tx,
               companyId: fund.companyId,
-              recipientRoles: const ['superior', 'manager', 'ceo'],
+              recipientRoles: const ['admin', 'superior', 'manager', 'ceo'],
               type: 'requestReleased',
               title: 'New release to review',
               body: 'A cash release needs your review.',
@@ -569,7 +569,7 @@ class FirestoreRequestRepository implements RequestRepository {
         requestAlert = _stageRequestNotification(
           tx,
           companyId: fund.companyId,
-          recipientRoles: const ['superior', 'manager', 'ceo'],
+          recipientRoles: const ['admin', 'superior', 'manager', 'ceo'],
           type: 'requestReleased',
           title: 'New release to review',
           body: 'A cash release needs your review.',

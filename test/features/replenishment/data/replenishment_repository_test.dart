@@ -228,7 +228,8 @@ void main() {
     expect(n['availableBalanceCentavos'], 200000);
     expect(n['fillType'], 'mixed');
     expect(n['originalAmountCentavos'], 750000);
-    expect((n['recipientRoles'] as List), ['superior', 'manager', 'ceo']);
+    expect((n['recipientRoles'] as List),
+        ['admin', 'superior', 'manager', 'ceo']);
   });
 
   test('approve denormalizes the incharge notification with post-credit balance',

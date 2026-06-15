@@ -332,7 +332,7 @@ service cloud.firestore {
     }
 
     match /notifications/{notifId} {
-      allow read: if sameCompany(resource.data.companyId)
+      allow read: if (sameCompany(resource.data.companyId) || isAdmin())
         && (myRole() in resource.data.recipientRoles);
       // Admin's post-commit notif writes target other companies (admins have
       // no company membership), so allow them explicitly.

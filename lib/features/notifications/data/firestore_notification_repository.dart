@@ -18,6 +18,15 @@ class FirestoreNotificationRepository implements NotificationRepository {
       .map((s) => s.docs.map((d) => AppNotification.fromMap(d.id, d.data())).toList());
 
   @override
+  Stream<List<AppNotification>> watchAllForRole(String role) => _db
+      .collection('notifications')
+      .where('recipientRoles', arrayContains: role)
+      .orderBy('createdAt', descending: true)
+      .limit(50)
+      .snapshots()
+      .map((s) => s.docs.map((d) => AppNotification.fromMap(d.id, d.data())).toList());
+
+  @override
   Future<void> markRead(String id) =>
       _db.collection('notifications').doc(id).update({'readAt': FieldValue.serverTimestamp()});
 }

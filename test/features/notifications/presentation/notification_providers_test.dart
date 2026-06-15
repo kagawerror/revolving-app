@@ -35,6 +35,32 @@ class _FakeRepo implements NotificationRepository {
             readAt: Timestamp.fromMillisecondsSinceEpoch(1)),
       ]);
   @override
+  Stream<List<AppNotification>> watchAllForRole(String r) => const Stream.empty();
+  @override
+  Future<void> markRead(String id) async {}
+}
+
+/// Records which method [myNotificationsProvider] dispatched to (and its args)
+/// so we can prove admin → cross-company, everyone else → company-scoped.
+class _RecordingRepo implements NotificationRepository {
+  String? watchAllRole;
+  String? watchForCompany;
+  String? watchForRoleArg;
+
+  @override
+  Stream<List<AppNotification>> watchForRole(String c, String r) {
+    watchForCompany = c;
+    watchForRoleArg = r;
+    return Stream.value(const []);
+  }
+
+  @override
+  Stream<List<AppNotification>> watchAllForRole(String r) {
+    watchAllRole = r;
+    return Stream.value(const []);
+  }
+
+  @override
   Future<void> markRead(String id) async {}
 }
 
@@ -119,5 +145,61 @@ void main() {
     addTearDown(container.dispose);
     container.listen(pendingApprovalCountProvider, (_, _) {});
     expect(container.read(pendingApprovalCountProvider), 0);
+  });
+
+  Future<_RecordingRepo> dispatchFor(AppUser user) async {
+    final repo = _RecordingRepo();
+    final container = ProviderContainer(overrides: [
+      notificationRepositoryProvider.overrideWithValue(repo),
+      currentUserProvider.overrideWith((ref) => Stream.value(user)),
+    ]);
+    addTearDown(container.dispose);
+    container.listen(myNotificationsProvider, (_, _) {});
+    await container.read(currentUserProvider.future);
+    await container.read(myNotificationsProvider.future);
+    return repo;
+  }
+
+  test('myNotificationsProvider uses watchAllForRole (cross-company) for admin',
+      () async {
+    // Admin has no company membership — companyId is empty.
+    final repo = await dispatchFor(const AppUser(
+      uid: 'a',
+      companyId: '',
+      role: UserRole.admin,
+      displayName: 'A',
+      email: 'a@x.com',
+    ));
+    expect(repo.watchAllRole, 'admin');
+    // The company-scoped path must NOT be taken for admin.
+    expect(repo.watchForCompany, isNull);
+  });
+
+  test('myNotificationsProvider uses watchForRole (company-scoped) for approver',
+      () async {
+    final repo = await dispatchFor(const AppUser(
+      uid: 'm',
+      companyId: 'c1',
+      role: UserRole.manager,
+      displayName: 'M',
+      email: 'm@x.com',
+    ));
+    expect(repo.watchForCompany, 'c1');
+    expect(repo.watchForRoleArg, 'manager');
+    expect(repo.watchAllRole, isNull);
+  });
+
+  test('myNotificationsProvider uses watchForRole (company-scoped) for incharge',
+      () async {
+    final repo = await dispatchFor(const AppUser(
+      uid: 'i',
+      companyId: 'c1',
+      role: UserRole.incharge,
+      displayName: 'I',
+      email: 'i@x.com',
+    ));
+    expect(repo.watchForCompany, 'c1');
+    expect(repo.watchForRoleArg, 'incharge');
+    expect(repo.watchAllRole, isNull);
   });
 }

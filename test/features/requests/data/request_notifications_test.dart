@@ -102,7 +102,8 @@ void main() {
       // EXACTLY ONCE per release.
       expect(notifs, hasLength(1));
       final n = notifs.first;
-      expect((n['recipientRoles'] as List), ['superior', 'manager', 'ceo']);
+      expect((n['recipientRoles'] as List),
+          ['admin', 'superior', 'manager', 'ceo']);
       expect(n['requestId'], 'r1');
       expect(n['requestAmountCentavos'], 200000);
       expect(n['requestBeneficiaryName'], 'Ben');

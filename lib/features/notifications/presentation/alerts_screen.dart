@@ -112,8 +112,12 @@ class AlertsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final alerts = ref.watch(myNotificationsProvider);
+    // canApproveOrAdmin (not canApprove) so admins — who act on the same
+    // requestReleased / replenishmentSubmitted alerts — get the tap-to-open
+    // affordance. Incharge is false for both, so its behavior is unchanged.
     final isApprover =
-        ref.watch(currentUserProvider).valueOrNull?.role.canApprove ?? false;
+        ref.watch(currentUserProvider).valueOrNull?.role.canApproveOrAdmin ??
+            false;
     return Scaffold(
       appBar: AppBar(title: const Text('Alerts')),
       body: SafeArea(

@@ -243,7 +243,7 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       final companyName = await _resolveCompanyName(replenishment.companyId);
       await _addNotification(
         companyId: replenishment.companyId,
-        recipientRoles: const ['superior', 'manager', 'ceo'],
+        recipientRoles: const ['admin', 'superior', 'manager', 'ceo'],
         type: 'replenishmentSubmitted',
         title: 'Replenishment submitted',
         body: 'A replenishment report needs your approval.',

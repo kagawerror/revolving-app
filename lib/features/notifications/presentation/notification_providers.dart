@@ -14,7 +14,11 @@ final notificationRepositoryProvider = Provider<NotificationRepository>(
 final myNotificationsProvider = StreamProvider<List<AppNotification>>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return const Stream.empty();
-  return ref.watch(notificationRepositoryProvider).watchForRole(user.companyId, user.role.name);
+  final repo = ref.watch(notificationRepositoryProvider);
+  // Admins have no company membership (companyId is empty), so their alerts span
+  // every tenant — drop the companyId filter via the cross-company query.
+  if (user.role.isAdmin) return repo.watchAllForRole(user.role.name);
+  return repo.watchForRole(user.companyId, user.role.name);
 });
 
 final unreadCountProvider = Provider<int>((ref) {
