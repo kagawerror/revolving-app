@@ -72,6 +72,15 @@ class DashboardBody extends ConsumerWidget {
   }
 }
 
+/// Formats a signed centavo amount as currency with an explicit sign, e.g.
+/// `+₱975,000.00` / `−₱200,000.00` / `₱0.00`. Avoids passing a negative to
+/// `Money.fromCentavos` (which throws).
+String _signedMoney(int centavos) {
+  if (centavos == 0) return Money.zero.format();
+  final sign = centavos > 0 ? '+' : '−'; // U+2212 minus
+  return '$sign${Money.fromCentavos(centavos.abs()).format()}';
+}
+
 class _HeroSection extends ConsumerWidget {
   const _HeroSection({required this.summary});
 
@@ -85,8 +94,11 @@ class _HeroSection extends ConsumerWidget {
       seed: seed,
       primaryLabel: 'Available balance',
       primaryAmount: t.totalAvailable.format(),
-      secondaryLabel: 'Total budget',
-      secondaryAmount: t.totalBudget.format(),
+      rows: [
+        HeroRow('Original budget', t.totalBudget.format()),
+        HeroRow('Adjustment', _signedMoney(t.totalAdjustmentsCentavos)),
+        HeroRow('Total budget', t.effectiveBudget.format(), emphasis: true),
+      ],
     ).animate().fadeIn(duration: 320.ms).slideY(begin: 0.06, end: 0);
   }
 }
@@ -357,12 +369,19 @@ class _RecentSection extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: AppTokens.xs),
           child: Column(
             children: [
-              for (var i = 0; i < list.length; i++)
+              for (var i = 0; i < list.length; i++) ...[
+                if (i > 0)
+                  const Divider(
+                    height: 1,
+                    indent: AppTokens.md,
+                    endIndent: AppTokens.md,
+                  ),
                 _RecentTile(
                   request: list[i],
                   pendingPartial:
                       pendingPartials[list[i].id] ?? Money.fromCentavos(0),
                 ).animate().fadeIn(duration: 220.ms, delay: (40 * i).ms),
+              ],
             ],
           ),
         );
