@@ -93,16 +93,22 @@ class BalanceHeroCard extends StatelessWidget {
             for (var i = 0; i < multi.length; i++) ...[
               if (i > 0) const SizedBox(height: AppTokens.sm),
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    multi[i].label,
-                    style: textTheme.bodyMedium?.copyWith(
-                      color: multi[i].emphasis ? onGradient : onGradientMuted,
-                      fontWeight: multi[i].emphasis ? FontWeight.w700 : null,
+                  // Label flexes and ellipsizes on narrow screens; the amount
+                  // (the important figure) is never truncated.
+                  Expanded(
+                    child: Text(
+                      multi[i].label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: textTheme.bodyMedium?.copyWith(
+                        color: multi[i].emphasis ? onGradient : onGradientMuted,
+                        fontWeight: multi[i].emphasis ? FontWeight.w700 : null,
+                      ),
                     ),
                   ),
+                  const SizedBox(width: AppTokens.md),
                   Text(
                     multi[i].amount,
                     style: (multi[i].emphasis
