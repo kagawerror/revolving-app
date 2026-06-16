@@ -97,6 +97,13 @@ void main() {
     expect(f.effectiveBudget, Money.fromCentavos(800000));
   });
 
+  test('effectiveBudget is ₱0 at the boundary (adjustment == -budget)', () {
+    // Documented invariant boundary: deductions can never drive effectiveBudget
+    // below zero. At exactly -budget it must be Money.zero, not throw.
+    final f = base(adj: -1000000); // 1,000,000 - 1,000,000
+    expect(f.effectiveBudget, Money.zero);
+  });
+
   test('toCreateMap persists adjustmentsCentavos', () {
     expect(base(adj: 500000).toCreateMap()['adjustmentsCentavos'], 500000);
   });
