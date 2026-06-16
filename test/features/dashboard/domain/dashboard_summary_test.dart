@@ -3,11 +3,12 @@ import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/companies/domain/fund.dart';
 import 'package:rev_app/features/dashboard/domain/dashboard_summary.dart';
 
-Fund _fund(int budget, int available, FundStatus status) => Fund(
+Fund _fund(int budget, int available, FundStatus status, {int adj = 0}) => Fund(
       id: 'f', companyId: 'c1', name: 'F',
       originalBudget: Money.fromCentavos(budget),
       availableBalance: Money.fromCentavos(available),
-      lowBalanceThresholdPct: 3, status: status);
+      lowBalanceThresholdPct: 3, status: status,
+      adjustmentsCentavos: adj);
 
 void main() {
   test('empty funds → zero totals, zero utilization', () {
@@ -47,5 +48,35 @@ void main() {
     expect(t.totalAvailable, Money.fromCentavos(8000000));
     expect(t.totalDisbursed, Money.zero); // nothing disbursed; there's a surplus
     expect(t.utilization, 0.0); // never negative
+  });
+
+  test('sums adjustments and effectiveBudget = budget + adjustments', () {
+    final t = computeFundTotals([
+      _fund(1000000, 1975000, FundStatus.active, adj: 975000),
+      _fund(2000000, 2000000, FundStatus.active, adj: 0),
+    ]);
+    expect(t.totalBudget, Money.fromCentavos(3000000));
+    expect(t.totalAdjustmentsCentavos, 975000);
+    expect(t.effectiveBudget, Money.fromCentavos(3975000));
+    expect(t.totalDisbursed, Money.zero);
+    expect(t.utilization, 0.0);
+  });
+
+  test('disbursed/utilization are based on the effective budget', () {
+    final t = computeFundTotals([
+      _fund(1000000, 900000, FundStatus.active, adj: 500000),
+    ]);
+    expect(t.effectiveBudget, Money.fromCentavos(1500000));
+    expect(t.totalDisbursed, Money.fromCentavos(600000));
+    expect(t.utilization, closeTo(0.4, 0.0001));
+  });
+
+  test('net-negative adjustments lower the effective budget', () {
+    final t = computeFundTotals([
+      _fund(1000000, 800000, FundStatus.active, adj: -200000),
+    ]);
+    expect(t.totalAdjustmentsCentavos, -200000);
+    expect(t.effectiveBudget, Money.fromCentavos(800000));
+    expect(t.totalDisbursed, Money.zero);
   });
 }

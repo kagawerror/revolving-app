@@ -31,6 +31,7 @@ const _emptySummary = DashboardSummary(
     fundCount: 0,
     lowFundCount: 0,
     replenishingFundCount: 0,
+    totalAdjustmentsCentavos: 0,
   ),
   pendingRequestCount: 0,
   pendingReplenishmentCount: 0,

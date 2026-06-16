@@ -9,6 +9,7 @@ class FundTotals extends Equatable {
   final int fundCount;
   final int lowFundCount;
   final int replenishingFundCount;
+  final int totalAdjustmentsCentavos;
 
   const FundTotals({
     required this.totalBudget,
@@ -16,21 +17,33 @@ class FundTotals extends Equatable {
     required this.fundCount,
     required this.lowFundCount,
     required this.replenishingFundCount,
+    required this.totalAdjustmentsCentavos,
   });
 
-  /// Cash paid out of the funds (budget minus what's still available). Clamped
-  /// at ₱0: the admin/CEO "add cash" adjustment can push available ABOVE budget,
-  /// in which case nothing is disbursed (there's a surplus) — never a negative.
-  Money get totalDisbursed => Money.fromCentavos(
-      (totalBudget.centavos - totalAvailable.centavos).clamp(0, 1 << 62));
+  /// Budget including all accumulated adjustments — the "Total budget" shown.
+  Money get effectiveBudget =>
+      Money.fromCentavos(totalBudget.centavos + totalAdjustmentsCentavos);
 
-  /// Fraction 0..1 of the budget that is currently disbursed.
-  double get utilization =>
-      totalBudget.centavos == 0 ? 0.0 : totalDisbursed.centavos / totalBudget.centavos;
+  /// Cash paid out of the funds (effective budget minus what's still available).
+  /// Clamped at >= 0 as a safety net; with adjustments folded into the effective
+  /// budget, available should never legitimately exceed it.
+  Money get totalDisbursed => Money.fromCentavos(
+      (effectiveBudget.centavos - totalAvailable.centavos).clamp(0, 1 << 62));
+
+  /// Fraction 0..1 of the effective budget that is currently disbursed.
+  double get utilization => effectiveBudget.centavos == 0
+      ? 0.0
+      : totalDisbursed.centavos / effectiveBudget.centavos;
 
   @override
-  List<Object?> get props =>
-      [totalBudget, totalAvailable, fundCount, lowFundCount, replenishingFundCount];
+  List<Object?> get props => [
+        totalBudget,
+        totalAvailable,
+        fundCount,
+        lowFundCount,
+        replenishingFundCount,
+        totalAdjustmentsCentavos,
+      ];
 }
 
 /// Pure aggregate over a company's funds. Available CAN exceed budget once an
@@ -40,9 +53,11 @@ FundTotals computeFundTotals(List<Fund> funds) {
   var available = Money.zero;
   var low = 0;
   var replenishing = 0;
+  var adjustments = 0;
   for (final f in funds) {
     budget += f.originalBudget;
     available += f.availableBalance;
+    adjustments += f.adjustmentsCentavos;
     if (f.status == FundStatus.low) low++;
     if (f.status == FundStatus.replenishing) replenishing++;
   }
@@ -52,6 +67,7 @@ FundTotals computeFundTotals(List<Fund> funds) {
     fundCount: funds.length,
     lowFundCount: low,
     replenishingFundCount: replenishing,
+    totalAdjustmentsCentavos: adjustments,
   );
 }
 
