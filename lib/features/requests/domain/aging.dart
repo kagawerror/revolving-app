@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 
+import '../../../core/money/money.dart';
 import '../../companies/domain/company.dart';
 import 'fund_request.dart';
 
@@ -24,6 +25,90 @@ AgingBucket bucketFor(int days) {
   if (days <= 30) return AgingBucket.green;
   if (days <= 60) return AgingBucket.amber;
   return AgingBucket.red;
+}
+
+/// A/R aging bracket for GROUPED day-bracket sections. Distinct from
+/// [AgingBucket] (the 3-tone per-row chip severity); these 4 finance brackets
+/// drive section grouping only and never touch chip color.
+enum AgingBracket { d1to30, d31to60, d61to90, d90plus }
+
+/// Day 0 (released today) and 1..30 → d1to30; 90+ is the catch-all.
+AgingBracket bracketFor4(int days) {
+  if (days <= 30) return AgingBracket.d1to30;
+  if (days <= 60) return AgingBracket.d31to60;
+  if (days <= 90) return AgingBracket.d61to90;
+  return AgingBracket.d90plus;
+}
+
+/// "1–30 days" / "31–60 days" / "61–90 days" / "90+ days" (en-dash U+2013).
+String bracketLabel(AgingBracket b) {
+  switch (b) {
+    case AgingBracket.d1to30:
+      return '1–30 days';
+    case AgingBracket.d31to60:
+      return '31–60 days';
+    case AgingBracket.d61to90:
+      return '61–90 days';
+    case AgingBracket.d90plus:
+      return '90+ days';
+  }
+}
+
+/// One day-bracket section of outstanding requests, with a precomputed
+/// integer-centavo [total].
+class DayBracketGroup extends Equatable {
+  final AgingBracket bracket;
+  final List<FundRequest> requests;
+  final Money total;
+  const DayBracketGroup({
+    required this.bracket,
+    required this.requests,
+    required this.total,
+  });
+
+  int get count => requests.length;
+
+  @override
+  List<Object?> get props => [bracket, requests, total];
+}
+
+/// Pure summation seam — folds amounts as integer centavos via Money.+.
+Money sumAmounts(Iterable<FundRequest> requests) =>
+    requests.fold(Money.zero, (acc, r) => acc + r.amount);
+
+/// Folds [requests] into [DayBracketGroup]s, most-stale-first
+/// ([d90plus, d61to90, d31to60, d1to30]), skipping empty brackets. Request
+/// order within a bracket is preserved (insertion order). A null createdAt
+/// counts as 0 days → d1to30.
+List<DayBracketGroup> groupByDayBracket(
+  List<FundRequest> requests,
+  DateTime today,
+) {
+  final byBracket = <AgingBracket, List<FundRequest>>{};
+
+  for (final r in requests) {
+    final days = r.createdAt == null ? 0 : agingDays(r.createdAt!, today);
+    final bracket = bracketFor4(days);
+    (byBracket[bracket] ??= <FundRequest>[]).add(r);
+  }
+
+  // Fixed most-stale-first emission order; empty brackets are skipped.
+  const order = [
+    AgingBracket.d90plus,
+    AgingBracket.d61to90,
+    AgingBracket.d31to60,
+    AgingBracket.d1to30,
+  ];
+
+  return [
+    for (final bracket in order)
+      if (byBracket[bracket] case final list?)
+        DayBracketGroup(
+          bracket: bracket,
+          requests: list,
+          total: sumAmounts(list),
+        ),
+  ];
 }
 
 /// One company's outstanding requests, for the admin grouped aging view.

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/money/money.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/status_pill.dart';
@@ -62,6 +63,113 @@ class AgingRow extends StatelessWidget {
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => RequestDetailScreen(request: request),
+        ),
+      ),
+    );
+  }
+}
+
+/// The summary row that closes out a day-bracket section: a quiet "Total"
+/// label on the left and the bracket's summed peso [total] with an "N items"
+/// rider on the right. Always the LAST child inside a bracket's card, so it
+/// draws its OWN heavier top divider plus a faint surface wash rounded only on
+/// the bottom corners — no caller-supplied divider above it.
+///
+/// Contract: must be the last child of a [SurfaceCard] whose padding leaves the
+/// bottom/horizontal edges flush; it rounds its bottom corners to match the
+/// card. The wash radius is derived from the SAME [AppTokens.rCard] that
+/// [SurfaceCard] uses (via [AppTokens.brCard]) so the corners can't drift.
+///
+/// Accessibility: the visible label/amount/items are merged into a single
+/// `Semantics(label: 'Total: …, … items')` node (the inner content is wrapped
+/// in [ExcludeSemantics]) so screen readers announce the summary once, cleanly.
+class BracketTotalRow extends StatelessWidget {
+  const BracketTotalRow({super.key, required this.total, required this.count});
+
+  final Money total;
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    final amount = total.format();
+    final itemsLabel = count == 1 ? '1 item' : '$count items';
+
+    return Semantics(
+      label: 'Total: $amount, $itemsLabel',
+      container: true,
+      child: ExcludeSemantics(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Divider(
+              height: 1,
+              thickness: 1,
+              indent: AppTokens.md,
+              endIndent: AppTokens.md,
+              color: scheme.outlineVariant,
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
+                // Same radius the host SurfaceCard rounds its corners with
+                // (AppTokens.rCard / brCard) so the wash sits flush in the
+                // card's bottom corners and the two can't drift apart.
+                borderRadius: const BorderRadius.only(
+                  bottomLeft: Radius.circular(AppTokens.rCard),
+                  bottomRight: Radius.circular(AppTokens.rCard),
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(
+                  AppTokens.md,
+                  AppTokens.sm + AppTokens.xs,
+                  AppTokens.md,
+                  AppTokens.sm + AppTokens.xs,
+                ),
+                child: Row(
+                  children: [
+                    Text(
+                      'Total',
+                      style: textTheme.labelLarge?.copyWith(
+                        color: scheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: 0.4,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text.rich(
+                      TextSpan(
+                        children: [
+                          TextSpan(
+                            text: amount,
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w800,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                          TextSpan(
+                            text: '  ·  $itemsLabel',
+                            style: textTheme.labelLarge?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w600,
+                              fontFeatures: const [
+                                FontFeature.tabularFigures(),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
         ),
       ),
     );

@@ -131,9 +131,14 @@ class _AgingSection extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final count = group.requests.length;
 
+    // Day-bracket sub-grouping within this company, most-stale-first.
+    final brackets = groupByDayBracket(group.requests, today);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        // Company header stays the dominant header; trailing is item-count only
+        // (no peso subtotal at company level — a deliberate scope decision).
         SectionHeader(
           title: group.company.name,
           trailing: Text(
@@ -144,26 +149,70 @@ class _AgingSection extends StatelessWidget {
             ),
           ),
         ),
-        SurfaceCard(
-          padding: const EdgeInsets.symmetric(vertical: AppTokens.xs),
-          child: Column(
-            children: [
-              for (var i = 0; i < group.requests.length; i++) ...[
-                if (i > 0)
-                  const Divider(
-                    height: 1,
-                    indent: AppTokens.md,
-                    endIndent: AppTokens.md,
+        for (var b = 0; b < brackets.length; b++) ...[
+          // Subordinate bracket sub-header: a small primary tick + label, with
+          // the bracket's item count trailing.
+          Padding(
+            padding: EdgeInsets.only(
+              left: AppTokens.md,
+              top: b == 0 ? AppTokens.sm : AppTokens.md,
+              bottom: AppTokens.xs,
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 3,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: scheme.primary.withValues(alpha: 0.55),
+                    borderRadius: BorderRadius.circular(AppTokens.rPill),
                   ),
-                AgingRow(
-                  key: ValueKey(group.requests[i].id),
-                  request: group.requests[i],
-                  today: today,
+                ),
+                const SizedBox(width: AppTokens.sm),
+                Text(
+                  bracketLabel(brackets[b].bracket),
+                  style: textTheme.labelLarge?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  brackets[b].count == 1
+                      ? '1 item'
+                      : '${brackets[b].count} items',
+                  style: textTheme.labelMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ],
-            ],
+            ),
           ),
-        ),
+          SurfaceCard(
+            padding: const EdgeInsets.only(top: AppTokens.xs),
+            child: Column(
+              children: [
+                for (var i = 0; i < brackets[b].requests.length; i++) ...[
+                  if (i > 0)
+                    const Divider(
+                      height: 1,
+                      indent: AppTokens.md,
+                      endIndent: AppTokens.md,
+                    ),
+                  AgingRow(
+                    key: ValueKey(brackets[b].requests[i].id),
+                    request: brackets[b].requests[i],
+                    today: today,
+                  ),
+                ],
+                BracketTotalRow(
+                  total: brackets[b].total,
+                  count: brackets[b].count,
+                ),
+              ],
+            ),
+          ),
+        ],
       ],
     );
   }

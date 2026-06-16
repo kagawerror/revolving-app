@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/surface_card.dart';
+import '../domain/aging.dart';
 import '../domain/fund_request.dart';
 import 'aging_providers.dart';
 import 'aging_row.dart';
@@ -64,7 +66,9 @@ class _AgingEmpty extends StatelessWidget {
   }
 }
 
-/// The scrolling, newest-first list of aging rows, grouped into one card.
+/// The scrolling list of aging rows, grouped into most-stale-first day-bracket
+/// sections. Each bracket gets a [SectionHeader] (label + item count) and its
+/// own card that ends in a [BracketTotalRow] summing the bracket's amounts.
 class _AgingList extends StatelessWidget {
   const _AgingList({required this.requests});
 
@@ -74,6 +78,10 @@ class _AgingList extends StatelessWidget {
   Widget build(BuildContext context) {
     // One "now" for the whole render so every row counts against the same day.
     final today = DateTime.now();
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+
+    final groups = groupByDayBracket(requests, today);
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(
@@ -83,26 +91,39 @@ class _AgingList extends StatelessWidget {
         AppTokens.bottomNavContentInset,
       ),
       children: [
-        SurfaceCard(
-          padding: const EdgeInsets.symmetric(vertical: AppTokens.xs),
-          child: Column(
-            children: [
-              for (var i = 0; i < requests.length; i++) ...[
-                if (i > 0)
-                  const Divider(
-                    height: 1,
-                    indent: AppTokens.md,
-                    endIndent: AppTokens.md,
-                  ),
-                AgingRow(
-                  key: ValueKey(requests[i].id),
-                  request: requests[i],
-                  today: today,
-                ),
-              ],
-            ],
+        for (final group in groups) ...[
+          SectionHeader(
+            title: bracketLabel(group.bracket),
+            trailing: Text(
+              group.count == 1 ? '1 item' : '${group.count} items',
+              style: textTheme.labelLarge?.copyWith(
+                color: scheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
-        ),
+          SurfaceCard(
+            padding: const EdgeInsets.only(top: AppTokens.xs),
+            child: Column(
+              children: [
+                for (var i = 0; i < group.requests.length; i++) ...[
+                  if (i > 0)
+                    const Divider(
+                      height: 1,
+                      indent: AppTokens.md,
+                      endIndent: AppTokens.md,
+                    ),
+                  AgingRow(
+                    key: ValueKey(group.requests[i].id),
+                    request: group.requests[i],
+                    today: today,
+                  ),
+                ],
+                BracketTotalRow(total: group.total, count: group.count),
+              ],
+            ),
+          ),
+        ],
       ],
     ).animate().fadeIn(duration: 280.ms).moveY(begin: 8, end: 0, duration: 280.ms);
   }
