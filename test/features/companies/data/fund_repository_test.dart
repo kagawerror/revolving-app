@@ -274,6 +274,27 @@ void main() {
       expect(data['adjustmentsCentavos'], -800000);
     });
 
+    test('successive adjustments accumulate onto the running total', () async {
+      await seedFund(budget: 10000000, balance: 5000000);
+      final repo = FirestoreFundRepository(db);
+      await repo.adjustBalance(
+        fundId: 'f1',
+        signedDeltaCentavos: 2000000,
+        reason: 'Cash injection',
+        actorUid: 'ceo-1',
+        actorRole: UserRole.ceo,
+      );
+      await repo.adjustBalance(
+        fundId: 'f1',
+        signedDeltaCentavos: -500000,
+        reason: 'Partial clawback',
+        actorUid: 'ceo-1',
+        actorRole: UserRole.ceo,
+      );
+      final data = (await db.collection('funds').doc('f1').get()).data()!;
+      expect(data['adjustmentsCentavos'], 1500000); // 2,000,000 - 500,000
+    });
+
     test('replenishing status is preserved across an adjustment', () async {
       await seedFund(budget: 10000000, balance: 200000, status: 'replenishing');
       final repo = FirestoreFundRepository(db);
