@@ -126,13 +126,16 @@ service cloud.firestore {
           && request.resource.data.status == resource.data.status)
         // FUND ADJUSTMENT (availability-only): admin OR ceo may move available
         // cash. Tightly scoped — the diff is exactly {availableBalanceCentavos,
-        // status}, and the budget, threshold, name and companyId are pinned
-        // immutable. CEO is intentionally cross-company here. Every write goes
-        // through a runTransaction in the repo that re-reads + re-validates the
-        // balance, so this can never overdraw despite trusting the new value.
+        // status, adjustmentsCentavos}, and the budget, threshold, name and
+        // companyId are pinned immutable. adjustmentsCentavos is the signed
+        // running total of these same adjustments (written via
+        // FieldValue.increment). CEO is intentionally cross-company here. Every
+        // write goes through a runTransaction in the repo that re-reads +
+        // re-validates the balance, so this can never overdraw despite trusting
+        // the new value.
         || ((isAdmin() || isCeo())
           && request.resource.data.diff(resource.data).affectedKeys()
-              .hasOnly(['availableBalanceCentavos', 'status'])
+              .hasOnly(['availableBalanceCentavos', 'status', 'adjustmentsCentavos'])
           && request.resource.data.companyId == resource.data.companyId
           && request.resource.data.originalBudgetCentavos
               == resource.data.originalBudgetCentavos
