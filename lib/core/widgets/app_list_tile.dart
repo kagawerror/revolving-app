@@ -51,6 +51,8 @@ class AppListTile extends StatelessWidget {
                     children: [
                       Text(
                         title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: textTheme.bodyLarge?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -60,6 +62,8 @@ class AppListTile extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             sub,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,
                             ),

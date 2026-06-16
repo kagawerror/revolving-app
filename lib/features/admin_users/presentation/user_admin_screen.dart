@@ -268,7 +268,7 @@ class _UserTile extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 160),
+            constraints: const BoxConstraints(maxWidth: 124),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               mainAxisAlignment: MainAxisAlignment.center,
