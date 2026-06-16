@@ -369,19 +369,12 @@ class _RecentSection extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(vertical: AppTokens.xs),
           child: Column(
             children: [
-              for (var i = 0; i < list.length; i++) ...[
-                if (i > 0)
-                  const Divider(
-                    height: 1,
-                    indent: AppTokens.md,
-                    endIndent: AppTokens.md,
-                  ),
+              for (var i = 0; i < list.length; i++)
                 _RecentTile(
                   request: list[i],
                   pendingPartial:
                       pendingPartials[list[i].id] ?? Money.fromCentavos(0),
                 ).animate().fadeIn(duration: 220.ms, delay: (40 * i).ms),
-              ],
             ],
           ),
         );
