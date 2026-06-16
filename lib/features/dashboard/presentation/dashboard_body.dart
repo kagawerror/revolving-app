@@ -73,11 +73,12 @@ class DashboardBody extends ConsumerWidget {
 }
 
 /// Formats a signed centavo amount as currency with an explicit sign, e.g.
-/// `+₱975,000.00` / `−₱200,000.00` / `₱0.00`. Avoids passing a negative to
-/// `Money.fromCentavos` (which throws).
+/// `+₱975,000.00` / `-₱200,000.00` / `₱0.00`. Avoids passing a negative to
+/// `Money.fromCentavos` (which throws). Uses ASCII `-`/`+` to match the sign
+/// `NumberFormat` itself emits and for reliable screen-reader announcement.
 String _signedMoney(int centavos) {
   if (centavos == 0) return Money.zero.format();
-  final sign = centavos > 0 ? '+' : '−'; // U+2212 minus
+  final sign = centavos > 0 ? '+' : '-';
   return '$sign${Money.fromCentavos(centavos.abs()).format()}';
 }
 
