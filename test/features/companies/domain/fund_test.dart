@@ -53,4 +53,51 @@ void main() {
     expect(map.containsKey('id'), isFalse);
     expect(map['originalBudgetCentavos'], 10000000);
   });
+
+  Fund base({int adj = 0}) => Fund(
+        id: 'f1',
+        companyId: 'c1',
+        name: 'Petty Cash',
+        originalBudget: Money.fromCentavos(1000000),
+        availableBalance: Money.fromCentavos(1975000),
+        lowBalanceThresholdPct: 3,
+        status: FundStatus.active,
+        adjustmentsCentavos: adj,
+      );
+
+  test('adjustmentsCentavos defaults to 0 when omitted by fromMap', () {
+    final f = Fund.fromMap('f1', {
+      'companyId': 'c1',
+      'name': 'Petty Cash',
+      'originalBudgetCentavos': 1000000,
+      'availableBalanceCentavos': 1975000,
+      'lowBalanceThresholdPct': 3,
+      'status': 'active',
+    });
+    expect(f.adjustmentsCentavos, 0);
+    expect(f.effectiveBudget, Money.fromCentavos(1000000));
+  });
+
+  test('fromMap reads adjustmentsCentavos and effectiveBudget adds it', () {
+    final f = Fund.fromMap('f1', {
+      'companyId': 'c1',
+      'name': 'Petty Cash',
+      'originalBudgetCentavos': 1000000,
+      'availableBalanceCentavos': 1975000,
+      'lowBalanceThresholdPct': 3,
+      'status': 'active',
+      'adjustmentsCentavos': 975000,
+    });
+    expect(f.adjustmentsCentavos, 975000);
+    expect(f.effectiveBudget, Money.fromCentavos(1975000));
+  });
+
+  test('effectiveBudget handles a net-negative adjustment without throwing', () {
+    final f = base(adj: -200000); // 1,000,000 - 200,000
+    expect(f.effectiveBudget, Money.fromCentavos(800000));
+  });
+
+  test('toCreateMap persists adjustmentsCentavos', () {
+    expect(base(adj: 500000).toCreateMap()['adjustmentsCentavos'], 500000);
+  });
 }

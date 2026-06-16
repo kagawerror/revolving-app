@@ -21,6 +21,12 @@ class Fund extends Equatable {
   final int lowBalanceThresholdPct;
   final FundStatus status;
 
+  /// Signed running total of availability-only adjustments (the admin/CEO
+  /// "add/deduct cash" path). CAN be negative. Kept as a raw int because
+  /// `Money.fromCentavos` rejects negatives. Budget edits (`adjustBudget`) do
+  /// NOT accumulate here.
+  final int adjustmentsCentavos;
+
   const Fund({
     required this.id,
     required this.companyId,
@@ -29,10 +35,16 @@ class Fund extends Equatable {
     required this.availableBalance,
     required this.lowBalanceThresholdPct,
     required this.status,
+    this.adjustmentsCentavos = 0,
   });
 
   Money get lowBalanceThreshold =>
       originalBudget.percentageOf(lowBalanceThresholdPct);
+
+  /// Budget including accumulated adjustments — the "Total budget" shown to
+  /// users. Always >= 0 (you cannot deduct more cash than exists).
+  Money get effectiveBudget =>
+      Money.fromCentavos(originalBudget.centavos + adjustmentsCentavos);
 
   bool get isLow => availableBalance <= lowBalanceThreshold;
 
@@ -47,6 +59,7 @@ class Fund extends Equatable {
             Money.fromCentavos((m['availableBalanceCentavos'] ?? 0) as int),
         lowBalanceThresholdPct: (m['lowBalanceThresholdPct'] ?? 3) as int,
         status: FundStatus.fromName(m['status'] as String?),
+        adjustmentsCentavos: (m['adjustmentsCentavos'] ?? 0) as int,
       );
 
   Map<String, dynamic> toCreateMap() => {
@@ -56,10 +69,11 @@ class Fund extends Equatable {
         'availableBalanceCentavos': availableBalance.centavos,
         'lowBalanceThresholdPct': lowBalanceThresholdPct,
         'status': status.name,
+        'adjustmentsCentavos': adjustmentsCentavos,
         'createdAt': FieldValue.serverTimestamp(),
       };
 
   @override
   List<Object?> get props =>
-      [id, companyId, name, originalBudget, availableBalance, lowBalanceThresholdPct, status];
+      [id, companyId, name, originalBudget, availableBalance, lowBalanceThresholdPct, status, adjustmentsCentavos];
 }
