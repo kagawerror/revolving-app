@@ -140,6 +140,7 @@ class FirestoreFundRepository implements FundRepository {
         tx.update(ref, {
           'availableBalanceCentavos': adj.newBalance.centavos,
           'status': adj.newStatus.name,
+          'adjustmentsCentavos': FieldValue.increment(adj.signedDeltaCentavos),
         });
         final historyRef = ref.collection('history').doc();
         tx.set(historyRef, {

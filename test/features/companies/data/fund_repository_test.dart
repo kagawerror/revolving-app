@@ -116,6 +116,19 @@ void main() {
       );
       expect(res.failureOrNull, isA<ValidationFailure>());
     });
+
+    test('adjustBudget does NOT touch adjustmentsCentavos', () async {
+      await seedFund(budget: 10000000, balance: 5000000);
+      final repo = FirestoreFundRepository(db);
+      await repo.adjustBudget(
+        fundId: 'f1',
+        newBudget: Money.fromCentavos(12000000),
+        actorUid: 'admin-1',
+        note: 'Raise budget',
+      );
+      final data = (await db.collection('funds').doc('f1').get()).data()!;
+      expect(data.containsKey('adjustmentsCentavos'), isFalse);
+    });
   });
 
   group('adjustBalance', () {
@@ -230,6 +243,35 @@ void main() {
       final history =
           await db.collection('funds').doc('f1').collection('history').get();
       expect(history.docs, isEmpty);
+    });
+
+    test('addition increments adjustmentsCentavos by the signed delta',
+        () async {
+      await seedFund(budget: 10000000, balance: 5000000);
+      final repo = FirestoreFundRepository(db);
+      await repo.adjustBalance(
+        fundId: 'f1',
+        signedDeltaCentavos: 2000000,
+        reason: 'Cash injection',
+        actorUid: 'ceo-1',
+        actorRole: UserRole.ceo,
+      );
+      final data = (await db.collection('funds').doc('f1').get()).data()!;
+      expect(data['adjustmentsCentavos'], 2000000);
+    });
+
+    test('deduction decrements adjustmentsCentavos (can go negative)', () async {
+      await seedFund(budget: 10000000, balance: 5000000);
+      final repo = FirestoreFundRepository(db);
+      await repo.adjustBalance(
+        fundId: 'f1',
+        signedDeltaCentavos: -800000,
+        reason: 'Spillage correction',
+        actorUid: 'admin-1',
+        actorRole: UserRole.admin,
+      );
+      final data = (await db.collection('funds').doc('f1').get()).data()!;
+      expect(data['adjustmentsCentavos'], -800000);
     });
 
     test('replenishing status is preserved across an adjustment', () async {
