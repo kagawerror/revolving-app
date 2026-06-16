@@ -61,12 +61,19 @@ final int adjustmentsCentavos; // signed; accumulates adjustBalance deltas only
 - `toCreateMap`: write `'adjustmentsCentavos': adjustmentsCentavos` (new funds
   start at 0).
 - Add to `props`.
-- Derived getters (single source of truth for the math):
+- Derived getter (single source of truth for the math):
 
 ```dart
-Money get adjustments     => Money.fromCentavos(adjustmentsCentavos);
-Money get effectiveBudget => originalBudget + adjustments; // the "Total budget" shown
+// adjustmentsCentavos is signed and CAN be negative (net deductions); it is
+// therefore kept as a raw int, NOT wrapped in Money — Money.fromCentavos throws
+// on negatives. effectiveBudget is always >= 0 (you cannot deduct more cash than
+// exists), so wrapping the sum in Money is safe.
+Money get effectiveBudget =>
+    Money.fromCentavos(originalBudget.centavos + adjustmentsCentavos);
 ```
+
+The signed adjustment is rendered with a small abs-based formatting helper in the
+presentation layer (see §5) — never by passing a negative to `Money.fromCentavos`.
 
 `originalBudget`, `lowBalanceThreshold`, and `isLow` are unchanged — the low
 threshold stays derived from the **original** budget (an adjustment must not move
@@ -88,9 +95,11 @@ server-side. Re-validate that the field is an int.
 
 ### 4. Aggregation — `FundTotals` (`dashboard_summary.dart`)
 
-- Add `final Money totalAdjustments;` to `FundTotals` (+ constructor + props).
+- Add `final int totalAdjustmentsCentavos;` to `FundTotals` (signed; + constructor
+  + props). Kept as a raw int, not Money, because it can be negative.
 - `computeFundTotals`: sum `f.adjustmentsCentavos`.
-- New getter: `Money get effectiveBudget => totalBudget + totalAdjustments;`
+- New getter: `Money get effectiveBudget =>
+  Money.fromCentavos(totalBudget.centavos + totalAdjustmentsCentavos);`
 - Re-base `totalDisbursed` on `effectiveBudget − totalAvailable`. With adjustments
   now in the effective budget, available can no longer legitimately exceed it, so
   the `clamp` becomes a pure safety net (kept, but documented as such).
