@@ -46,8 +46,9 @@ class FundTotals extends Equatable {
       ];
 }
 
-/// Pure aggregate over a company's funds. Available CAN exceed budget once an
-/// admin/CEO adds cash, so disbursed is clamped to >= 0 (see [FundTotals]).
+/// Pure aggregate over a company's funds. Admin/CEO "add cash" adjustments are
+/// folded into [FundTotals.effectiveBudget] (= budget + adjustments), which is
+/// the "Total budget" shown and the basis for disbursed/utilization.
 FundTotals computeFundTotals(List<Fund> funds) {
   var budget = Money.zero;
   var available = Money.zero;
