@@ -2,6 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_tokens.dart';
 
+/// One label/amount line in the hero card's breakdown section. [emphasis] makes
+/// the row stand out (used for the final "Total budget").
+class HeroRow {
+  const HeroRow(this.label, this.amount, {this.emphasis = false});
+  final String label;
+  final String amount;
+  final bool emphasis;
+}
+
 /// The bold, gradient "hero" card that headlines a fund balance. The amount is
 /// the single most important figure on a screen, so it is rendered large and
 /// high-contrast over a seed-derived gradient.
@@ -16,6 +25,7 @@ class BalanceHeroCard extends StatelessWidget {
     required this.primaryAmount,
     this.secondaryLabel,
     this.secondaryAmount,
+    this.rows,
   });
 
   /// Brand/accent color the gradient is derived from.
@@ -27,6 +37,10 @@ class BalanceHeroCard extends StatelessWidget {
   final String? secondaryLabel;
   final String? secondaryAmount;
 
+  /// Optional multi-row breakdown shown beneath the primary amount. When
+  /// provided (non-empty), it takes precedence over [secondaryLabel]/[secondaryAmount].
+  final List<HeroRow>? rows;
+
   @override
   Widget build(BuildContext context) {
     final textTheme = Theme.of(context).textTheme;
@@ -37,6 +51,9 @@ class BalanceHeroCard extends StatelessWidget {
     final secLabel = secondaryLabel;
     final secAmount = secondaryAmount;
     final hasSecondary = secLabel != null && secAmount != null;
+
+    final multi = rows;
+    final showMulti = multi != null && multi.isNotEmpty;
 
     return Container(
       width: double.infinity,
@@ -69,7 +86,39 @@ class BalanceHeroCard extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          if (hasSecondary) ...[
+          if (showMulti) ...[
+            const SizedBox(height: AppTokens.lg),
+            Container(height: 1, color: Colors.white.withValues(alpha: 0.18)),
+            const SizedBox(height: AppTokens.md),
+            for (var i = 0; i < multi.length; i++) ...[
+              if (i > 0) const SizedBox(height: AppTokens.sm),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    multi[i].label,
+                    style: textTheme.bodyMedium?.copyWith(
+                      color: multi[i].emphasis ? onGradient : onGradientMuted,
+                      fontWeight: multi[i].emphasis ? FontWeight.w700 : null,
+                    ),
+                  ),
+                  Text(
+                    multi[i].amount,
+                    style: (multi[i].emphasis
+                            ? textTheme.titleMedium
+                            : textTheme.bodyLarge)
+                        ?.copyWith(
+                      color: onGradient,
+                      fontWeight:
+                          multi[i].emphasis ? FontWeight.w800 : FontWeight.w600,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ] else if (hasSecondary) ...[
             const SizedBox(height: AppTokens.lg),
             Container(
               height: 1,
