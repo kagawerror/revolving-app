@@ -50,6 +50,7 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
     required UserRole role,
     required String companyId,
     required List<String> companyIds,
+    List<String> assignedFundIds = const [],
   }) async {
     final cleanEmail = email.trim();
     final cleanName = displayName.trim();
@@ -99,6 +100,10 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
         'role': role.name,
         'companyId': companyId,
         'companyIds': companyIds,
+        // Per-incharge fund scoping. Written atomically with companyIds in the
+        // single profile-doc set (no transaction). Empty for non-incharge roles
+        // and for a zero-fund incharge (the valid strict empty state).
+        'assignedFundIds': assignedFundIds,
         'displayName': cleanName,
         'email': cleanEmail,
         'themeMode': 'system',
@@ -132,14 +137,17 @@ class FirestoreUserAdminRepository implements UserAdminRepository {
     required String companyId,
     required List<String> companyIds,
     required String displayName,
+    List<String> assignedFundIds = const [],
   }) async {
     try {
       // ONLY the mutable assignment fields; email/theme/accent are left
-      // untouched (identity + self-service presentation).
+      // untouched (identity + self-service presentation). assignedFundIds is
+      // written atomically with companyIds in this single-doc update.
       await _col.doc(uid).update({
         'role': role.name,
         'companyId': companyId,
         'companyIds': companyIds,
+        'assignedFundIds': assignedFundIds,
         'displayName': displayName,
       });
       return const Ok(null);

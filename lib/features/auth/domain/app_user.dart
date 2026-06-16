@@ -68,6 +68,15 @@ class AppUser extends Equatable {
   /// docs that predate the field.
   final bool mustChangePassword;
 
+  /// Fund document IDs an **incharge** custodian is scoped to. Admin-controlled
+  /// (set in the user-management dialog), never on the self-service write path —
+  /// same contract as [companyIds]. Funds may span multiple of the incharge's
+  /// [companyMemberships]; assigning a fund also grants its company. Meaningful
+  /// only for the incharge role; empty/absent for everyone else and for legacy
+  /// docs that predate the field. With the strict empty-state rule, an empty
+  /// list means "no funds assigned" (no fallback to all company funds).
+  final List<String> assignedFundIds;
+
   const AppUser({
     required this.uid,
     required this.companyId,
@@ -75,6 +84,7 @@ class AppUser extends Equatable {
     required this.displayName,
     required this.email,
     this.companyIds = const [],
+    this.assignedFundIds = const [],
     this.photoUrl,
     this.themeMode = ThemeMode.system,
     this.accentId = 'forest',
@@ -85,6 +95,8 @@ class AppUser extends Equatable {
         uid: uid,
         companyId: (map['companyId'] ?? '') as String,
         companyIds: (map['companyIds'] as List?)?.cast<String>() ?? const [],
+        assignedFundIds:
+            (map['assignedFundIds'] as List?)?.cast<String>() ?? const [],
         role: UserRole.fromName(map['role'] as String?),
         displayName: (map['displayName'] ?? '') as String,
         email: (map['email'] ?? '') as String,
@@ -102,6 +114,13 @@ class AppUser extends Equatable {
       ? const []
       : (companyIds.isEmpty ? [companyId] : companyIds);
 
+  /// Fund IDs this user is scoped to for display/eligibility. Empty for every
+  /// non-incharge role (they aren't fund-scoped) AND for an unassigned incharge
+  /// (strict empty state — no fallback). `resolveVisibleFunds` uses the role to
+  /// tell those two cases apart.
+  List<String> get fundAssignments =>
+      role.canManageFund ? assignedFundIds : const [];
+
   /// Serializes the self-service profile fields. `themeMode` is stored as a
   /// stable string so the doc stays human-readable and migration-free.
   Map<String, dynamic> toMap() => {
@@ -110,6 +129,9 @@ class AppUser extends Equatable {
         // path (self-service writes a scoped field map in
         // firebase_auth_repository.dart), so companyIds is never user-mutable.
         'companyIds': companyIds,
+        // Admin-controlled, like companyIds — never written on the self-service
+        // path (that path writes a scoped field map elsewhere).
+        'assignedFundIds': assignedFundIds,
         'role': role.name,
         'displayName': displayName,
         'email': email,
@@ -137,6 +159,7 @@ class AppUser extends Equatable {
         uid,
         companyId,
         companyIds,
+        assignedFundIds,
         role,
         displayName,
         email,

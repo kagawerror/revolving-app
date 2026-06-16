@@ -1,5 +1,6 @@
 import '../../auth/domain/app_user.dart';
 import '../../companies/domain/company.dart';
+import '../../companies/domain/fund.dart';
 import '../domain/admin_password_repository.dart';
 import '../domain/password_reset_rules.dart';
 import '../domain/user_admin_repository.dart';
@@ -29,9 +30,14 @@ Future<String?> submitUserForm({
   required List<Company> companies,
   required UserAdminRepository userAdminRepository,
   required AdminPasswordRepository adminPasswordRepository,
+  List<Fund> funds = const [],
 }) async {
   final s = submission;
   final isCreate = existing == null;
+  // fundId -> owning companyId, for validating an incharge's fund assignment
+  // against the real fund set (a fund must exist and live in a company the
+  // incharge belongs to).
+  final fundCompanyById = {for (final f in funds) f.id: f.companyId};
 
   // Pure validation first; surface its message inline (dialog stays open).
   // Email is immutable on edit, so only validate it on the create path.
@@ -43,6 +49,8 @@ Future<String?> submitUserForm({
     companyId: s.companyId,
     companyIds: s.companyIds,
     existingCompanyIds: {for (final c in companies) c.id},
+    assignedFundIds: s.fundIds,
+    fundCompanyById: fundCompanyById,
     password: isCreate ? s.password : null,
     confirmPassword: isCreate ? s.confirmPassword : null,
     validateEmail: isCreate,
@@ -60,6 +68,7 @@ Future<String?> submitUserForm({
       role: s.role,
       companyId: s.companyId,
       companyIds: s.companyIds,
+      assignedFundIds: s.fundIds,
     );
     return res.failureOrNull?.message; // null == success
   }
@@ -70,6 +79,7 @@ Future<String?> submitUserForm({
     companyId: s.companyId,
     companyIds: s.companyIds,
     displayName: s.displayName,
+    assignedFundIds: s.fundIds,
   );
   if (res.failureOrNull != null) return res.failureOrNull!.message;
 

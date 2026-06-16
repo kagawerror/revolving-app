@@ -6,12 +6,17 @@ import 'package:rev_app/features/admin_users/domain/user_assignment.dart';
 void main() {
   const companies = {'c1', 'c2'};
 
+  // f1 in c1, f2 in c2, f3 in an unknown company c9.
+  const fundsById = {'f1': 'c1', 'f2': 'c2', 'f3': 'c9'};
+
   ValidationFailure? validate({
     String displayName = 'Jane',
     String email = 'jane@acme.com',
     UserRole role = UserRole.incharge,
     String companyId = 'c1',
     List<String> companyIds = const ['c1'],
+    List<String> assignedFundIds = const [],
+    Map<String, String> fundCompanyById = fundsById,
     String? password,
     String? confirmPassword,
     bool validateEmail = true,
@@ -23,6 +28,8 @@ void main() {
         companyId: companyId,
         companyIds: companyIds,
         existingCompanyIds: companies,
+        assignedFundIds: assignedFundIds,
+        fundCompanyById: fundCompanyById,
         password: password,
         confirmPassword: confirmPassword,
         validateEmail: validateEmail,
@@ -139,6 +146,66 @@ void main() {
   test('non-admin with duplicate membership ids is rejected', () {
     final f = validate(companyId: 'c1', companyIds: const ['c1', 'c1']);
     expect(f!.message, 'Select an existing company.');
+  });
+
+  group('fund assignment', () {
+    test('zero-fund incharge is VALID (strict empty state)', () {
+      expect(
+        validate(role: UserRole.incharge, assignedFundIds: const []),
+        isNull,
+      );
+    });
+
+    test('incharge with funds in their own companies is valid', () {
+      expect(
+        validate(
+          role: UserRole.incharge,
+          companyId: 'c1',
+          companyIds: const ['c1', 'c2'],
+          assignedFundIds: const ['f1', 'f2'],
+        ),
+        isNull,
+      );
+    });
+
+    test('incharge assigned a fund outside their companies is rejected', () {
+      // f2 is in c2, but the incharge only belongs to c1.
+      final f = validate(
+        role: UserRole.incharge,
+        companyId: 'c1',
+        companyIds: const ['c1'],
+        assignedFundIds: const ['f2'],
+      );
+      expect(f!.message, 'A selected fund is not in this user’s companies.');
+    });
+
+    test('incharge assigned an unknown fund id is rejected', () {
+      final f = validate(
+        role: UserRole.incharge,
+        assignedFundIds: const ['ghost'],
+      );
+      expect(f!.message, 'A selected fund is not in this user’s companies.');
+    });
+
+    test('non-incharge role with funds is rejected', () {
+      final f = validate(
+        role: UserRole.superior,
+        assignedFundIds: const ['f1'],
+      );
+      expect(f!.message, 'Only an incharge can be assigned funds.');
+    });
+
+    test('admin with funds is rejected', () {
+      final f = validate(
+        role: UserRole.admin,
+        companyId: '',
+        companyIds: const [],
+        assignedFundIds: const ['f1'],
+        password: 'secret1',
+        confirmPassword: 'secret1',
+      );
+      expect(f!.message, 'Only an incharge can be assigned funds.');
+    });
   });
 
   test('password check runs BEFORE role/company branching', () {

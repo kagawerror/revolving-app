@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_tokens.dart';
+import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/user_role_label.dart';
 import '../../auth/domain/app_user.dart';
 import '../../auth/domain/bootstrap_rules.dart';
 import '../../companies/domain/company.dart';
+import '../../companies/domain/fund.dart';
+import '../../companies/presentation/admin_providers.dart';
+import 'assign_funds_confirm.dart';
 
 /// What the form hands back to the caller. For CREATE, all fields are present
 /// (including [password]/[confirmPassword], which the caller uses to provision
@@ -21,6 +26,7 @@ class UserFormSubmission {
     required this.role,
     required this.companyId,
     required this.companyIds,
+    this.fundIds = const [],
   });
 
   final String displayName;
@@ -57,6 +63,11 @@ class UserFormSubmission {
   /// [companyId] as its first element followed by the remaining memberships, so
   /// callers can derive both the primary and the set from one ordered list.
   final List<String> companyIds;
+
+  /// Per-incharge assigned fund document ids. Meaningful only for the incharge
+  /// role; always empty for every other role (the dialog clears it on a role
+  /// change). A zero-fund incharge is a valid saved state (strict empty state).
+  final List<String> fundIds;
 }
 
 /// Create-or-edit user dialog. Mirrors the app's async-submit contract:
@@ -110,7 +121,7 @@ Future<UserFormSubmission?> showUserFormDialog(
   );
 }
 
-class _UserFormDialog extends StatefulWidget {
+class _UserFormDialog extends ConsumerStatefulWidget {
   const _UserFormDialog({
     required this.companies,
     required this.existing,
@@ -126,10 +137,10 @@ class _UserFormDialog extends StatefulWidget {
   /// the admin relay is configured (graceful degradation).
   final bool showPasswordReset;
   @override
-  State<_UserFormDialog> createState() => _UserFormDialogState();
+  ConsumerState<_UserFormDialog> createState() => _UserFormDialogState();
 }
 
-class _UserFormDialogState extends State<_UserFormDialog> {
+class _UserFormDialogState extends ConsumerState<_UserFormDialog> {
   final _formKey = GlobalKey<FormState>();
   late final TextEditingController _displayName;
   late final TextEditingController _email;
@@ -159,6 +170,19 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   /// a primary that isn't in the membership.
   final List<String> _companyIds = [];
 
+  /// Selected fund ids for an incharge. Set semantics (order irrelevant); seeded
+  /// from the existing user's assignment in [initState]. Cleared whenever the
+  /// role changes away from incharge, and pruned when a backing company is
+  /// dropped from [_companyIds].
+  final Set<String> _fundIds = {};
+
+  /// Latest funds snapshot resolved from [allFundsProvider] in [build]. Held in
+  /// state so callbacks fired between builds (e.g. [_toggleFund],
+  /// [_companyForFund]) see the same resolved set the picker rendered. Reactive:
+  /// when the stream resolves the dialog rebuilds and this repopulates, so a
+  /// dialog opened while funds are still loading fills in once they arrive.
+  List<Fund> _funds = const [];
+
   bool _saving = false;
   String? _serverError;
 
@@ -185,6 +209,36 @@ class _UserFormDialogState extends State<_UserFormDialog> {
     for (final id in ids) {
       if (id.isNotEmpty && !_companyIds.contains(id)) _companyIds.add(id);
     }
+    // Seed fund assignment from the existing incharge (empty for everyone else
+    // and for an unassigned/created incharge).
+    _fundIds.addAll(e?.assignedFundIds ?? const []);
+  }
+
+  /// Owning companyId for a selected fund id, or null if the fund isn't in the
+  /// loaded set. Used to count distinct companies for the confirm summary.
+  String? _companyForFund(String fundId) {
+    for (final f in _funds) {
+      if (f.id == fundId) return f.companyId;
+    }
+    return null;
+  }
+
+  /// Toggles a fund in the assignment. Selecting a fund auto-adds its owning
+  /// company to [_companyIds] (so the membership always backs the funds), which
+  /// matches the validation rule "every assigned fund's company is a member".
+  void _toggleFund(Fund fund) {
+    setState(() {
+      if (_fundIds.contains(fund.id)) {
+        _fundIds.remove(fund.id);
+      } else {
+        _fundIds.add(fund.id);
+        if (!_companyIds.contains(fund.companyId)) {
+          _companyIds.add(fund.companyId);
+        }
+      }
+      _serverError = null;
+      _companyError = null;
+    });
   }
 
   /// Reads the user's full membership from the real model accessor, which
@@ -221,16 +275,40 @@ class _UserFormDialogState extends State<_UserFormDialog> {
           'Assign at least one company for this role.');
       return;
     }
+
+    // Derive the data shape: admins carry nothing; a non-admin's primary is the
+    // first selected id and the membership is the whole ordered list (primary
+    // first), so `companyId` is always a member of `companyIds`. Funds belong to
+    // the incharge role only.
+    final ids = _isAdminRole ? const <String>[] : List<String>.from(_companyIds);
+    final fundIds =
+        _role == UserRole.incharge ? _fundIds.toList() : const <String>[];
+
+    // Business-decision confirmation on the incharge path: assigning funds (or
+    // saving an EXISTING incharge with none) changes what they can release
+    // against, so gate it AFTER validation, BEFORE submit. The zero-fund warning
+    // only fires when editing an existing incharge (a brand-new one with no
+    // funds is an ordinary, un-warned create).
+    if (_role == UserRole.incharge) {
+      final companyCount =
+          fundIds.map((id) => _companyForFund(id)).whereType<String>().toSet().length;
+      final isZeroFundWarning = !_isCreate && fundIds.isEmpty;
+      final proceed = await showAssignFundsConfirm(
+        context,
+        name: _displayName.text.trim(),
+        fundCount: fundIds.length,
+        companyCount: companyCount,
+        isZeroFundWarning: isZeroFundWarning,
+      );
+      if (!mounted || !proceed) return;
+    }
+
     setState(() {
       _saving = true;
       _serverError = null;
       _companyError = null;
     });
 
-    // Derive the data shape: admins carry nothing; a non-admin's primary is the
-    // first selected id and the membership is the whole ordered list (primary
-    // first), so `companyId` is always a member of `companyIds`.
-    final ids = _isAdminRole ? const <String>[] : List<String>.from(_companyIds);
     final submission = UserFormSubmission(
       displayName: _displayName.text.trim(),
       email: _email.text.trim(),
@@ -246,6 +324,7 @@ class _UserFormDialogState extends State<_UserFormDialog> {
       role: _role,
       companyId: ids.isEmpty ? '' : ids.first,
       companyIds: ids,
+      fundIds: fundIds,
     );
 
     final error = await widget.onSubmit(submission);
@@ -264,6 +343,15 @@ class _UserFormDialogState extends State<_UserFormDialog> {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
+
+    // Funds drive the per-incharge picker AND submit-time pruning. Watching the
+    // provider (rather than receiving a frozen prop) means a dialog opened while
+    // the stream is still loading repopulates the picker once it resolves — no
+    // close/reopen needed. Cached into [_funds] so callbacks between builds see
+    // the same resolved set.
+    final fundsAsync = ref.watch(allFundsProvider);
+    _funds = fundsAsync.valueOrNull ?? const <Fund>[];
+    final fundsLoading = fundsAsync.isLoading;
 
     return AlertDialog(
       shape: const RoundedRectangleBorder(borderRadius: AppTokens.brCard),
@@ -521,6 +609,9 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                           // Admins belong to no company — clear any selection
                           // so we never submit stale memberships for an admin.
                           if (r == UserRole.admin) _companyIds.clear();
+                          // Only the incharge is fund-scoped; any other role
+                          // must carry no funds (mirrors validateUserAssignment).
+                          if (r != UserRole.incharge) _fundIds.clear();
                           _serverError = null;
                           _companyError = null;
                         });
@@ -539,6 +630,11 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                   onToggle: (id) => setState(() {
                     if (_companyIds.contains(id)) {
                       _companyIds.remove(id);
+                      // Dropping a company drops any funds it backs — the
+                      // assignment must never reference a non-member company.
+                      _fundIds.removeWhere((fundId) => _funds.any(
+                            (f) => f.id == fundId && f.companyId == id,
+                          ));
                     } else {
                       _companyIds.add(id);
                     }
@@ -552,6 +648,22 @@ class _UserFormDialogState extends State<_UserFormDialog> {
                       ..insert(0, id);
                   }),
                 ),
+                // Per-incharge fund assignment — only the incharge role is
+                // fund-scoped, so the picker is shown for that role only.
+                if (_role == UserRole.incharge) ...[
+                  const SizedBox(height: AppTokens.lg),
+                  _FundMultiSelect(
+                    funds: _funds,
+                    companyNames: {
+                      for (final c in widget.companies) c.id: c.name,
+                    },
+                    selectedCompanyIds: _companyIds,
+                    selectedFundIds: _fundIds,
+                    loading: fundsLoading,
+                    enabled: !_saving,
+                    onToggle: _saving ? null : _toggleFund,
+                  ),
+                ],
               ] else ...[
                 const SizedBox(height: AppTokens.lg),
                 _ReadOnlyField(
@@ -769,6 +881,247 @@ class _CompanyMultiSelect extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Per-incharge fund picker. Shows the funds of the *currently selected*
+/// companies, grouped by company, as toggleable chips. Selecting a fund also
+/// grants its company (handled by [_UserFormDialogState._toggleFund]).
+///
+/// States:
+///   * **loading** → a small skeleton (the fund stream hasn't resolved yet).
+///   * **no company selected** → a hint to pick a company first.
+///   * **company selected but no funds** → an empty hint per the company group.
+///   * **funds present** → grouped [_FundChip]s.
+class _FundMultiSelect extends StatelessWidget {
+  const _FundMultiSelect({
+    required this.funds,
+    required this.companyNames,
+    required this.selectedCompanyIds,
+    required this.selectedFundIds,
+    required this.loading,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  /// All loadable funds across reachable companies.
+  final List<Fund> funds;
+
+  /// companyId -> display name, for the per-company group header.
+  final Map<String, String> companyNames;
+
+  /// Currently selected company ids (the picker shows only these companies'
+  /// funds).
+  final List<String> selectedCompanyIds;
+
+  /// Currently selected fund ids.
+  final Set<String> selectedFundIds;
+  final bool loading;
+  final bool enabled;
+
+  /// Null disables interaction (e.g. while saving).
+  final ValueChanged<Fund>? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final selectedCompanies = selectedCompanyIds.toSet();
+
+    // Funds belonging to the selected companies, grouped by company.
+    final byCompany = <String, List<Fund>>{};
+    for (final f in funds) {
+      if (selectedCompanies.contains(f.companyId)) {
+        (byCompany[f.companyId] ??= []).add(f);
+      }
+    }
+    for (final list in byCompany.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(
+              Icons.account_balance_wallet_outlined,
+              size: 20,
+              color: scheme.onSurfaceVariant,
+            ),
+            const SizedBox(width: AppTokens.sm),
+            Text(
+              'Assigned funds',
+              style: textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: scheme.onSurface,
+              ),
+            ),
+            const SizedBox(width: AppTokens.sm),
+            if (selectedFundIds.isNotEmpty)
+              Text(
+                '${selectedFundIds.length} selected',
+                style: textTheme.labelSmall?.copyWith(
+                  color: scheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+          ],
+        ),
+        const SizedBox(height: AppTokens.sm),
+        if (loading)
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: AppTokens.sm),
+            child: SkeletonList(count: 2),
+          )
+        else if (selectedCompanyIds.isEmpty)
+          const _Hint(
+            'Pick a company first, then choose which of its funds this '
+            'incharge manages.',
+          )
+        else ...[
+          for (final companyId in selectedCompanyIds)
+            _FundGroup(
+              companyName: companyNames[companyId] ?? companyId,
+              funds: byCompany[companyId] ?? const [],
+              selectedFundIds: selectedFundIds,
+              enabled: enabled,
+              onToggle: onToggle,
+            ),
+          const SizedBox(height: AppTokens.xs),
+          const _Hint(
+            'A zero-fund incharge sees no funds until you assign one.',
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// One company's worth of fund chips, with a small company-name header and an
+/// empty hint when the company has no funds yet.
+class _FundGroup extends StatelessWidget {
+  const _FundGroup({
+    required this.companyName,
+    required this.funds,
+    required this.selectedFundIds,
+    required this.enabled,
+    required this.onToggle,
+  });
+
+  final String companyName;
+  final List<Fund> funds;
+  final Set<String> selectedFundIds;
+  final bool enabled;
+  final ValueChanged<Fund>? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTokens.sm),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            companyName.toUpperCase(),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: AppTokens.xs),
+          if (funds.isEmpty)
+            const _Hint('No funds in this company yet.')
+          else
+            Wrap(
+              spacing: AppTokens.sm,
+              runSpacing: AppTokens.sm,
+              children: [
+                for (final f in funds)
+                  _FundChip(
+                    fund: f,
+                    selected: selectedFundIds.contains(f.id),
+                    onToggle: enabled && onToggle != null
+                        ? () => onToggle!(f)
+                        : null,
+                  ),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A single toggleable fund chip showing the fund name and its available
+/// balance, using the app's tabular-figure money formatting.
+class _FundChip extends StatelessWidget {
+  const _FundChip({
+    required this.fund,
+    required this.selected,
+    required this.onToggle,
+  });
+
+  final Fund fund;
+  final bool selected;
+  final VoidCallback? onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+
+    return FilterChip(
+      selected: selected,
+      onSelected: onToggle == null ? null : (_) => onToggle!(),
+      showCheckmark: true,
+      selectedColor: scheme.primaryContainer,
+      checkmarkColor: scheme.onPrimaryContainer,
+      tooltip: selected ? 'Unassign ${fund.name}' : 'Assign ${fund.name}',
+      label: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            fund.name,
+            style: textTheme.labelLarge?.copyWith(
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            ),
+          ),
+          Text(
+            fund.availableBalance.format(),
+            style: textTheme.labelSmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Small muted helper text used for the fund picker's hint/empty states.
+class _Hint extends StatelessWidget {
+  const _Hint(this.message);
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Text(
+      message,
+      style: Theme.of(context)
+          .textTheme
+          .bodySmall
+          ?.copyWith(color: scheme.onSurfaceVariant),
     );
   }
 }

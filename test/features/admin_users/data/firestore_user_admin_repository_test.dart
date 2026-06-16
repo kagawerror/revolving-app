@@ -46,6 +46,7 @@ void main() {
         role: UserRole.incharge,
         companyId: 'c1',
         companyIds: const ['c1', 'c2'],
+        assignedFundIds: const ['f1', 'f2'],
       );
       expect(res.isOk, isTrue);
       expect(res.valueOrNull, 'newuid123');
@@ -60,6 +61,8 @@ void main() {
       expect(data['email'], 'jane@acme.com');
       expect(data['themeMode'], 'system');
       expect(data['accentId'], 'forest');
+      // Per-incharge fund scoping persisted on create.
+      expect(data['assignedFundIds'], ['f1', 'f2']);
       // Admin-created accounts use a temporary password, so the user is forced
       // to set a new one on first sign-in.
       expect(data['mustChangePassword'], true);
@@ -189,11 +192,35 @@ void main() {
       expect(data['companyId'], 'c2');
       expect(data['companyIds'], ['c2', 'c3']);
       expect(data['displayName'], 'New');
+      // assignedFundIds written atomically (empty here — manager isn't scoped).
+      expect(data['assignedFundIds'], const <String>[]);
       // Untouched fields preserved.
       expect(data['email'], 'keep@acme.com');
       expect(data['themeMode'], 'dark');
       expect(data['accentId'], 'sunset');
       expect(data['photoUrl'], 'http://img');
+    });
+
+    test('persists assignedFundIds for an incharge', () async {
+      await db.collection('users').doc('u2').set({
+        'role': 'incharge',
+        'companyId': 'c1',
+        'companyIds': ['c1'],
+        'displayName': 'Custodian',
+        'email': 'cust@acme.com',
+      });
+      final repo = FirestoreUserAdminRepository(db);
+      final res = await repo.updateAssignment(
+        uid: 'u2',
+        role: UserRole.incharge,
+        companyId: 'c1',
+        companyIds: const ['c1', 'c2'],
+        displayName: 'Custodian',
+        assignedFundIds: const ['f1', 'f9'],
+      );
+      expect(res.isOk, isTrue);
+      final data = (await db.collection('users').doc('u2').get()).data()!;
+      expect(data['assignedFundIds'], ['f1', 'f9']);
     });
   });
 
@@ -211,6 +238,8 @@ void main() {
       expect(legacy.companyIds, const <String>[]);
       // Backward-compat: membership resolves to the single primary company.
       expect(legacy.companyMemberships, ['c1']);
+      // A doc predating assignedFundIds parses to an empty list (no backfill).
+      expect(legacy.assignedFundIds, const <String>[]);
     });
   });
 

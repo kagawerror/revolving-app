@@ -53,6 +53,11 @@ service cloud.firestore {
                .hasOnly(['displayName', 'photoUrl', 'themeMode', 'accentId'])
           && request.resource.data.role == resource.data.role
           && request.resource.data.companyId == resource.data.companyId
+          // Defense-in-depth: assignedFundIds is admin-controlled (per-incharge
+          // fund scoping). The hasOnly allow-list above already excludes it; this
+          // pin makes the intent explicit alongside role/companyId.
+          && request.resource.data.get('assignedFundIds', [])
+               == resource.data.get('assignedFundIds', [])
         )
         // Owner clears their OWN forced-rotation flag (true -> false ONLY) after
         // a successful self-service password change. mustChangePassword is the
@@ -67,6 +72,10 @@ service cloud.firestore {
           && request.resource.data.mustChangePassword == false
           && request.resource.data.role == resource.data.role
           && request.resource.data.companyId == resource.data.companyId
+          // Defense-in-depth pin (see above): the owner clearing their rotation
+          // flag may not alter their admin-controlled fund scoping.
+          && request.resource.data.get('assignedFundIds', [])
+               == resource.data.get('assignedFundIds', [])
         );
       // First-time setup: the founding user creates their own admin profile,
       // allowed only while the app has not been bootstrapped yet.

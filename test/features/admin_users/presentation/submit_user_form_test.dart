@@ -6,8 +6,10 @@ import 'package:rev_app/features/admin_users/domain/admin_password_repository.da
 import 'package:rev_app/features/admin_users/domain/user_admin_repository.dart';
 import 'package:rev_app/features/admin_users/presentation/submit_user_form.dart';
 import 'package:rev_app/features/admin_users/presentation/user_form_dialog.dart';
+import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/companies/domain/company.dart';
+import 'package:rev_app/features/companies/domain/fund.dart';
 
 class _MockUserAdminRepository extends Mock implements UserAdminRepository {}
 
@@ -15,6 +17,18 @@ class _MockAdminPasswordRepository extends Mock
     implements AdminPasswordRepository {}
 
 const _companies = [Company(id: 'c1', name: 'Acme')];
+
+final _funds = [
+  Fund(
+    id: 'f1',
+    companyId: 'c1',
+    name: 'Petty cash',
+    originalBudget: Money.fromCentavos(100000),
+    availableBalance: Money.fromCentavos(100000),
+    lowBalanceThresholdPct: 3,
+    status: FundStatus.active,
+  ),
+];
 
 const _existing = AppUser(
   uid: 'u1',
@@ -32,6 +46,7 @@ UserFormSubmission _editSubmission({
   UserRole role = UserRole.superior,
   String newPassword = '',
   String? newConfirmPassword,
+  List<String> fundIds = const [],
 }) =>
     UserFormSubmission(
       displayName: displayName,
@@ -43,6 +58,7 @@ UserFormSubmission _editSubmission({
       role: role,
       companyId: 'c1',
       companyIds: const ['c1'],
+      fundIds: fundIds,
     );
 
 void main() {
@@ -63,6 +79,7 @@ void main() {
         submission: submission,
         existing: _existing,
         companies: _companies,
+        funds: _funds,
         userAdminRepository: userRepo,
         adminPasswordRepository: passwordRepo,
       );
@@ -74,6 +91,7 @@ void main() {
           companyId: any(named: 'companyId'),
           companyIds: any(named: 'companyIds'),
           displayName: any(named: 'displayName'),
+          assignedFundIds: any(named: 'assignedFundIds'),
         )).thenAnswer((_) async => const Ok(null));
   }
 
@@ -157,6 +175,46 @@ void main() {
       verifyNever(() => passwordRepo.setUserPassword(
             uid: any(named: 'uid'),
             newPassword: any(named: 'newPassword'),
+          ));
+    });
+  });
+
+  group('fund assignment', () {
+    test('incharge fundIds reach the repo on update', () async {
+      stubUpdateOk();
+
+      final message = await run(_editSubmission(
+        role: UserRole.incharge,
+        fundIds: const ['f1'],
+      ));
+
+      expect(message, isNull);
+      verify(() => userRepo.updateAssignment(
+            uid: 'u1',
+            role: UserRole.incharge,
+            companyId: 'c1',
+            companyIds: ['c1'],
+            displayName: 'Jane Updated',
+            assignedFundIds: ['f1'],
+          )).called(1);
+    });
+
+    test('a fund outside the incharge companies is rejected before any write',
+        () async {
+      // _funds only knows f1 (in c1); f2 is unknown to the validator.
+      final message = await run(_editSubmission(
+        role: UserRole.incharge,
+        fundIds: const ['f2'],
+      ));
+
+      expect(message, 'A selected fund is not in this user’s companies.');
+      verifyNever(() => userRepo.updateAssignment(
+            uid: any(named: 'uid'),
+            role: any(named: 'role'),
+            companyId: any(named: 'companyId'),
+            companyIds: any(named: 'companyIds'),
+            displayName: any(named: 'displayName'),
+            assignedFundIds: any(named: 'assignedFundIds'),
           ));
     });
   });

@@ -15,6 +15,7 @@ import '../../../core/error/failure_ui.dart';
 import '../../auth/domain/app_user.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/company.dart';
+import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_providers.dart';
 import 'submit_user_form.dart';
 import 'user_admin_providers.dart';
@@ -50,6 +51,8 @@ class UserAdminScreen extends ConsumerWidget {
       existing: existing,
       // EDIT-only reset pair appears only when the admin relay is configured.
       showPasswordReset: AppSecrets.hasAdminRelay,
+      // The dialog watches [allFundsProvider] itself, so the fund picker
+      // populates when the stream resolves even if the dialog opened mid-load.
       // Orchestration (create/edit + the profile-first, password-second
       // partial-failure contract) lives in the provider-injected
       // [submitUserForm] so it is unit-testable without pumping the dialog.
@@ -57,6 +60,9 @@ class UserAdminScreen extends ConsumerWidget {
         submission: s,
         existing: existing,
         companies: companies,
+        // Read funds fresh at submit time (not a snapshot frozen at open) so
+        // validation runs against the resolved set, not a stale empty list.
+        funds: ref.read(allFundsProvider).valueOrNull ?? const <Fund>[],
         userAdminRepository: ref.read(userAdminRepositoryProvider),
         adminPasswordRepository: ref.read(adminPasswordRepositoryProvider),
       ),

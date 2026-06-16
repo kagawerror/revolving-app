@@ -8,6 +8,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_list_tile.dart';
 import '../../../core/widgets/empty_state.dart';
+import '../../../core/widgets/section_header.dart';
 import '../../../core/widgets/skeleton.dart';
 import '../../../core/widgets/status_pill.dart';
 import '../../../core/widgets/success_overlay.dart';
@@ -17,7 +18,7 @@ import '../../auth/presentation/auth_providers.dart';
 import '../../companies/domain/fund.dart';
 import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
-import '../../companies/presentation/admin_providers.dart';
+import '../../dashboard/presentation/dashboard_providers.dart' show companyNamesProvider;
 import '../../../core/money/money.dart';
 import '../../notifications/presentation/low_balance_banner.dart';
 import '../../replenishment/presentation/replenish_select_dialog.dart';
@@ -31,6 +32,7 @@ import 'release_flow_controller.dart';
 import 'request_detail_screen.dart';
 import 'request_providers.dart';
 import 'request_status_visual.dart';
+import 'visible_funds_providers.dart';
 import 'widgets/request_breakdown_view.dart';
 
 /// Requests under a single fund. Keyed by (companyId, fundId) so the query is
@@ -82,46 +84,108 @@ class _InchargeBody extends ConsumerWidget {
         const _ConflictsEntry(),
         Expanded(
           child: ref
-              .watch(companyFundsProvider(companyId))
+              .watch(inchargeVisibleFundsProvider(companyId))
               .when(
                 loading: () => const Padding(
                   padding: EdgeInsets.all(AppTokens.lg),
                   child: SurfaceCard(child: SkeletonList()),
                 ),
                 error: (e, _) => Center(child: Text('Error: $e')),
-                data: (funds) => Column(
-                  children: [
-                    LowBalanceBanner(funds: funds),
-                    Expanded(
-                      child: funds.isEmpty
-                          ? const EmptyState(
-                              title: 'No funds yet',
-                              message:
-                                  'Once an admin sets up a fund for your '
-                                  'company, it will appear here.',
-                            )
-                          : ListView(
-                              padding: const EdgeInsets.fromLTRB(
-                                AppTokens.lg,
-                                AppTokens.md,
-                                AppTokens.lg,
-                                AppTokens.bottomNavContentInset,
+                data: (visible) {
+                  final funds = visible.funds;
+                  // Strict empty state for an incharge with no assigned funds —
+                  // distinct from "no funds exist". Never shown for an admin
+                  // superuser (unscoped), who falls through to the list/banner.
+                  if (visible.isEmptyState) {
+                    return const EmptyState(
+                      title: 'No funds assigned',
+                      message:
+                          'You don’t have any funds yet. Ask your admin to '
+                          'assign one to you, then it’ll show up here.',
+                      showMascot: true,
+                    );
+                  }
+                  return Column(
+                    children: [
+                      LowBalanceBanner(funds: funds),
+                      Expanded(
+                        child: funds.isEmpty
+                            ? const EmptyState(
+                                title: 'No funds yet',
+                                message:
+                                    'Once an admin sets up a fund for your '
+                                    'company, it will appear here.',
+                              )
+                            : _GroupedFundList(
+                                funds: funds,
+                                companyNames:
+                                    ref.watch(companyNamesProvider),
                               ),
-                              children: [
-                                for (final f in funds)
-                                  Padding(
-                                    padding: const EdgeInsets.only(
-                                      bottom: AppTokens.lg,
-                                    ),
-                                    child: _FundSection(fund: f),
-                                  ),
-                              ],
-                            ),
-                    ),
-                  ],
-                ),
+                      ),
+                    ],
+                  );
+                },
               ),
         ),
+      ],
+    );
+  }
+}
+
+/// The scoped fund list, grouped by owning company. Companies are sorted by
+/// name (then funds by name within each), so the order is stable and readable
+/// for an incharge whose funds span multiple companies. A [SectionHeader] is
+/// shown per company ONLY when 2+ companies are present — a single-company
+/// incharge sees a clean ungrouped list (the company name still rides as the
+/// overline on each fund card via [_FundSection]).
+class _GroupedFundList extends StatelessWidget {
+  const _GroupedFundList({required this.funds, required this.companyNames});
+
+  final List<Fund> funds;
+  final Map<String, String> companyNames;
+
+  String _nameFor(String companyId) =>
+      companyNames[companyId] ?? 'Unknown company';
+
+  @override
+  Widget build(BuildContext context) {
+    // Group by companyId, preserving the input (name-sorted) fund order within
+    // each group via insertion order.
+    final byCompany = <String, List<Fund>>{};
+    for (final f in funds) {
+      (byCompany[f.companyId] ??= []).add(f);
+    }
+    // Sort funds within each company by name.
+    for (final list in byCompany.values) {
+      list.sort((a, b) => a.name.compareTo(b.name));
+    }
+    // Sort companies by display name (then id, for stability on equal names).
+    final companyIds = byCompany.keys.toList()
+      ..sort((a, b) {
+        final byName = _nameFor(a).compareTo(_nameFor(b));
+        return byName != 0 ? byName : a.compareTo(b);
+      });
+    final showHeaders = companyIds.length >= 2;
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppTokens.lg,
+        AppTokens.md,
+        AppTokens.lg,
+        AppTokens.bottomNavContentInset,
+      ),
+      children: [
+        for (final companyId in companyIds) ...[
+          if (showHeaders) SectionHeader(title: _nameFor(companyId)),
+          for (final f in byCompany[companyId]!)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppTokens.lg),
+              child: _FundSection(
+                fund: f,
+                companyName: _nameFor(companyId),
+              ),
+            ),
+        ],
       ],
     );
   }
@@ -198,7 +262,13 @@ class _ConflictsEntry extends ConsumerWidget {
 
 class _FundSection extends ConsumerStatefulWidget {
   final Fund fund;
-  const _FundSection({required this.fund});
+
+  /// Owning-company display name, shown as an uppercase overline above the fund
+  /// name — matches the dashboard `_FundCard` treatment so the same fund reads
+  /// the same everywhere. Null/empty hides the overline (e.g. names not loaded).
+  final String? companyName;
+
+  const _FundSection({required this.fund, this.companyName});
 
   @override
   ConsumerState<_FundSection> createState() => _FundSectionState();
@@ -290,6 +360,18 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      if (widget.companyName != null &&
+                          widget.companyName!.isNotEmpty)
+                        Text(
+                          widget.companyName!.toUpperCase(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: textTheme.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.4,
+                          ),
+                        ),
                       Text(
                         fund.name,
                         style: textTheme.titleMedium?.copyWith(
@@ -357,32 +439,41 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                     )
                   : Column(
                       children: [
-                        for (final r in list)
+                        for (var i = 0; i < list.length; i++) ...[
+                          if (i > 0)
+                            const Divider(
+                              height: 1,
+                              indent: AppTokens.md,
+                              endIndent: AppTokens.md,
+                            ),
                           AppListTile(
-                            title: r.beneficiaryName,
-                            subtitle: r.purpose,
+                            title: list[i].beneficiaryName,
+                            subtitle: list[i].purpose,
                             trailing: Column(
                               crossAxisAlignment: CrossAxisAlignment.end,
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 RequestBreakdownView(
                                   breakdown: computeRequestBreakdown(
-                                    r,
+                                    list[i],
                                     pendingPartial:
-                                        pendingByRequest[r.id] ?? Money.zero,
+                                        pendingByRequest[list[i].id] ??
+                                        Money.zero,
                                   ),
                                   compact: true,
                                 ),
                                 const SizedBox(height: AppTokens.xs),
-                                _RequestAction(request: r),
+                                _RequestAction(request: list[i]),
                               ],
                             ),
                             onTap: () => Navigator.of(context).push(
                               MaterialPageRoute(
-                                builder: (_) => RequestDetailScreen(request: r),
+                                builder: (_) =>
+                                    RequestDetailScreen(request: list[i]),
                               ),
                             ),
                           ),
+                        ],
                       ],
                     );
             },

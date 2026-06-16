@@ -27,6 +27,17 @@ import '../../auth/domain/bootstrap_rules.dart'
 /// must match its confirmation. This check runs before the role/company branch
 /// so a credential typo is surfaced first. The password is never logged or
 /// stored here — this is pure validation only.
+/// Fund assignment rules (per-incharge fund scoping):
+///   * A **non-incharge** role MUST carry an empty [assignedFundIds] (only the
+///     incharge custodian is fund-scoped). The UI clears funds on a role change,
+///     but the domain function is self-protecting.
+///   * For an **incharge**, every assigned fund must exist in [fundCompanyById]
+///     (a fundId -> owning-companyId map of the real funds) AND its owning
+///     company must be one of the incharge's [companyIds]. Assigning a fund whose
+///     company isn't in the membership is rejected (the UI auto-adds the company
+///     on selection, so this only fires on a stale/forged submission).
+///   * A **zero-fund incharge is VALID** — it is the strict empty state ("no
+///     funds assigned"), an intentional saved state, never an error here.
 ValidationFailure? validateUserAssignment({
   required String displayName,
   required String email,
@@ -34,6 +45,8 @@ ValidationFailure? validateUserAssignment({
   required String companyId,
   required List<String> companyIds,
   required Set<String> existingCompanyIds,
+  List<String> assignedFundIds = const [],
+  Map<String, String> fundCompanyById = const {},
   String? password,
   String? confirmPassword,
   bool validateEmail = true,
@@ -56,6 +69,14 @@ ValidationFailure? validateUserAssignment({
       return const ValidationFailure('Passwords do not match.');
     }
   }
+  // Only the incharge custodian is fund-scoped; any other role must carry no
+  // fund assignments. Checked before the role branches below so a stale fund
+  // list on a non-incharge role is surfaced regardless of admin/non-admin.
+  if (role != UserRole.incharge && assignedFundIds.isNotEmpty) {
+    return const ValidationFailure(
+      'Only an incharge can be assigned funds.',
+    );
+  }
   if (role == UserRole.admin) {
     if (companyId.isNotEmpty || companyIds.isNotEmpty) {
       return const ValidationFailure('Admins are not assigned to a company.');
@@ -69,6 +90,20 @@ ValidationFailure? validateUserAssignment({
       !companyIds.every(existingCompanyIds.contains) ||
       !companyIds.contains(companyId)) {
     return const ValidationFailure('Select an existing company.');
+  }
+  // Incharge fund scoping: every assigned fund must be a real fund whose owning
+  // company is one of this incharge's memberships. A zero-fund incharge is the
+  // valid strict empty state and falls straight through.
+  if (role == UserRole.incharge) {
+    final memberships = companyIds.toSet();
+    for (final fundId in assignedFundIds) {
+      final ownerCompany = fundCompanyById[fundId];
+      if (ownerCompany == null || !memberships.contains(ownerCompany)) {
+        return const ValidationFailure(
+          'A selected fund is not in this user’s companies.',
+        );
+      }
+    }
   }
   return null;
 }

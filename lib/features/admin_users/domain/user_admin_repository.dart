@@ -18,6 +18,7 @@ abstract interface class UserAdminRepository {
     required UserRole role,
     required String companyId,
     required List<String> companyIds,
+    List<String> assignedFundIds = const [],
   });
 
   /// Updates the mutable assignment fields of an existing profile. UID and email
@@ -28,5 +29,6 @@ abstract interface class UserAdminRepository {
     required String companyId,
     required List<String> companyIds,
     required String displayName,
+    List<String> assignedFundIds = const [],
   });
 }
