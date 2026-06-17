@@ -14,15 +14,20 @@ import 'package:rev_app/features/replenishment/presentation/replenishment_provid
 
 class _MockRepo extends Mock implements ReplenishmentRepository {}
 
-Replenishment _rep() => Replenishment(
+Replenishment _rep({
+  ReplenishmentStatus status = ReplenishmentStatus.submitted,
+  String? rejectionReason,
+}) =>
+    Replenishment(
       id: 'r1',
       companyId: 'c1',
       fundId: 'f1',
-      status: ReplenishmentStatus.submitted,
+      status: status,
       requestIds: const ['req1', 'req2'],
       total: Money.fromCentavos(150000),
       reportNotes: '',
       createdByUid: 'inc',
+      rejectionReason: rejectionReason,
     );
 
 AppUser _approver() => const AppUser(
@@ -33,13 +38,13 @@ AppUser _approver() => const AppUser(
       email: 'm@x.io',
     );
 
-Widget _host(ReplenishmentRepository repo) => ProviderScope(
+Widget _host(ReplenishmentRepository repo, {Replenishment? rep}) => ProviderScope(
       overrides: [
         currentUserProvider.overrideWith((ref) => Stream.value(_approver())),
         replenishmentRepositoryProvider.overrideWithValue(repo),
       ],
       child: MaterialApp(
-        home: ReplenishmentDetailScreen(replenishment: _rep()),
+        home: ReplenishmentDetailScreen(replenishment: rep ?? _rep()),
       ),
     );
 
@@ -92,7 +97,7 @@ void main() {
         actorUid: 'mgr')).called(1);
   });
 
-  testWidgets('Reject opens a confirmation dialog; cancel does NOT call repo',
+  testWidgets('Reject opens the reason sheet; cancel does NOT call repo',
       (tester) async {
     final repo = _MockRepo();
     await tester.pumpWidget(_host(repo));
@@ -101,27 +106,62 @@ void main() {
     await tester.tap(find.widgetWithText(OutlinedButton, 'Reject'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Reject replenishment?'), findsOneWidget);
+    // The required-remarks sheet, not the old confirm dialog.
+    expect(find.text('Reject replenishment'), findsOneWidget);
+    expect(find.widgetWithText(TextField, 'Reason for rejection'),
+        findsOneWidget);
 
-    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Cancel'));
     await tester.pumpAndSettle();
 
     verifyNever(() => repo.reject(
         replenishment: any(named: 'replenishment'),
-        actorUid: any(named: 'actorUid')));
+        actorUid: any(named: 'actorUid'),
+        reason: any(named: 'reason')));
   });
 
-  testWidgets('Reject confirm calls repo.reject', (tester) async {
+  testWidgets('Reject is blocked until a valid remark is entered',
+      (tester) async {
+    final repo = _MockRepo();
+    await tester.pumpWidget(_host(repo));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Reject'));
+    await tester.pumpAndSettle();
+
+    // The sheet's confirm button is disabled with no remark...
+    final confirm = tester.widget<FilledButton>(
+        find.widgetWithText(FilledButton, 'Reject'));
+    expect(confirm.onPressed, isNull);
+
+    // ...and stays disabled for a too-short remark.
+    await tester.enterText(find.byType(TextField), 'no');
+    await tester.pump();
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Reject'))
+          .onPressed,
+      isNull,
+    );
+  });
+
+  testWidgets('Reject with a valid remark calls repo.reject with the reason',
+      (tester) async {
     final repo = _MockRepo();
     when(() => repo.reject(
             replenishment: any(named: 'replenishment'),
-            actorUid: any(named: 'actorUid')))
+            actorUid: any(named: 'actorUid'),
+            reason: any(named: 'reason')))
         .thenAnswer((_) async => const Ok(null));
     await tester.pumpWidget(_host(repo));
     await tester.pumpAndSettle();
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Reject'));
     await tester.pumpAndSettle();
+
+    await tester.enterText(
+        find.byType(TextField), 'Amounts do not match the receipts');
+    await tester.pump();
     await tester.tap(find.widgetWithText(FilledButton, 'Reject'));
     // Drain the success overlay timer + post-decision pop (see approve test).
     await tester.pump();
@@ -130,6 +170,29 @@ void main() {
 
     verify(() => repo.reject(
         replenishment: any(named: 'replenishment'),
-        actorUid: 'mgr')).called(1);
+        actorUid: 'mgr',
+        reason: 'Amounts do not match the receipts')).called(1);
+  });
+
+  testWidgets('rejected report shows the rejection-remarks callout to the reader',
+      (tester) async {
+    final rejected = _rep(
+      status: ReplenishmentStatus.rejected,
+      rejectionReason: 'Amounts do not match the receipts',
+    );
+    await tester.pumpWidget(_host(_MockRepo(), rep: rejected));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rejection remarks'), findsOneWidget);
+    expect(find.text('Amounts do not match the receipts'), findsOneWidget);
+  });
+
+  testWidgets('rejected report with no remark hides the callout (legacy reports)',
+      (tester) async {
+    final rejected = _rep(status: ReplenishmentStatus.rejected);
+    await tester.pumpWidget(_host(_MockRepo(), rep: rejected));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Rejection remarks'), findsNothing);
   });
 }

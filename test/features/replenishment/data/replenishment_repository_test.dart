@@ -139,7 +139,10 @@ void main() {
     await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
     final submitted = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
-    final res = await repo.reject(replenishment: submitted, actorUid: 'mgr');
+    final res = await repo.reject(
+        replenishment: submitted,
+        actorUid: 'mgr',
+        reason: 'A valid rejection reason for this report.');
     expect(res.isOk, isTrue);
     final fund = await db.collection('funds').doc('f1').get();
     expect(fund.data()!['status'], 'low'); // 200000 <= 3% of 10000000 = 300000
@@ -150,6 +153,52 @@ void main() {
       expect(req.data()!['status'], 'released');
       expect(req.data()!['replenishmentId'], isNull);
     }
+  });
+
+  test('reject persists the rejection reason + actor and does not credit the fund',
+      () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = (await repo.createDraft(
+            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
+        .valueOrNull!
+        .id;
+    final draft = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
+    final submitted = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    // A valid, long-enough reason so this test never depends on the exact
+    // validateRejectionRemarks rule (only that a clearly-valid value passes).
+    const reason = 'Receipts do not match the claimed total amount.';
+    final res = await repo.reject(
+        replenishment: submitted, actorUid: 'mgr', reason: reason);
+    expect(res.isOk, isTrue);
+    final rp = await db.collection('replenishments').doc(id).get();
+    expect(rp.data()!['status'], 'rejected');
+    expect(rp.data()!['rejectionReason'], reason);
+    expect(rp.data()!['rejectedByUid'], 'mgr');
+    // Reject does not credit the fund — the balance is unchanged.
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 200000);
+  });
+
+  test('reject of a non-submitted report returns an Err', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final rep = Replenishment(
+      id: 'x1',
+      companyId: 'c1',
+      fundId: 'f1',
+      status: ReplenishmentStatus.draft,
+      requestIds: const ['r1'],
+      total: Money.fromCentavos(400000),
+      reportNotes: '',
+      createdByUid: 'inc',
+    );
+    final res = await repo.reject(
+        replenishment: rep,
+        actorUid: 'mgr',
+        reason: 'A perfectly valid rejection reason here.');
+    expect(res.failureOrNull, isA<ValidationFailure>());
   });
 
   test('getById returns Ok for an existing replenishment', () async {
@@ -294,7 +343,10 @@ void main() {
     );
     final submitted = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
-    final res = await repo.reject(replenishment: submitted, actorUid: 'mgr');
+    final res = await repo.reject(
+        replenishment: submitted,
+        actorUid: 'mgr',
+        reason: 'A valid rejection reason for this report.');
     expect(res.isOk, isTrue);
 
     final notifs = await db

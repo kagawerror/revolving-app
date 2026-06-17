@@ -61,7 +61,15 @@ abstract interface class ReplenishmentRepository {
   /// fund balance, and set fund status from the new balance (active/low).
   Future<Result<void>> approve({required Replenishment replenishment, required String actorUid});
 
-  Future<Result<void>> reject({required Replenishment replenishment, required String actorUid});
+  /// REJECT a submitted report (`submitted → rejected`). Records the required
+  /// [reason] + actor on the report and restores the fund status (no balance
+  /// change). The rejection [reason] is NEVER put in the notification body
+  /// (PII) — it stays on the report's detail screen.
+  Future<Result<void>> reject({
+    required Replenishment replenishment,
+    required String actorUid,
+    required String reason,
+  });
 
   /// Cancels a draft and returns the fund to active/low.
   Future<Result<void>> discardDraft({required Replenishment replenishment});

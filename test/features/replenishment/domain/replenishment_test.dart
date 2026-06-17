@@ -49,6 +49,40 @@ void main() {
     });
     expect(r.submittedByName, isNull);
   });
+  test('fromMap reads rejection audit fields when present', () {
+    final ts = DateTime(2026, 6, 10, 9, 15);
+    final r = Replenishment.fromMap('rp1', {
+      'companyId': 'c1', 'fundId': 'f1', 'status': 'rejected',
+      'requestIds': ['a'], 'totalCentavos': 1000, 'reportNotes': '',
+      'createdByUid': 'u1',
+      'rejectionReason': 'Receipts do not match the claimed total.',
+      'rejectedByUid': 'mgr',
+      'rejectedAt': Timestamp.fromDate(ts),
+    });
+    expect(r.rejectionReason, 'Receipts do not match the claimed total.');
+    expect(r.rejectedByUid, 'mgr');
+    expect(r.rejectedAt, ts);
+  });
+  test('fromMap defaults rejection audit fields to null when absent', () {
+    final r = Replenishment.fromMap('rp1', {
+      'companyId': 'c1', 'fundId': 'f1', 'status': 'submitted',
+      'requestIds': ['a'], 'totalCentavos': 1000, 'reportNotes': '',
+      'createdByUid': 'u1',
+    });
+    expect(r.rejectionReason, isNull);
+    expect(r.rejectedByUid, isNull);
+    expect(r.rejectedAt, isNull);
+  });
+  test('toCreateMap leaves rejection audit fields unset', () {
+    final r = Replenishment(
+      id: '', companyId: 'c1', fundId: 'f1', status: ReplenishmentStatus.draft,
+      requestIds: const ['a'], total: Money.fromCentavos(1000), reportNotes: '',
+      createdByUid: 'u1');
+    final m = r.toCreateMap();
+    expect(m['rejectionReason'], isNull);
+    expect(m['rejectedByUid'], isNull);
+    expect(m['rejectedAt'], isNull);
+  });
   test('toCreateMap seeds draft fields and omits id', () {
     final r = Replenishment(
       id: '', companyId: 'c1', fundId: 'f1', status: ReplenishmentStatus.draft,

@@ -11,6 +11,8 @@ import '../../../core/widgets/success_overlay.dart';
 import '../../../core/widgets/surface_card.dart';
 import '../../auth/presentation/auth_providers.dart';
 import '../domain/replenishment.dart';
+import '../domain/replenishment_status.dart';
+import 'rejection_reason_sheet.dart';
 import 'replenishment_providers.dart';
 import 'replenishment_status_ui.dart';
 
@@ -70,15 +72,29 @@ class _ReplenishmentDetailScreenState
   Future<void> _decide(bool approve) async {
     final user = ref.read(currentUserProvider).valueOrNull;
     if (user == null) return;
-    if (!await _confirm(approve)) return;
+
+    // Reject requires a remark the incharge will read; approve keeps its
+    // existing plain confirm. Both gates show BEFORE the busy state so no
+    // spinner appears beneath the dialog/sheet, and cancel aborts cleanly.
+    String? reason;
+    if (approve) {
+      if (!await _confirm(true)) return;
+    } else {
+      reason = await RejectionReasonSheet.show(context, widget.replenishment);
+      if (reason == null) return; // cancelled / dismissed
+    }
     if (!mounted) return;
+
     setState(() => _busy = true);
     final repo = ref.read(replenishmentRepositoryProvider);
     final res = approve
         ? await repo.approve(
             replenishment: widget.replenishment, actorUid: user.uid)
         : await repo.reject(
-            replenishment: widget.replenishment, actorUid: user.uid);
+            replenishment: widget.replenishment,
+            actorUid: user.uid,
+            reason: reason!,
+          );
     if (!mounted) return;
     setState(() => _busy = false);
     if (res.showOnError(context)) {
@@ -163,6 +179,47 @@ class _ReplenishmentDetailScreenState
                         ),
                         const SizedBox(height: AppTokens.xs),
                         Text(r.reportNotes, style: textTheme.bodyMedium),
+                      ],
+                    ),
+                  ),
+                ],
+                // Rejection remarks — the approver's required reason, surfaced
+                // to the incharge in an error-toned callout so the WHY of a
+                // rejected report is unmissable. Shown only when rejected with
+                // a non-empty reason (older reports may predate this field).
+                if (r.status == ReplenishmentStatus.rejected &&
+                    (r.rejectionReason?.trim().isNotEmpty ?? false)) ...[
+                  const SizedBox(height: AppTokens.md),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppTokens.md),
+                    decoration: BoxDecoration(
+                      color: scheme.errorContainer,
+                      borderRadius: AppTokens.brField,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.cancel_rounded,
+                                size: 16, color: scheme.onErrorContainer),
+                            const SizedBox(width: AppTokens.xs),
+                            Text(
+                              'Rejection remarks',
+                              style: textTheme.labelMedium?.copyWith(
+                                color: scheme.onErrorContainer,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppTokens.xs),
+                        Text(
+                          r.rejectionReason!.trim(),
+                          style: textTheme.bodyMedium
+                              ?.copyWith(color: scheme.onErrorContainer),
+                        ),
                       ],
                     ),
                   ),

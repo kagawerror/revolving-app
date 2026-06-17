@@ -9,6 +9,7 @@ import '../../companies/domain/fund.dart';
 import '../../messaging/domain/push_sender.dart';
 import '../../requests/domain/request_status.dart';
 import '../domain/replenishment.dart';
+import '../domain/rejection_remarks.dart';
 import '../domain/replenishment_fill.dart';
 import '../domain/replenishment_status.dart';
 import '../domain/replenishment_repository.dart';
@@ -381,9 +382,19 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
   }
 
   @override
-  Future<Result<void>> reject({required Replenishment replenishment, required String actorUid}) async {
+  Future<Result<void>> reject({
+    required Replenishment replenishment,
+    required String actorUid,
+    required String reason,
+  }) async {
     if (!replenishment.status.canTransitionTo(ReplenishmentStatus.rejected)) {
       return const Err(ValidationFailure('Only a submitted report can be rejected.'));
+    }
+    // Defense-in-depth: re-validate the remark server-side so the UI rule can
+    // never be bypassed. Single source of truth in validateRejectionRemarks.
+    final remarkError = validateRejectionRemarks(reason);
+    if (remarkError != null) {
+      return Err(ValidationFailure(remarkError));
     }
     // Captured inside the tx for the post-commit denormalized notification.
     String? fundName;
@@ -399,7 +410,11 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
         tx.update(_fundRef(replenishment.fundId), {'status': _restoredStatus(fund).name});
         tx.update(_reps.doc(replenishment.id), {
           'status': ReplenishmentStatus.rejected.name,
-          'approvedByUid': actorUid,
+          // Required rejection audit (the reason is PII — never goes to push).
+          'rejectionReason': reason,
+          'rejectedByUid': actorUid,
+          'rejectedAt': FieldValue.serverTimestamp(),
+          // Generic decision timestamp, kept for parity with approve().
           'decidedAt': FieldValue.serverTimestamp(),
         });
       });

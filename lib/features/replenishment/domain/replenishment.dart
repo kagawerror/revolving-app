@@ -81,6 +81,16 @@ class Replenishment extends Equatable {
   /// hero is shown "of {original}". Null on drafts/legacy docs and full fills.
   final int? originalAmountCentavos;
 
+  /// Rejection audit (approver action). Mirrors the requests dispute audit
+  /// (`disputedReason`/`disputedByUid`/`disputedAt`). The [rejectionReason] is
+  /// the required, user-facing explanation the incharge reads on the report's
+  /// detail screen — it is PII and must NOT appear in any notification body.
+  /// All null until the report is rejected, and on legacy docs. Read-only:
+  /// never set by [toCreateMap] (set at rejection time, not creation).
+  final String? rejectionReason;
+  final String? rejectedByUid;
+  final DateTime? rejectedAt;
+
   const Replenishment({
     required this.id,
     required this.companyId,
@@ -98,6 +108,9 @@ class Replenishment extends Equatable {
     this.submittedAt,
     this.decidedAt,
     this.originalAmountCentavos,
+    this.rejectionReason,
+    this.rejectedByUid,
+    this.rejectedAt,
   });
 
   int get itemCount => requestIds.length;
@@ -127,6 +140,9 @@ class Replenishment extends Equatable {
         submittedAt: (m['submittedAt'] as Timestamp?)?.toDate(),
         decidedAt: (m['decidedAt'] as Timestamp?)?.toDate(),
         originalAmountCentavos: m['originalAmountCentavos'] as int?,
+        rejectionReason: m['rejectionReason'] as String?,
+        rejectedByUid: m['rejectedByUid'] as String?,
+        rejectedAt: (m['rejectedAt'] as Timestamp?)?.toDate(),
       );
 
   Map<String, dynamic> toCreateMap() => {
@@ -147,5 +163,5 @@ class Replenishment extends Equatable {
   List<Object?> get props =>
       [id, companyId, fundId, status, requestIds, total, reportNotes, createdByUid,
        submittedByUid, submittedByName, approvedByUid, items, createdAt, submittedAt, decidedAt,
-       originalAmountCentavos];
+       originalAmountCentavos, rejectionReason, rejectedByUid, rejectedAt];
 }

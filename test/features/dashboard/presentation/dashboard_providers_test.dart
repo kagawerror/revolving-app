@@ -265,7 +265,9 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
       const Ok(null);
   @override
   Future<Result<void>> reject(
-          {required Replenishment replenishment, required String actorUid}) async =>
+          {required Replenishment replenishment,
+          required String actorUid,
+          required String reason}) async =>
       const Ok(null);
   @override
   Future<Result<void>> discardDraft(
