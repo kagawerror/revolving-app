@@ -387,6 +387,17 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                     ],
                   ),
                 ),
+                // Proof-of-cash entry point. Opens the audit list for this fund
+                // (view is open to the company; create is gated downstream).
+                IconButton(
+                  tooltip: 'Cash count',
+                  icon: const Icon(Icons.savings_outlined),
+                  onPressed: () => context.push(
+                    '/incharge/audit'
+                    '?companyId=${Uri.encodeQueryComponent(fund.companyId)}'
+                    '&fundId=${Uri.encodeQueryComponent(fund.id)}',
+                  ),
+                ),
                 if (canReplenish)
                   TextButton.icon(
                     icon: _busy

@@ -39,6 +39,9 @@ dependencies:
   flutter_riverpod: ^2.6.1
   go_router: ^14.6.2
   image_picker: ^1.1.2
+  # On-device OCR for the fund-audit cash-count sheet (pre-fills the denomination
+  # grid). Only mlkit_ocr_text_service.dart imports it.
+  google_mlkit_text_recognition: ^0.15.1
   flutter_image_compress: ^2.3.0
   http: ^1.2.2
   equatable: ^2.0.5

@@ -364,4 +364,34 @@ void main() {
       );
     });
   });
+
+  group('canCreateAudit (audit "New count" CTA wiring)', () {
+    test('incharge custodian and admin may create', () {
+      expect(canCreateAudit(UserRole.incharge), isTrue);
+      expect(canCreateAudit(UserRole.admin), isTrue);
+    });
+
+    test('view-only roles cannot create (no dead-end CTA)', () {
+      expect(canCreateAudit(UserRole.superior), isFalse);
+      expect(canCreateAudit(UserRole.manager), isFalse);
+      expect(canCreateAudit(UserRole.ceo), isFalse);
+      expect(canCreateAudit(UserRole.employee), isFalse);
+    });
+
+    test('signed-out (null role) cannot create', () {
+      expect(canCreateAudit(null), isFalse);
+    });
+  });
+
+  group('redirectFor — fund audit view is open to any signed-in role', () {
+    test('approver may view an audit under the /incharge subtree', () {
+      expect(
+        redirectFor(
+          auth: const AsyncData(_approver),
+          location: '/incharge/audit?companyId=c1&fundId=f1',
+        ),
+        isNull,
+      );
+    });
+  });
 }
