@@ -12,6 +12,9 @@ import '../features/admin_users/presentation/user_admin_screen.dart';
 import '../features/companies/presentation/adjust_fund_screen.dart';
 import '../features/companies/presentation/create_fund_screen.dart';
 import '../features/config/presentation/cloudinary_config_screen.dart';
+import '../features/fund_audit/presentation/fund_audit_create_screen.dart';
+import '../features/fund_audit/presentation/fund_audit_detail_screen.dart';
+import '../features/fund_audit/presentation/fund_audit_list_screen.dart';
 import '../features/profile/presentation/profile_screen.dart';
 import '../features/reports/presentation/report_screen.dart';
 import '../features/requests/presentation/acknowledged_worklist_screen.dart';
@@ -80,6 +83,14 @@ String? redirectFor({
     return home;
   }
 
+  // Fund audit VIEW is open to any signed-in same-company role (approvers
+  // review counts, incharge/admin also create). It nominally sits under the
+  // /incharge subtree, so without this an approver landing on /approvals would
+  // be bounced. CREATE (/incharge/audit/new) is separately gated by the route's
+  // own redirect (_auditCreateGuard); Firestore rules enforce the real
+  // company/role boundary on writes.
+  if (location.startsWith('/incharge/audit')) return null;
+
   // Reports is a shared route (no role shell owns it) but role-gated: only
   // admin/ceo/incharge (canViewReports) may enter. A permitted role passes
   // through; everyone else bounces home. Admin already returned above.
@@ -98,6 +109,24 @@ String? redirectFor({
 /// them, so the role-home redirect must not bounce them away. `/reports` is
 /// handled separately above (it is role-gated, not universally shared).
 const _sharedSignedInRoutes = <String>['/profile'];
+
+/// Whether [role] may CREATE a cash count. The single source of truth for the
+/// audit create permission: both the create-route guard and the list screen's
+/// "New count" CTA read it, so the CTA shows iff create is actually allowed.
+/// (incharge custodian or admin — mirrors [UserRole.canManageFundOrAdmin].)
+@visibleForTesting
+bool canCreateAudit(UserRole? role) => role != null && role.canManageFundOrAdmin;
+
+/// Gate the create-audit route to the incharge custodian or an admin. Other
+/// roles (e.g. approvers who may VIEW) are bounced to the audit list, carrying
+/// the same query params. Returns a redirect path, or `null` to allow.
+String? _auditCreateGuard(Ref ref, GoRouterState state) {
+  final user = ref.read(currentUserProvider).valueOrNull;
+  if (user == null) return null; // redirectFor handles signed-out.
+  if (canCreateAudit(user.role)) return null;
+  final qp = state.uri.query;
+  return '/incharge/audit${qp.isEmpty ? '' : '?$qp'}';
+}
 
 final routerProvider = Provider<GoRouter>((ref) {
   // Bridge the auth stream to a Listenable so the router is built once.
@@ -162,6 +191,36 @@ final routerProvider = Provider<GoRouter>((ref) {
         // by redirectFor (an employee sharing the /incharge shell is bounced).
         path: '/incharge/conflicts',
         builder: (_, _) => const ConflictWorklistScreen(),
+      ),
+      // Fund audit (proof-of-cash). companyId/fundId travel as query params;
+      // the entry point (the incharge fund list) supplies them. VIEW is open to
+      // any same-company role so approvers can review; CREATE is gated below.
+      GoRoute(
+        path: '/incharge/audit',
+        builder: (_, state) {
+          // CREATE is permitted iff the caller could pass _auditCreateGuard, so
+          // view-only roles never see a dead-end "New count" CTA.
+          final role = ref.read(currentUserProvider).valueOrNull?.role;
+          return FundAuditListScreen(
+            companyId: state.uri.queryParameters['companyId'] ?? '',
+            fundId: state.uri.queryParameters['fundId'] ?? '',
+            canCreate: canCreateAudit(role),
+          );
+        },
+      ),
+      GoRoute(
+        path: '/incharge/audit/new',
+        // Create is for the incharge custodian (admins may also count).
+        redirect: (context, state) => _auditCreateGuard(ref, state),
+        builder: (_, state) => FundAuditCreateScreen(
+          companyId: state.uri.queryParameters['companyId'] ?? '',
+          fundId: state.uri.queryParameters['fundId'] ?? '',
+        ),
+      ),
+      GoRoute(
+        path: '/incharge/audit/:id',
+        builder: (_, state) =>
+            FundAuditDetailScreen(auditId: state.pathParameters['id'] ?? ''),
       ),
       GoRoute(
         path: '/approvals',

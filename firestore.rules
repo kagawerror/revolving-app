@@ -357,6 +357,23 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Physical cash-count audits (proof-of-cash). Write-once and immutable: a
+    // new count is always a new doc. Read is open to the whole company (admins +
+    // approvers + incharge) so superiors can review counts; create is limited to
+    // the incharge custodian (or admin) for their own company, and the
+    // recorded custodian must be the authenticated user.
+    match /fundAudits/{auditId} {
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
+      allow create: if (isIncharge() || isAdmin())
+        && (sameCompany(request.resource.data.companyId) || isAdmin())
+        && request.resource.data.custodianUid == request.auth.uid
+        && request.resource.data.companyId is string
+        && request.resource.data.companyId.size() > 0
+        && request.resource.data.fundId is string
+        && request.resource.data.fundId.size() > 0;
+      allow update, delete: if false;
+    }
+
     match /notifications/{notifId} {
       allow read: if (sameCompany(resource.data.companyId) || isAdmin())
         && (myRole() in resource.data.recipientRoles);
