@@ -14,6 +14,13 @@ import 'report_models.dart';
 String _pdfPeso(Money m) =>
     NumberFormat('#,##0.00', 'en_PH').format(m.centavos / 100);
 
+/// Report brand colors. Deep "forest" green matches the app's default accent
+/// (`app_accents.dart`); the tint is its light wash for the total chip. Reports
+/// are static artifacts, so we use a fixed palette rather than the exporter's
+/// live in-app accent — every export looks consistent regardless of who made it.
+final _brand = PdfColor.fromInt(0xFF0B6E4F);
+final _brandTint = PdfColor.fromInt(0xFFE8F1ED);
+
 /// Print-ready PDF for the released-requests report: a title, the period label,
 /// a name/purpose/date/amount table, and a bold GRAND TOTAL row. Amounts use
 /// the human peso format (₱) since the PDF is human-facing. Async because
@@ -178,45 +185,119 @@ Future<Uint8List> replenishmentDetailPdf(
   return doc.save();
 }
 
+/// Branded report masthead: the company name as the lead line (or the report
+/// title itself when no company resolved), the report title as an uppercase
+/// subtitle, a right-aligned period + row-count meta block, and a brand rule
+/// underlining the whole band.
 pw.Widget _header(
   String title,
   String periodLabel,
   int rowCount,
   String companyName,
 ) {
+  final hasCompany = companyName.isNotEmpty;
+  final rowsLabel = rowCount == 1 ? '1 row' : '$rowCount rows';
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
-      if (companyName.isNotEmpty) ...[
-        pw.Text(
-          companyName,
-          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
-        ),
-        pw.SizedBox(height: 2),
-      ],
-      pw.Text(
-        title,
-        style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),
+      pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+        children: [
+          pw.Expanded(
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Text(
+                  hasCompany ? companyName : title,
+                  style: pw.TextStyle(
+                    fontSize: 22,
+                    fontWeight: pw.FontWeight.bold,
+                    color: _brand,
+                  ),
+                ),
+                if (hasCompany) ...[
+                  pw.SizedBox(height: 3),
+                  pw.Text(
+                    title.toUpperCase(),
+                    style: pw.TextStyle(
+                      fontSize: 11,
+                      fontWeight: pw.FontWeight.bold,
+                      letterSpacing: 1.2,
+                      color: PdfColors.grey700,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          pw.SizedBox(width: 16),
+          pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.end,
+            children: [
+              pw.Text(
+                periodLabel,
+                style: pw.TextStyle(
+                  fontSize: 11,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColors.grey800,
+                ),
+              ),
+              pw.SizedBox(height: 2),
+              pw.Text(
+                rowsLabel,
+                style: const pw.TextStyle(
+                  fontSize: 9,
+                  color: PdfColors.grey600,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
-      pw.SizedBox(height: 2),
-      pw.Text(
-        periodLabel,
-        style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
-      ),
-      pw.Text(
-        rowCount == 1 ? '1 row' : '$rowCount rows',
-        style: const pw.TextStyle(fontSize: 10, color: PdfColors.grey600),
-      ),
+      pw.SizedBox(height: 6),
+      pw.Container(height: 2, color: _brand),
     ],
   );
 }
 
+/// Right-aligned GRAND TOTAL as a tinted, brand-bordered chip so the bottom-line
+/// figure reads as the report's headline number.
 pw.Widget _grandTotal(String formattedTotal) {
-  return pw.Container(
-    alignment: pw.Alignment.centerRight,
-    child: pw.Text(
-      'GRAND TOTAL   $formattedTotal',
-      style: pw.TextStyle(fontSize: 14, fontWeight: pw.FontWeight.bold),
-    ),
+  return pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.end,
+    children: [
+      pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+        decoration: pw.BoxDecoration(
+          color: _brandTint,
+          borderRadius: pw.BorderRadius.circular(4),
+          border: pw.Border.all(color: _brand, width: 0.5),
+        ),
+        child: pw.Row(
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            pw.Text(
+              'GRAND TOTAL',
+              style: pw.TextStyle(
+                fontSize: 10,
+                fontWeight: pw.FontWeight.bold,
+                letterSpacing: 1.0,
+                color: PdfColors.grey700,
+              ),
+            ),
+            pw.SizedBox(width: 12),
+            pw.Text(
+              formattedTotal,
+              style: pw.TextStyle(
+                fontSize: 14,
+                fontWeight: pw.FontWeight.bold,
+                color: _brand,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
   );
 }
