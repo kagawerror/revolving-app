@@ -142,6 +142,9 @@ service cloud.firestore {
           && request.resource.data.lowBalanceThresholdPct
               == resource.data.lowBalanceThresholdPct
           && request.resource.data.name == resource.data.name)
+        // OPERATIONAL: incharge debits availableBalanceCentavos on release AND
+        // now CREDITS it during the auto-approve replenishment submit (same
+        // clause). Approver credits it via the legacy approve() path.
         || ((sameCompany(resource.data.companyId) || isAdmin())
           && (isIncharge() || isApprover() || isAdmin()));
       allow delete: if isAdmin();
@@ -295,7 +298,11 @@ service cloud.firestore {
         // replenished. Disputed/acknowledged cash is still reconcilable.
         // Captured proof + signature stay immutable. Mirrors
         // RequestStatus._allowed (released/acknowledged/disputed -> replenished).
-        || ((isApprover() || isAdmin())
+        // Incharge is permitted because replenishment now auto-approves on the
+        // incharge's submit (one runTransaction credits the fund and marks the
+        // line-item requests replenished); approver/admin retained for legacy
+        // in-flight 'submitted' reports they still drain.
+        || ((isIncharge() || isApprover() || isAdmin())
           && resource.data.status in ['released', 'acknowledged', 'disputed']
           && request.resource.data.status == 'replenished'
           && request.resource.data.replenishmentId is string
@@ -304,8 +311,10 @@ service cloud.firestore {
         // Partial replenishment: the request stays in its current reconcilable
         // status (released, acknowledged or disputed) while only
         // replenishedCentavos grows; amount, release proof and signature are
-        // immutable. This is a self-transition (no status change).
-        || ((isApprover() || isAdmin())
+        // immutable. This is a self-transition (no status change). Incharge is
+        // permitted because partial rows are written by the incharge's
+        // auto-approve submit transaction (see full-replenishment clause above).
+        || ((isIncharge() || isApprover() || isAdmin())
           && resource.data.status in ['released', 'acknowledged', 'disputed']
           && request.resource.data.status == resource.data.status
           && request.resource.data.replenishedCentavos
@@ -335,11 +344,39 @@ service cloud.firestore {
           && request.resource.data.companyId.size() > 0
           && request.resource.data.status == 'draft');
       // Admin superuser may act across companies; the status-transition checks
-      // stay unchanged so admin cannot make an illegal transition.
+      // mirror ReplenishmentStatus._allowed so admin cannot make an illegal
+      // transition.
       allow update: if (sameCompany(resource.data.companyId) || isAdmin()) && (
+        // AUTO-APPROVE SUBMIT: incharge/admin flips a draft straight to approved
+        // (the money transaction). companyId/fundId/totalCentavos are pinned
+        // immutable; autoApproved must be set true. The fund credit + per-item
+        // writes are authorized by their own collection rules (funds OPERATIONAL
+        // clause; requests replenish clauses; partialReplenishments create).
         ((isIncharge() || isAdmin())
           && resource.data.status == 'draft'
-          && request.resource.data.status in ['draft', 'submitted', 'rejected'])
+          && request.resource.data.status == 'approved'
+          && request.resource.data.autoApproved == true
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.fundId == resource.data.fundId
+          && request.resource.data.totalCentavos == resource.data.totalCentavos)
+        // DISCARD DRAFT: incharge/admin cancels a draft (no money moves).
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'draft'
+          && request.resource.data.status == 'rejected')
+        // ACKNOWLEDGE: approver/admin acknowledges an auto-approved report. NOT a
+        // status transition (approved stays approved) — a field update writing
+        // exactly the acknowledgment audit, with the actor stamping themselves.
+        // totalCentavos is pinned immutable.
+        || ((isApprover() || isAdmin())
+          && resource.data.status == 'approved'
+          && request.resource.data.status == 'approved'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['acknowledgedByUid', 'acknowledgedByName', 'acknowledgedAt'])
+          && request.resource.data.acknowledgedByUid == request.auth.uid
+          && request.resource.data.totalCentavos == resource.data.totalCentavos)
+        // LEGACY (drain-only): approver/admin approves or rejects an in-flight
+        // `submitted` doc created before the auto-approve change. No new
+        // `submitted` docs are produced by the app anymore.
         || ((isApprover() || isAdmin())
           && resource.data.status == 'submitted'
           && request.resource.data.status in ['approved', 'rejected'])
@@ -349,10 +386,11 @@ service cloud.firestore {
 
     match /partialReplenishments/{partialId} {
       // Audit rows written when a replenishment with partial line items is
-      // approved. Created by the approving approver (or admin superuser);
-      // immutable thereafter.
+      // credited. Under the auto-approve lifecycle the INCHARGE writes these
+      // inside their submit transaction, so incharge is now allowed alongside
+      // the legacy approver/admin path. Immutable thereafter.
       allow read: if isAdmin() || sameCompany(resource.data.companyId);
-      allow create: if (isApprover() || isAdmin())
+      allow create: if (isIncharge() || isApprover() || isAdmin())
         && (sameCompany(request.resource.data.companyId) || isAdmin());
       allow update, delete: if false;
     }

@@ -83,7 +83,34 @@ void main() {
     expect(res.failureOrNull, isA<ValidationFailure>());
   });
 
-  test('approve adds the bundled total back to the balance, tags requests replenished', () async {
+  // Helper: seed an already-`submitted` report directly (a legacy in-flight
+  // doc), so the legacy approve()/reject() drain paths can be exercised even
+  // though the new submit() auto-approves and never produces `submitted`.
+  Future<String> seedSubmitted({
+    List<String> requestIds = const ['r1', 'r2'],
+    int totalCentavos = 800000,
+    String? submittedByName,
+    int? originalAmountCentavos,
+    List<ReplenishmentItem>? items,
+  }) async {
+    // Default to FULL items for each requestId so the legacy approve() drain
+    // (which reads each line item) has something to tag. r1/r2 each owe 400000.
+    final resolvedItems = items ??
+        [for (final id in requestIds) full(id).copyWithAmount(400000)];
+    final ref = db.collection('replenishments').doc();
+    await ref.set({
+      'companyId': 'c1', 'fundId': 'f1', 'status': 'submitted',
+      'requestIds': requestIds, 'totalCentavos': totalCentavos,
+      'reportNotes': 'June', 'createdByUid': 'inc',
+      'submittedByUid': 'inc', 'submittedByName': submittedByName,
+      'originalAmountCentavos': originalAmountCentavos,
+      'items': resolvedItems.map((i) => i.toMap()).toList(),
+    });
+    return ref.id;
+  }
+
+  test('submit auto-approves a draft: credits the fund, tags requests, sets '
+      'approved + autoApproved + acknowledgedByUid null', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final id = (await repo.createDraft(
             fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
@@ -91,10 +118,8 @@ void main() {
         .id;
     final draft = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
-    await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
-    final submitted = Replenishment.fromMap(id,
-        (await db.collection('replenishments').doc(id).get()).data()!);
-    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
+    final res = await repo.submit(
+        replenishment: draft, actorUid: 'inc', notes: 'June');
     expect(res.isOk, isTrue);
     final fund = await db.collection('funds').doc('f1').get();
     expect(fund.data()!['availableBalanceCentavos'], 1000000); // 200000 + 800000
@@ -106,9 +131,31 @@ void main() {
     }
     final rp = await db.collection('replenishments').doc(id).get();
     expect(rp.data()!['status'], 'approved');
+    expect(rp.data()!['autoApproved'], true);
+    expect(rp.data()!['acknowledgedByUid'], isNull);
   });
 
-  test('double-approval of a stale submitted object is rejected in-tx', () async {
+  test('double-submit of a stale draft object is rejected in-tx', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = (await repo.createDraft(
+            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
+        .valueOrNull!
+        .id;
+    final draft = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    final first = await repo.submit(
+        replenishment: draft, actorUid: 'inc', notes: 'June');
+    expect(first.isOk, isTrue);
+    // Re-submit the SAME stale draft object: the in-tx re-check rejects it.
+    final second = await repo.submit(
+        replenishment: draft, actorUid: 'inc', notes: 'June');
+    expect(second.failureOrNull, isA<ValidationFailure>());
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 1000000); // stays after first
+  });
+
+  test('acknowledge stamps fields, keeps status approved; second call is a '
+      'no-op Ok', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final id = (await repo.createDraft(
             fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
@@ -117,26 +164,77 @@ void main() {
     final draft = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
     await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
+    final approved = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    expect(approved.needsAcknowledgment, isTrue);
+
+    final ack = await repo.acknowledge(
+        replenishment: approved, actorUid: 'mgr', actorName: 'Mona Manager');
+    expect(ack.isOk, isTrue);
+    final rp = await db.collection('replenishments').doc(id).get();
+    expect(rp.data()!['status'], 'approved'); // unchanged
+    expect(rp.data()!['acknowledgedByUid'], 'mgr');
+    expect(rp.data()!['acknowledgedByName'], 'Mona Manager');
+    expect(rp.data()!['acknowledgedAt'], isNotNull);
+
+    // Second call on the now-acknowledged doc is an idempotent no-op.
+    final acked = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    final second = await repo.acknowledge(
+        replenishment: acked, actorUid: 'other', actorName: 'X');
+    expect(second.isOk, isTrue);
+    final rp2 = await db.collection('replenishments').doc(id).get();
+    expect(rp2.data()!['acknowledgedByUid'], 'mgr'); // unchanged
+  });
+
+  test('acknowledge errs when the report is not approved', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final rep = Replenishment(
+      id: 'x1', companyId: 'c1', fundId: 'f1',
+      status: ReplenishmentStatus.draft,
+      requestIds: const ['r1'], total: Money.fromCentavos(400000),
+      reportNotes: '', createdByUid: 'inc',
+    );
+    final res = await repo.acknowledge(replenishment: rep, actorUid: 'mgr');
+    expect(res.failureOrNull, isA<ValidationFailure>());
+  });
+
+  test('LEGACY approve still drains a submitted doc', () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = await seedSubmitted();
+    final submitted = Replenishment.fromMap(id,
+        (await db.collection('replenishments').doc(id).get()).data()!);
+    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
+    expect(res.isOk, isTrue);
+    final fund = await db.collection('funds').doc('f1').get();
+    expect(fund.data()!['availableBalanceCentavos'], 1000000); // 200000 + 800000
+    expect(fund.data()!['status'], 'active');
+    for (final rid in ['r1', 'r2']) {
+      final req = await db.collection('requests').doc(rid).get();
+      expect(req.data()!['status'], 'replenished');
+    }
+    final rp = await db.collection('replenishments').doc(id).get();
+    expect(rp.data()!['status'], 'approved');
+  });
+
+  test('LEGACY double-approval of a stale submitted object is rejected in-tx',
+      () async {
+    final repo = FirestoreReplenishmentRepository(db);
+    final id = await seedSubmitted();
     final submitted = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
     final first = await repo.approve(replenishment: submitted, actorUid: 'mgr');
     expect(first.isOk, isTrue);
-    // Re-approve the SAME stale submitted object: the in-tx re-check rejects it.
     final second = await repo.approve(replenishment: submitted, actorUid: 'mgr');
     expect(second.failureOrNull, isA<ValidationFailure>());
     final fund = await db.collection('funds').doc('f1').get();
-    expect(fund.data()!['availableBalanceCentavos'], 1000000); // stays after first approve
+    expect(fund.data()!['availableBalanceCentavos'], 1000000);
   });
 
-  test('reject restores status to low and leaves requests released', () async {
+  test('LEGACY reject restores status to low and leaves requests released',
+      () async {
     final repo = FirestoreReplenishmentRepository(db);
-    final id = (await repo.createDraft(
-            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
-        .valueOrNull!
-        .id;
-    final draft = Replenishment.fromMap(id,
-        (await db.collection('replenishments').doc(id).get()).data()!);
-    await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
+    final id = await seedSubmitted();
     final submitted = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
     final res = await repo.reject(
@@ -155,20 +253,12 @@ void main() {
     }
   });
 
-  test('reject persists the rejection reason + actor and does not credit the fund',
-      () async {
+  test('LEGACY reject persists the rejection reason + actor and does not credit '
+      'the fund', () async {
     final repo = FirestoreReplenishmentRepository(db);
-    final id = (await repo.createDraft(
-            fundId: 'f1', items: [full('r1'), full('r2')], createdByUid: 'inc'))
-        .valueOrNull!
-        .id;
-    final draft = Replenishment.fromMap(id,
-        (await db.collection('replenishments').doc(id).get()).data()!);
-    await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
+    final id = await seedSubmitted();
     final submitted = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
-    // A valid, long-enough reason so this test never depends on the exact
-    // validateRejectionRemarks rule (only that a clearly-valid value passes).
     const reason = 'Receipts do not match the claimed total amount.';
     final res = await repo.reject(
         replenishment: submitted, actorUid: 'mgr', reason: reason);
@@ -177,7 +267,6 @@ void main() {
     expect(rp.data()!['status'], 'rejected');
     expect(rp.data()!['rejectionReason'], reason);
     expect(rp.data()!['rejectedByUid'], 'mgr');
-    // Reject does not credit the fund — the balance is unchanged.
     final fund = await db.collection('funds').doc('f1').get();
     expect(fund.data()!['availableBalanceCentavos'], 200000);
   });
@@ -234,7 +323,8 @@ void main() {
     expect(res.failureOrNull, isA<ValidationFailure>());
   });
 
-  test('submit stamps submittedByName and denormalizes the notification', () async {
+  test('submit auto-approve denormalizes the needs-acknowledgment notification',
+      () async {
     await db.collection('companies').doc('c1').set({'name': 'Acme Corp'});
     final repo = FirestoreReplenishmentRepository(db);
     final id = (await repo.createDraft(
@@ -261,11 +351,13 @@ void main() {
     final rp = await db.collection('replenishments').doc(id).get();
     expect(rp.data()!['submittedByName'], 'Ada Incharge');
     expect(rp.data()!['originalAmountCentavos'], 750000);
+    expect(rp.data()!['status'], 'approved');
 
-    // The submitted notification carries the denormalized display fields.
+    // The needs-ack notification (replaces replenishmentSubmitted) carries the
+    // denormalized display fields and the POST-credit balance.
     final notifs = await db
         .collection('notifications')
-        .where('type', isEqualTo: 'replenishmentSubmitted')
+        .where('type', isEqualTo: 'replenishmentNeedsAck')
         .get();
     expect(notifs.docs.length, 1);
     final n = notifs.docs.first.data();
@@ -274,15 +366,21 @@ void main() {
     expect(n['actorName'], 'Ada Incharge');
     // Full r1 (400000) + partial r2 (100000) = 500000.
     expect(n['replenishAmountCentavos'], 500000);
-    expect(n['availableBalanceCentavos'], 200000);
+    // POST-credit balance: 200000 + 500000.
+    expect(n['availableBalanceCentavos'], 700000);
     expect(n['fillType'], 'mixed');
     expect(n['originalAmountCentavos'], 750000);
     expect((n['recipientRoles'] as List),
         ['admin', 'superior', 'manager', 'ceo']);
+    // No legacy replenishmentSubmitted alert is emitted on the new path.
+    final legacy = await db
+        .collection('notifications')
+        .where('type', isEqualTo: 'replenishmentSubmitted')
+        .get();
+    expect(legacy.docs, isEmpty);
   });
 
-  test('approve denormalizes the incharge notification with post-credit balance',
-      () async {
+  test('acknowledge notifies the incharge', () async {
     await db.collection('companies').doc('c1').set({'name': 'Acme Corp'});
     final repo = FirestoreReplenishmentRepository(db);
     final id = (await repo.createDraft(
@@ -291,56 +389,29 @@ void main() {
         .id;
     final draft = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
-    await repo.submit(
-      replenishment: draft,
-      actorUid: 'inc',
-      notes: 'June',
-      submitterName: 'Ada Incharge',
-      fundName: 'PC',
-      fundAvailableBalanceCentavos: 200000,
-      originalAmountCentavos: 800000,
-    );
-    final submitted = Replenishment.fromMap(id,
+    await repo.submit(replenishment: draft, actorUid: 'inc', notes: 'June');
+    final approved = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
-    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
-    expect(res.isOk, isTrue);
+    await repo.acknowledge(
+        replenishment: approved, actorUid: 'mgr', actorName: 'Mona Manager');
 
     final notifs = await db
         .collection('notifications')
-        .where('type', isEqualTo: 'replenishmentApproved')
+        .where('type', isEqualTo: 'replenishmentAcknowledged')
         .get();
     expect(notifs.docs.length, 1);
     final n = notifs.docs.first.data();
-    expect(n['fundName'], 'PC');
-    expect(n['companyName'], 'Acme Corp');
-    // actorName comes from the report's submittedByName (loaded by the approver).
-    expect(n['actorName'], 'Ada Incharge');
-    expect(n['replenishAmountCentavos'], 800000);
-    // POST-credit balance: 200000 + 800000.
-    expect(n['availableBalanceCentavos'], 1000000);
-    expect(n['fillType'], 'full');
-    // Original (pre-partial) total echoed back from the persisted report.
-    expect(n['originalAmountCentavos'], 800000);
     expect((n['recipientRoles'] as List), ['incharge']);
+    expect(n['actorName'], 'Mona Manager');
   });
 
-  test('reject denormalizes the incharge notification with unchanged balance',
-      () async {
+  test('LEGACY reject denormalizes the incharge notification with unchanged '
+      'balance', () async {
     final repo = FirestoreReplenishmentRepository(db);
-    final id = (await repo.createDraft(
-            fundId: 'f1', items: [full('r1')], createdByUid: 'inc'))
-        .valueOrNull!
-        .id;
-    final draft = Replenishment.fromMap(id,
-        (await db.collection('replenishments').doc(id).get()).data()!);
-    await repo.submit(
-      replenishment: draft,
-      actorUid: 'inc',
-      notes: 'June',
-      submitterName: 'Ada Incharge',
-      fundName: 'PC',
-      fundAvailableBalanceCentavos: 200000,
-    );
+    final id = await seedSubmitted(
+        requestIds: const ['r1'],
+        totalCentavos: 400000,
+        submittedByName: 'Ada Incharge');
     final submitted = Replenishment.fromMap(id,
         (await db.collection('replenishments').doc(id).get()).data()!);
     final res = await repo.reject(
@@ -357,7 +428,6 @@ void main() {
     expect(n['actorName'], 'Ada Incharge');
     // Reject does not credit — balance stays at 200000.
     expect(n['availableBalanceCentavos'], 200000);
-    expect(n['fillType'], 'full');
   });
 
   test('watchByStatusAll returns submitted reps across all companies, excluding other statuses',
@@ -501,15 +571,10 @@ void main() {
     fund = await db.collection('funds').doc('f1').get();
     expect(fund.data()!['status'], 'replenishing');
 
-    // 3. Submit then approve.
+    // 3. Submit auto-approves: the incharge's submit credits the fund.
     final submitRes = await replenishRepo.submit(
         replenishment: draft, actorUid: 'inc', notes: 'June');
     expect(submitRes.isOk, isTrue);
-    final submitted = Replenishment.fromMap(draft.id,
-        (await db.collection('replenishments').doc(draft.id).get()).data()!);
-    final approveRes = await replenishRepo.approve(
-        replenishment: submitted, actorUid: 'mgr');
-    expect(approveRes.isOk, isTrue);
 
     // 4. Fund is fully restored; request is 'replenished' and tagged.
     fund = await db.collection('funds').doc('f1').get();
@@ -547,7 +612,8 @@ void main() {
         'Some selected requests are no longer available to replenish.');
   });
 
-  test('createAndSubmit creates a submitted report and locks the fund', () async {
+  test('createAndSubmit auto-approves: credits the fund and lands approved',
+      () async {
     final repo = FirestoreReplenishmentRepository(db);
     final res = await repo.createAndSubmit(
         fundId: 'f1', items: [full('r1'), full('r2')], actorUid: 'inc', notes: 'June');
@@ -557,10 +623,13 @@ void main() {
         .where('fundId', isEqualTo: 'f1')
         .get();
     expect(reps.docs.length, 1);
-    expect(reps.docs.single.data()['status'], 'submitted');
+    expect(reps.docs.single.data()['status'], 'approved');
+    expect(reps.docs.single.data()['autoApproved'], true);
     expect(reps.docs.single.data()['reportNotes'], 'June');
     final fund = await db.collection('funds').doc('f1').get();
-    expect(fund.data()!['status'], 'replenishing');
+    // 200000 + 800000 = 1000000; above the 3% low threshold -> active.
+    expect(fund.data()!['availableBalanceCentavos'], 1000000);
+    expect(fund.data()!['status'], 'active');
   });
 
   test('createAndSubmit propagates a createDraft failure and creates nothing', () async {
@@ -605,17 +674,14 @@ void main() {
     expect(res.failureOrNull, isA<ValidationFailure>());
   });
 
-  test('approve: a partial credits the fund, keeps the request released, writes a partial record', () async {
+  test('submit: a partial credits the fund, keeps the request released, writes a partial record', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final draft = (await repo.createDraft(
             fundId: 'f1',
             items: [partial('r1', 100000, 'first installment')],
             createdByUid: 'inc'))
         .valueOrNull!;
-    await repo.submit(replenishment: draft, actorUid: 'inc', notes: '');
-    final submitted = Replenishment.fromMap(draft.id,
-        (await db.collection('replenishments').doc(draft.id).get()).data()!);
-    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
+    final res = await repo.submit(replenishment: draft, actorUid: 'inc', notes: '');
     expect(res.isOk, isTrue);
 
     final fund = await db.collection('funds').doc('f1').get();
@@ -636,19 +702,16 @@ void main() {
     expect(partials.docs.single.data()['replenishmentId'], draft.id);
   });
 
-  test('approve rejects a stale report that would over-replenish a request', () async {
+  test('submit rejects a stale draft that would over-replenish a request', () async {
     final repo = FirestoreReplenishmentRepository(db);
     final draft = (await repo.createDraft(
             fundId: 'f1', items: [full('r1')], createdByUid: 'inc'))
         .valueOrNull!; // full item amount = 400000 (remaining at draft)
-    await repo.submit(replenishment: draft, actorUid: 'inc', notes: '');
-    final submitted = Replenishment.fromMap(draft.id,
-        (await db.collection('replenishments').doc(draft.id).get()).data()!);
     // Simulate the request being partly replenished by some other path between
-    // submit and approve: now remaining is only 300000, so applying the stale
+    // draft and submit: now remaining is only 300000, so applying the stale
     // 400000 would push replenishedCentavos (100000+400000) past amount (400000).
     await db.collection('requests').doc('r1').update({'replenishedCentavos': 100000});
-    final res = await repo.approve(replenishment: submitted, actorUid: 'mgr');
+    final res = await repo.submit(replenishment: draft, actorUid: 'inc', notes: '');
     expect(res.failureOrNull, isA<ValidationFailure>());
     // Fund untouched (the whole tx aborted).
     final fund = await db.collection('funds').doc('f1').get();
@@ -679,27 +742,24 @@ void main() {
     });
     final repo = FirestoreReplenishmentRepository(db);
 
-    Future<void> approvePartial(int c) async {
+    Future<void> submitPartial(int c) async {
       final d = (await repo.createDraft(
               fundId: 'f1', items: [partial('r1', c, 'inst')], createdByUid: 'inc'))
           .valueOrNull!;
-      await repo.submit(replenishment: d, actorUid: 'inc', notes: '');
-      final s = Replenishment.fromMap(
-          d.id, (await db.collection('replenishments').doc(d.id).get()).data()!);
-      expect((await repo.approve(replenishment: s, actorUid: 'mgr')).isOk, isTrue);
+      // submit auto-approves: it credits the fund directly.
+      expect((await repo.submit(replenishment: d, actorUid: 'inc', notes: ''))
+          .isOk, isTrue);
     }
 
-    await approvePartial(100000); // remaining 300000
-    await approvePartial(150000); // remaining 150000
+    await submitPartial(100000); // remaining 300000
+    await submitPartial(150000); // remaining 150000
     // Full on the remainder closes it.
     final d = (await repo.createDraft(
             fundId: 'f1', items: [full('r1')], createdByUid: 'inc'))
         .valueOrNull!;
     expect(d.items.single.amount.centavos, 150000); // remaining
-    await repo.submit(replenishment: d, actorUid: 'inc', notes: '');
-    final s = Replenishment.fromMap(
-        d.id, (await db.collection('replenishments').doc(d.id).get()).data()!);
-    expect((await repo.approve(replenishment: s, actorUid: 'mgr')).isOk, isTrue);
+    expect((await repo.submit(replenishment: d, actorUid: 'inc', notes: ''))
+        .isOk, isTrue);
 
     final r1 = await db.collection('requests').doc('r1').get();
     expect(r1.data()!['status'], 'replenished');

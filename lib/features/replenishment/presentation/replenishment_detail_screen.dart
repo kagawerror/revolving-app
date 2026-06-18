@@ -107,6 +107,57 @@ class _ReplenishmentDetailScreenState
     }
   }
 
+  /// Confirms acknowledgment before stamping it. The fund is ALREADY credited;
+  /// this only records that the approver saw the report — so the copy says so.
+  Future<bool> _confirmAcknowledge() async {
+    final r = widget.replenishment;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.fact_check_rounded),
+        title: const Text('Acknowledge replenishment?'),
+        content: Text(
+          'The fund was already replenished with ${r.total.format()} '
+          '(${r.itemCount} ${r.itemCount == 1 ? 'request' : 'requests'}). '
+          'Acknowledging confirms you have seen it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.check_rounded, size: 18),
+            label: const Text('Acknowledge'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  Future<void> _acknowledge() async {
+    final user = ref.read(currentUserProvider).valueOrNull;
+    if (user == null) return;
+    if (!await _confirmAcknowledge()) return;
+    if (!mounted) return;
+
+    setState(() => _busy = true);
+    final res = await ref.read(replenishmentRepositoryProvider).acknowledge(
+          replenishment: widget.replenishment,
+          actorUid: user.uid,
+          actorName: user.displayName,
+        );
+    if (!mounted) return;
+    setState(() => _busy = false);
+    if (res.showOnError(context)) {
+      await SuccessOverlay.show(context, 'Replenishment acknowledged');
+      if (!mounted) return;
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final canApprove =
@@ -158,6 +209,23 @@ class _ReplenishmentDetailScreenState
                     color: scheme.onSurfaceVariant,
                   ),
                 ),
+                // Auto-approved + not yet acknowledged: info banner telling the
+                // reader the fund is already credited and only an
+                // acknowledgment remains.
+                if (r.needsAcknowledgment) ...[
+                  const SizedBox(height: AppTokens.md),
+                  _AcknowledgmentBanner(),
+                ],
+                // Already acknowledged: success callout with who/when.
+                if (r.status == ReplenishmentStatus.approved &&
+                    r.acknowledgedByUid != null) ...[
+                  const SizedBox(height: AppTokens.md),
+                  _AcknowledgedCallout(
+                    name: r.acknowledgedByName,
+                    uid: r.acknowledgedByUid!,
+                    at: r.acknowledgedAt,
+                  ),
+                ],
                 if (r.reportNotes.isNotEmpty) ...[
                   const SizedBox(height: AppTokens.md),
                   Container(
@@ -253,7 +321,20 @@ class _ReplenishmentDetailScreenState
                 child: CircularProgressIndicator(),
               ),
             ),
-          if (canApprove)
+          // AUTO-APPROVE acknowledgment: a single full-width Acknowledge action
+          // (no reject — there is nothing to reverse). Gated to approvers on a
+          // report still needing acknowledgment.
+          if (canApprove && r.needsAcknowledgment)
+            FilledButton.icon(
+              onPressed: _busy ? null : _acknowledge,
+              icon: const Icon(Icons.fact_check_rounded),
+              label: const Text('Acknowledge'),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+            ),
+          // LEGACY in-flight `submitted` reports keep the approve/reject pair.
+          if (canApprove && r.status == ReplenishmentStatus.submitted)
             Row(children: [
               Expanded(
                 child: FilledButton(
@@ -269,6 +350,100 @@ class _ReplenishmentDetailScreenState
                 ),
               ),
             ]),
+        ],
+      ),
+    );
+  }
+}
+
+/// Info-toned banner shown on an auto-approved report that no approver has yet
+/// acknowledged. Reassures the reader the fund is ALREADY credited and only an
+/// acknowledgment remains.
+class _AcknowledgmentBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppTokens.md),
+      decoration: BoxDecoration(
+        color: scheme.secondaryContainer,
+        borderRadius: AppTokens.brField,
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.info_rounded, size: 18, color: scheme.onSecondaryContainer),
+          const SizedBox(width: AppTokens.sm),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Needs acknowledgment',
+                  style: textTheme.labelLarge?.copyWith(
+                    color: scheme.onSecondaryContainer,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'The fund has already been replenished. Acknowledge to confirm '
+                  'you have seen this report.',
+                  style: textTheme.bodySmall
+                      ?.copyWith(color: scheme.onSecondaryContainer),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Success-toned callout shown once an approver has acknowledged the report,
+/// naming who and when (name → short-uid fallback).
+class _AcknowledgedCallout extends StatelessWidget {
+  const _AcknowledgedCallout({required this.name, required this.uid, this.at});
+
+  final String? name;
+  final String uid;
+  final DateTime? at;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    final who = (name != null && name!.trim().isNotEmpty)
+        ? name!.trim()
+        : (uid.length > 6 ? '#${uid.substring(0, 6)}' : '#$uid');
+    final when = at == null
+        ? ''
+        : ' · ${at!.year}-${at!.month.toString().padLeft(2, '0')}-'
+            '${at!.day.toString().padLeft(2, '0')}';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppTokens.md),
+      decoration: BoxDecoration(
+        color: scheme.tertiaryContainer,
+        borderRadius: AppTokens.brField,
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.verified_rounded,
+              size: 18, color: scheme.onTertiaryContainer),
+          const SizedBox(width: AppTokens.sm),
+          Expanded(
+            child: Text(
+              'Acknowledged by $who$when',
+              style: textTheme.bodyMedium?.copyWith(
+                color: scheme.onTertiaryContainer,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
         ],
       ),
     );

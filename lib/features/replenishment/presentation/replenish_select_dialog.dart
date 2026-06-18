@@ -83,6 +83,36 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
     return sum;
   }
 
+  /// Confirms the replenishment before any money moves. Submitting now credits
+  /// the fund (auto-approve), so this is a money-mutating business action and
+  /// gets an explicit confirmation dialog showing the total + fund.
+  Future<bool> _confirmSubmit(Money total, int count) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.account_balance_wallet_rounded),
+        title: const Text('Submit & replenish?'),
+        content: Text(
+          'This credits ${total.format()} back to ${widget.fund.name} '
+          '($count ${count == 1 ? 'request' : 'requests'}). An approver will '
+          'be asked to acknowledge it.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.icon(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            icon: const Icon(Icons.check_rounded, size: 18),
+            label: const Text('Submit & replenish'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
   Future<void> _submit() async {
     final user = ref.read(currentUserProvider).valueOrNull;
     if (user == null || !_canSubmit) return;
@@ -101,6 +131,9 @@ class _ReplenishSelectDialogState extends ConsumerState<ReplenishSelectDialog> {
         ));
       return;
     }
+    // Money moves now — confirm before crediting the fund.
+    if (!await _confirmSubmit(_total, _selected.length)) return;
+    if (!mounted) return;
     // Original (pre-partial) total of the selected requests — persisted on the
     // report and echoed onto the incharge's outcome notification so a partial
     // hero reads "of {original}". Display-only; never affects money math.
@@ -565,7 +598,7 @@ class _Footer extends StatelessWidget {
                           width: 20,
                           child: CircularProgressIndicator(strokeWidth: 2.5),
                         )
-                      : const Text('Submit for approval'),
+                      : const Text('Submit & replenish'),
                 ),
               ),
             ],

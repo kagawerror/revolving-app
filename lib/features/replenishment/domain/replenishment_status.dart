@@ -4,8 +4,13 @@ enum ReplenishmentStatus {
   approved,
   rejected;
 
+  // Auto-approve lifecycle: the incharge's submit credits the fund and lands the
+  // report directly in `approved` (no approver gate). The legacy
+  // submitted->{approved,rejected} edge is kept so any in-flight `submitted`
+  // docs (created before this change) can still be drained by the legacy
+  // approve()/reject() paths. draft->rejected covers discardDraft.
   static const Map<ReplenishmentStatus, Set<ReplenishmentStatus>> _allowed = {
-    ReplenishmentStatus.draft: {ReplenishmentStatus.submitted},
+    ReplenishmentStatus.draft: {ReplenishmentStatus.approved, ReplenishmentStatus.rejected},
     ReplenishmentStatus.submitted: {ReplenishmentStatus.approved, ReplenishmentStatus.rejected},
     ReplenishmentStatus.approved: {},
     ReplenishmentStatus.rejected: {},

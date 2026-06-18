@@ -260,6 +260,12 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
           int? originalAmountCentavos}) async =>
       const Ok(null);
   @override
+  Future<Result<void>> acknowledge(
+          {required Replenishment replenishment,
+          required String actorUid,
+          String? actorName}) async =>
+      const Ok(null);
+  @override
   Future<Result<void>> approve(
           {required Replenishment replenishment, required String actorUid}) async =>
       const Ok(null);

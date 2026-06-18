@@ -28,11 +28,14 @@ abstract interface class ReplenishmentRepository {
     required String createdByUid,
   });
 
-  /// Submits a draft for approval. The optional display values are denormalized
-  /// onto the submitter's `submittedByName` (the report) and the
-  /// `replenishmentSubmitted` notification (fund name + pre-replenish balance
-  /// snapshot) so the approver's alert list renders without extra reads. They
-  /// never affect money logic.
+  /// AUTO-APPROVE submit. The incharge's submit is now the money transaction:
+  /// in one `runTransaction` it re-reads + re-validates the report and its line
+  /// items, credits the fund (status restored active/low), tags the bundled
+  /// requests, writes partial-audit rows, and lands the report directly in
+  /// `approved` (`autoApproved: true`, `acknowledgedByUid: null`). No approver
+  /// gate. After commit it notifies approvers `replenishmentNeedsAck`
+  /// (unawaited). The optional display values are denormalized onto the report
+  /// (`submittedByName`) and never affect money logic.
   Future<Result<void>> submit({
     required Replenishment replenishment,
     required String actorUid,
@@ -57,11 +60,26 @@ abstract interface class ReplenishmentRepository {
     int? originalAmountCentavos,
   });
 
-  /// Atomic: tag the bundled requests `replenished`, ADD their total back to the
-  /// fund balance, and set fund status from the new balance (active/low).
+  /// Acknowledges an auto-approved report. NOT a money transaction: the fund is
+  /// already credited. Stamps `acknowledgedByUid`/`acknowledgedByName`/
+  /// `acknowledgedAt` on the (already `approved`) doc, clearing its "Needs
+  /// acknowledgment" badge — the STATUS is unchanged. Idempotent: a second call
+  /// on an already-acknowledged report returns `Ok`. Errors if the report is
+  /// not `approved`.
+  Future<Result<void>> acknowledge({
+    required Replenishment replenishment,
+    required String actorUid,
+    String? actorName,
+  });
+
+  /// LEGACY (in-flight `submitted` docs only). Atomic: tag the bundled requests
+  /// `replenished`, ADD their total back to the fund balance, and set fund
+  /// status from the new balance (active/low). The new submit path auto-approves
+  /// instead — this remains only to drain reports submitted before that change.
   Future<Result<void>> approve({required Replenishment replenishment, required String actorUid});
 
-  /// REJECT a submitted report (`submitted → rejected`). Records the required
+  /// LEGACY (in-flight `submitted` docs only). REJECT a submitted report
+  /// (`submitted → rejected`). Records the required
   /// [reason] + actor on the report and restores the fund status (no balance
   /// change). The rejection [reason] is NEVER put in the notification body
   /// (PII) — it stays on the report's detail screen.

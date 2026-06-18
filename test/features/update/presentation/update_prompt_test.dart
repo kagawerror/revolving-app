@@ -23,14 +23,14 @@ const _latest = AppVersionInfo(
   notes: 'Bug fixes.',
 );
 
-Widget _harness(UpdateInstaller installer) {
+Widget _harness(UpdateInstaller installer, {ValueChanged<int>? onSkipVersion}) {
   return MaterialApp(
     home: Scaffold(
       body: Builder(
         builder: (context) => Center(
           child: ElevatedButton(
-            onPressed: () =>
-                showUpdatePrompt(context, _latest, installer: installer),
+            onPressed: () => showUpdatePrompt(context, _latest,
+                installer: installer, onSkipVersion: onSkipVersion),
             child: const Text('open'),
           ),
         ),
@@ -59,6 +59,44 @@ void main() {
     expect(find.text('Update'), findsOneWidget);
     expect(find.text('Later'), findsOneWidget);
     expect(find.byType(LinearProgressIndicator), findsNothing);
+  });
+
+  testWidgets('Later does NOT persist a skip and pops the dialog',
+      (tester) async {
+    final skipped = <int>[];
+    // No events: the user never starts the download.
+    final installer = _FakeInstaller(const []);
+    await tester.pumpWidget(
+        _harness(installer, onSkipVersion: skipped.add));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.text('Later'), findsOneWidget);
+
+    await tester.tap(find.text('Later'));
+    await tester.pumpAndSettle();
+
+    // The dialog closed...
+    expect(find.text('Later'), findsNothing);
+    // ...but the version was NOT skipped, so it can re-prompt next launch.
+    expect(skipped, isEmpty);
+  });
+
+  testWidgets('install error DOES persist a skip (crash-loop safety valve)',
+      (tester) async {
+    final skipped = <int>[];
+    final installer = _FakeInstaller([OtaEvent(OtaStatus.DOWNLOAD_ERROR, '0')]);
+    await tester.pumpWidget(
+        _harness(installer, onSkipVersion: skipped.add));
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Update'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Update failed. Please try again later.'), findsOneWidget);
+    // The broken build is remembered so it can't loop forever.
+    expect(skipped, [_latest.versionCode]);
   });
 
   testWidgets('downloading event shows progress', (tester) async {

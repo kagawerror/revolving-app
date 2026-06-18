@@ -303,7 +303,7 @@ class _FundSectionState extends ConsumerState<_FundSection> {
             ReplenishSelectDialog(fund: widget.fund, releasable: releasable),
       );
       if (ok == true && mounted) {
-        await SuccessOverlay.show(context, 'Submitted for approval');
+        await SuccessOverlay.show(context, 'Fund replenished');
       }
     } finally {
       if (mounted) setState(() => _busy = false);

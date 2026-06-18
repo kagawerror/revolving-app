@@ -91,6 +91,21 @@ class Replenishment extends Equatable {
   final String? rejectedByUid;
   final DateTime? rejectedAt;
 
+  /// Acknowledgment audit (approver action on an auto-approved report). The
+  /// report is already `approved` with the fund credited; acknowledge is a
+  /// FIELD UPDATE (not a status transition) that records who/when an approver
+  /// confirmed they saw it and clears the "Needs acknowledgment" badge. All
+  /// null until acknowledged, and on legacy docs. Read-only: never set by
+  /// [toCreateMap]. [acknowledgedByName] is a denormalized display name.
+  final String? acknowledgedByUid;
+  final String? acknowledgedByName;
+  final DateTime? acknowledgedAt;
+
+  /// True when this report was credited via the incharge's auto-approve submit
+  /// (the new lifecycle), as opposed to a legacy approver approval. Drives the
+  /// "needs acknowledgment" prompt. Null on drafts and legacy docs.
+  final bool? autoApproved;
+
   const Replenishment({
     required this.id,
     required this.companyId,
@@ -111,9 +126,21 @@ class Replenishment extends Equatable {
     this.rejectionReason,
     this.rejectedByUid,
     this.rejectedAt,
+    this.acknowledgedByUid,
+    this.acknowledgedByName,
+    this.acknowledgedAt,
+    this.autoApproved,
   });
 
   int get itemCount => requestIds.length;
+
+  /// True for an auto-approved report that an approver has not yet
+  /// acknowledged. The fund is already credited; this only drives the
+  /// "Needs acknowledgment" badge + the approver's single Acknowledge action.
+  bool get needsAcknowledgment =>
+      status == ReplenishmentStatus.approved &&
+      (autoApproved ?? false) &&
+      acknowledgedByUid == null;
 
   /// Original (pre-partial) total owed as [Money], or null when absent.
   Money? get originalTotal => originalAmountCentavos == null
@@ -143,6 +170,10 @@ class Replenishment extends Equatable {
         rejectionReason: m['rejectionReason'] as String?,
         rejectedByUid: m['rejectedByUid'] as String?,
         rejectedAt: (m['rejectedAt'] as Timestamp?)?.toDate(),
+        acknowledgedByUid: m['acknowledgedByUid'] as String?,
+        acknowledgedByName: m['acknowledgedByName'] as String?,
+        acknowledgedAt: (m['acknowledgedAt'] as Timestamp?)?.toDate(),
+        autoApproved: m['autoApproved'] as bool?,
       );
 
   Map<String, dynamic> toCreateMap() => {
@@ -163,5 +194,6 @@ class Replenishment extends Equatable {
   List<Object?> get props =>
       [id, companyId, fundId, status, requestIds, total, reportNotes, createdByUid,
        submittedByUid, submittedByName, approvedByUid, items, createdAt, submittedAt, decidedAt,
-       originalAmountCentavos, rejectionReason, rejectedByUid, rejectedAt];
+       originalAmountCentavos, rejectionReason, rejectedByUid, rejectedAt,
+       acknowledgedByUid, acknowledgedByName, acknowledgedAt, autoApproved];
 }

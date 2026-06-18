@@ -31,6 +31,38 @@ final pendingReplenishmentsProvider =
       .watchByCompanyAndStatus(companyId, ReplenishmentStatus.submitted.name);
 });
 
+/// Auto-approved reports for the company that an approver has not yet
+/// acknowledged. Streams `approved` reports (reusing the existing
+/// `(companyId, status)` index — NO new index/server filter) and post-filters
+/// to those still needing acknowledgment.
+final needsAckReplenishmentsProvider =
+    StreamProvider.autoDispose<List<Replenishment>>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return const Stream.empty();
+  final companyId =
+      effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+  if (companyId.isEmpty) return const Stream.empty();
+  return ref
+      .watch(replenishmentRepositoryProvider)
+      .watchByCompanyAndStatus(companyId, ReplenishmentStatus.approved.name)
+      .map((reps) => reps.where((r) => r.needsAcknowledgment).toList());
+});
+
+/// The approver "to-act" list: legacy in-flight `submitted` reports UNION
+/// auto-approved reports awaiting acknowledgment. Derived purely from the two
+/// existing streams above — adds no Firestore read. Keeps the legacy submitted
+/// drain available alongside the new acknowledge prompt.
+final approverActionableReplenishmentsProvider =
+    Provider.autoDispose<List<Replenishment>>((ref) {
+  final submitted =
+      ref.watch(pendingReplenishmentsProvider).valueOrNull ??
+          const <Replenishment>[];
+  final needsAck =
+      ref.watch(needsAckReplenishmentsProvider).valueOrNull ??
+          const <Replenishment>[];
+  return [...submitted, ...needsAck];
+});
+
 /// The approver "Approved" tab: this company's approved replenishment reports,
 /// newest-first, capped. Resolves the company like [pendingReplenishmentsProvider].
 final recentApprovedReplenishmentsProvider =

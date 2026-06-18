@@ -44,7 +44,11 @@ class _ApproverInbox extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final pending = ref.watch(pendingRequestsProvider);
+    // Loading/error state tracked via the submitted stream; the displayed list
+    // is the UNION of legacy submitted reports and auto-approved reports
+    // awaiting acknowledgment (derived, no extra Firestore read).
     final replenishments = ref.watch(pendingReplenishmentsProvider);
+    final actionable = ref.watch(approverActionableReplenishmentsProvider);
 
     return ListView(
         padding: const EdgeInsets.fromLTRB(AppTokens.lg, AppTokens.sm,
@@ -54,21 +58,21 @@ class _ApproverInbox extends ConsumerWidget {
           // them see they're offline. Self-collapses when online.
           const OfflineBanner(),
           SectionHeader(
-            title: 'Pending replenishments',
+            title: 'Replenishments to acknowledge',
             trailing: replenishments.maybeWhen(
-              data: (list) =>
-                  list.isEmpty ? null : _CountBadge(count: list.length),
+              data: (_) =>
+                  actionable.isEmpty ? null : _CountBadge(count: actionable.length),
               orElse: () => null,
             ),
           ),
           replenishments.when(
             loading: () => const SurfaceCard(child: SkeletonList(count: 2)),
             error: (e, _) => _ErrorCard(message: '$e'),
-            data: (list) => list.isEmpty
+            data: (_) => actionable.isEmpty
                 ? const SurfaceCard(
                     child: EmptyState(
-                      title: 'No pending replenishments',
-                      message: 'Replenishment reports awaiting your sign-off '
+                      title: 'Nothing to acknowledge',
+                      message: 'Replenished funds awaiting your acknowledgment '
                           'will appear here.',
                     ),
                   )
@@ -76,10 +80,10 @@ class _ApproverInbox extends ConsumerWidget {
                     padding: const EdgeInsets.symmetric(vertical: AppTokens.sm),
                     child: Column(
                       children: [
-                        for (final r in list)
+                        for (final r in actionable)
                           AppListTile(
                             leading: _LeadingIcon(
-                              icon: Icons.autorenew_rounded,
+                              icon: Icons.fact_check_rounded,
                               tone: StatusTone.info,
                             ),
                             title: 'Replenishment',

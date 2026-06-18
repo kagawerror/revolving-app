@@ -50,7 +50,7 @@ void main() {
   testWidgets('submit is disabled until a request is selected', (tester) async {
     await tester.pumpWidget(_host([_req('r1', 400000), _req('r2', 300000)]));
     final submit = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Submit for approval'));
+        find.widgetWithText(FilledButton, 'Submit & replenish'));
     expect(submit.onPressed, isNull); // disabled
 
     // Rows are tappable selection cards; tapping the beneficiary name toggles
@@ -59,7 +59,7 @@ void main() {
     await tester.pump();
 
     final submit2 = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Submit for approval'));
+        find.widgetWithText(FilledButton, 'Submit & replenish'));
     expect(submit2.onPressed, isNotNull); // enabled
   });
 
@@ -85,7 +85,7 @@ void main() {
     expect(
         tester
             .widget<FilledButton>(
-                find.widgetWithText(FilledButton, 'Submit for approval'))
+                find.widgetWithText(FilledButton, 'Submit & replenish'))
             .onPressed,
         isNotNull);
 
@@ -98,7 +98,7 @@ void main() {
     expect(
         tester
             .widget<FilledButton>(
-                find.widgetWithText(FilledButton, 'Submit for approval'))
+                find.widgetWithText(FilledButton, 'Submit & replenish'))
             .onPressed,
         isNull);
 
@@ -110,7 +110,7 @@ void main() {
     expect(
         tester
             .widget<FilledButton>(
-                find.widgetWithText(FilledButton, 'Submit for approval'))
+                find.widgetWithText(FilledButton, 'Submit & replenish'))
             .onPressed,
         isNotNull);
   });
@@ -141,7 +141,7 @@ void main() {
     expect(
         tester
             .widget<FilledButton>(
-                find.widgetWithText(FilledButton, 'Submit for approval'))
+                find.widgetWithText(FilledButton, 'Submit & replenish'))
             .onPressed,
         isNull);
   });
@@ -157,7 +157,7 @@ void main() {
     // a replenishment can only be created against a live server, so a tap must
     // never hang on an unresolvable Firestore transaction.
     final submit = tester.widget<FilledButton>(
-        find.widgetWithText(FilledButton, 'Submit for approval'));
+        find.widgetWithText(FilledButton, 'Submit & replenish'));
     expect(submit.onPressed, isNull);
 
     // And the incharge is told WHY, rather than facing a dead button.
@@ -178,7 +178,7 @@ void main() {
     expect(
         tester
             .widget<FilledButton>(
-                find.widgetWithText(FilledButton, 'Submit for approval'))
+                find.widgetWithText(FilledButton, 'Submit & replenish'))
             .onPressed,
         isNull);
   });

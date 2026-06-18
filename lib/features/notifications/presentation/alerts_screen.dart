@@ -47,6 +47,20 @@ _AlertVisual _visualFor(AppNotification n) {
         'Submitted',
         'Replenishment',
       );
+    case 'replenishmentNeedsAck':
+      return const _AlertVisual(
+        StatusTone.info,
+        Icons.fact_check_rounded,
+        'To acknowledge',
+        'Replenishment',
+      );
+    case 'replenishmentAcknowledged':
+      return const _AlertVisual(
+        StatusTone.success,
+        Icons.verified_rounded,
+        'Acknowledged',
+        'Replenishment',
+      );
     case 'replenishmentApproved':
       return const _AlertVisual(
         StatusTone.success,
@@ -187,10 +201,13 @@ class _AlertCardState extends ConsumerState<_AlertCard> {
 
   AppNotification get _n => widget.notification;
 
-  /// Approver tap on a submitted replenishment opens the detail screen for review.
+  /// Approver tap on a replenishment alert opens the detail screen — to
+  /// acknowledge an auto-approved report (`replenishmentNeedsAck`) or to review
+  /// a legacy in-flight `submitted` one.
   bool get _isReviewable =>
       widget.isApprover &&
-      _n.type == 'replenishmentSubmitted' &&
+      (_n.type == 'replenishmentNeedsAck' ||
+          _n.type == 'replenishmentSubmitted') &&
       _n.replenishmentId != null;
 
   /// A request alert that opens the request detail screen on tap.

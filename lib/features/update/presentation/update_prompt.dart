@@ -11,10 +11,12 @@ import 'update_installer.dart';
 /// the dialog is closed. Tapping "Update" downloads + installs in place,
 /// showing live progress; "Later" dismisses.
 ///
-/// [onSkipVersion] is invoked with the manifest's versionCode when the user
-/// dismisses ("Later") or the install fails, so the launch check stops
-/// re-prompting for that same build every time the app opens. A newer release
-/// still prompts.
+/// [onSkipVersion] is invoked with the manifest's versionCode ONLY when an
+/// install FAILS (error / CANCELED) — the crash-loop safety valve so a
+/// genuinely broken build doesn't re-prompt forever. "Later" no longer skips:
+/// the same version re-prompts on the next launch until the user updates (the
+/// per-session `_shown` flag still prevents in-session repeats). A newer
+/// release always prompts.
 Future<void> showUpdatePrompt(
   BuildContext context,
   AppVersionInfo latest, {
@@ -142,10 +144,10 @@ class _UpdateDialogState extends State<_UpdateDialog> {
           ? const []
           : [
               TextButton(
-                onPressed: () {
-                  widget.onSkipVersion?.call(widget.latest.versionCode);
-                  Navigator.of(context).pop();
-                },
+                // "Later" does NOT persist a skip — the same version re-prompts
+                // next launch until the user updates. (onSkipVersion fires only
+                // on install failure; see the *_ERROR/CANCELED branch above.)
+                onPressed: () => Navigator.of(context).pop(),
                 child: const Text('Later'),
               ),
               FilledButton(
