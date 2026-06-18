@@ -332,84 +332,105 @@ class _FundSectionState extends ConsumerState<_FundSection> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Fund header: name, balance, replenish action.
+          // Fund header: name + balance on a full-width identity row, with the
+          // actions on their own row below. Actions are NOT siblings of the
+          // title in a single Row — doing so starves the Expanded title of width
+          // and long fund names collapse into character-by-character wrapping.
           Padding(
             padding: const EdgeInsets.fromLTRB(
               AppTokens.sm,
               AppTokens.sm,
-              AppTokens.xs,
+              AppTokens.sm,
               AppTokens.xs,
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: scheme.primaryContainer,
-                    borderRadius: AppTokens.brField,
-                  ),
-                  child: Icon(
-                    Icons.account_balance_wallet_rounded,
-                    color: scheme.onPrimaryContainer,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: AppTokens.md),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      if (widget.companyName != null &&
-                          widget.companyName!.isNotEmpty)
-                        Text(
-                          widget.companyName!.toUpperCase(),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: textTheme.labelSmall?.copyWith(
-                            color: scheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w700,
-                            letterSpacing: 0.4,
-                          ),
-                        ),
-                      Text(
-                        fund.name,
-                        style: textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: scheme.primaryContainer,
+                        borderRadius: AppTokens.brField,
                       ),
-                      Text(
-                        '${fund.availableBalance.format()} available',
-                        style: textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                      child: Icon(
+                        Icons.account_balance_wallet_rounded,
+                        color: scheme.onPrimaryContainer,
+                        size: 22,
+                      ),
+                    ),
+                    const SizedBox(width: AppTokens.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (widget.companyName != null &&
+                              widget.companyName!.isNotEmpty)
+                            Text(
+                              widget.companyName!.toUpperCase(),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: textTheme.labelSmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          Text(
+                            fund.name,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: textTheme.titleMedium?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          Text(
+                            '${fund.availableBalance.format()} available',
+                            style: textTheme.bodySmall?.copyWith(
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppTokens.xs),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    // Proof-of-cash entry point. Opens the audit list for this
+                    // fund (view is open to the company; create is gated
+                    // downstream).
+                    TextButton.icon(
+                      icon: const Icon(Icons.savings_outlined, size: 18),
+                      label: const Text('Cash count'),
+                      onPressed: () => context.push(
+                        '/incharge/audit'
+                        '?companyId=${Uri.encodeQueryComponent(fund.companyId)}'
+                        '&fundId=${Uri.encodeQueryComponent(fund.id)}',
+                      ),
+                    ),
+                    if (canReplenish) ...[
+                      const SizedBox(width: AppTokens.xs),
+                      TextButton.icon(
+                        icon: _busy
+                            ? const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh, size: 18),
+                        label: const Text('Replenish'),
+                        onPressed: _busy ? null : () => _replenish(user!.uid),
                       ),
                     ],
-                  ),
+                  ],
                 ),
-                // Proof-of-cash entry point. Opens the audit list for this fund
-                // (view is open to the company; create is gated downstream).
-                IconButton(
-                  tooltip: 'Cash count',
-                  icon: const Icon(Icons.savings_outlined),
-                  onPressed: () => context.push(
-                    '/incharge/audit'
-                    '?companyId=${Uri.encodeQueryComponent(fund.companyId)}'
-                    '&fundId=${Uri.encodeQueryComponent(fund.id)}',
-                  ),
-                ),
-                if (canReplenish)
-                  TextButton.icon(
-                    icon: _busy
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.refresh),
-                    label: const Text('Replenish'),
-                    onPressed: _busy ? null : () => _replenish(user!.uid),
-                  ),
               ],
             ),
           ),
