@@ -5,6 +5,9 @@ import 'package:rev_app/core/error/result.dart';
 import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/auth/domain/app_user.dart';
 import 'package:rev_app/features/auth/presentation/auth_providers.dart';
+import 'package:rev_app/features/companies/domain/company.dart';
+import 'package:rev_app/features/companies/presentation/admin_company_context_bar.dart';
+import 'package:rev_app/features/companies/presentation/admin_providers.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment_status.dart';
 import 'package:rev_app/features/reports/domain/report_models.dart';
@@ -142,6 +145,48 @@ void main() {
       c.read(releasedReportProvider.future),
       throwsA(isA<Failure>()),
     );
+  });
+
+  group('reportCompanyNameProvider', () {
+    ProviderContainer containerWith(AppUser user, List<Company> companies) {
+      final c = ProviderContainer(overrides: [
+        currentUserProvider.overrideWith((ref) => Stream.value(user)),
+        companiesProvider.overrideWith((ref) => Stream.value(companies)),
+      ]);
+      addTearDown(c.dispose);
+      return c;
+    }
+
+    test('non-admin resolves their own company name', () async {
+      final c = containerWith(
+        _user(UserRole.incharge, 'c1'),
+        const [Company(id: 'c1', name: 'Acme Corp'), Company(id: 'c2', name: 'Other')],
+      );
+      await c.read(currentUserProvider.future);
+      await c.read(companiesProvider.future);
+      expect(c.read(reportCompanyNameProvider), 'Acme Corp');
+    });
+
+    test('admin resolves the active company name', () async {
+      final c = containerWith(
+        _user(UserRole.admin, ''),
+        const [Company(id: 'c1', name: 'Acme Corp'), Company(id: 'c2', name: 'Beta Inc')],
+      );
+      await c.read(currentUserProvider.future);
+      await c.read(companiesProvider.future);
+      c.read(adminActiveCompanyProvider.notifier).state = 'c2';
+      expect(c.read(reportCompanyNameProvider), 'Beta Inc');
+    });
+
+    test('id absent from the company stream yields empty string', () async {
+      final c = containerWith(
+        _user(UserRole.incharge, 'c1'),
+        const [Company(id: 'c2', name: 'Other')],
+      );
+      await c.read(currentUserProvider.future);
+      await c.read(companiesProvider.future);
+      expect(c.read(reportCompanyNameProvider), '');
+    });
   });
 
   test('next() never steps past the current period', () {

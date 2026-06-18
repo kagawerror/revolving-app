@@ -18,7 +18,7 @@ void main() {
       grandTotal: Money.fromCentavos(5000000),
       period: ReportPeriod(granularity: PeriodGranularity.month, anchor: DateTime(2026, 6, 1)),
     );
-    final bytes = await replenishmentDetailPdf(summary, 'June 2026');
+    final bytes = await replenishmentDetailPdf(summary, 'June 2026', 'Acme Corp');
     expect(bytes, isNotEmpty);
     expect(bytes.sublist(0, 4), [0x25, 0x50, 0x44, 0x46]); // "%PDF"
   });

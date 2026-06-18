@@ -213,13 +213,20 @@ class _State extends ConsumerState<CreateRequestScreen> {
                   funds.maybeWhen(
                     data: (list) => DropdownButtonFormField<String>(
                       initialValue: _fundId,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Fund',
                         prefixIcon: Icon(Icons.account_balance_wallet_rounded),
                       ),
                       items: [
                         for (final f in list)
-                          DropdownMenuItem(value: f.id, child: Text(f.name)),
+                          DropdownMenuItem(
+                            value: f.id,
+                            child: Text(
+                              f.name,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
                       ],
                       onChanged: (v) => setState(() => _fundId = v),
                       validator: (v) => v == null ? 'Select a fund' : null,
@@ -231,7 +238,7 @@ class _State extends ConsumerState<CreateRequestScreen> {
                     controller: _beneficiary,
                     textCapitalization: TextCapitalization.words,
                     decoration: const InputDecoration(
-                      labelText: 'Beneficiary (employee)',
+                      labelText: 'Requestor (employee)',
                       prefixIcon: Icon(Icons.person_rounded),
                     ),
                     validator: (v) =>

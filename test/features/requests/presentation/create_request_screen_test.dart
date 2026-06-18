@@ -149,7 +149,7 @@ void main() {
 
       // Fill the text fields.
       await tester.enterText(
-          find.widgetWithText(TextFormField, 'Beneficiary (employee)'), 'Ben');
+          find.widgetWithText(TextFormField, 'Requestor (employee)'), 'Ben');
       await tester.enterText(
           find.widgetWithText(TextFormField, 'Amount'), '10');
       await tester.enterText(
@@ -225,7 +225,7 @@ void main() {
       await tester.pumpAndSettle();
 
       await tester.enterText(
-          find.widgetWithText(TextFormField, 'Beneficiary (employee)'), 'Ben');
+          find.widgetWithText(TextFormField, 'Requestor (employee)'), 'Ben');
       await tester.enterText(
           find.widgetWithText(TextFormField, 'Amount'), '10');
       await tester.enterText(

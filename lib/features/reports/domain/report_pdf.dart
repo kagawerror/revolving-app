@@ -21,6 +21,7 @@ String _pdfPeso(Money m) =>
 Future<Uint8List> releasedReportPdf(
   ReportSummary<ReleasedRequestRow> summary,
   String periodLabel,
+  String companyName,
 ) async {
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
@@ -39,10 +40,15 @@ Future<Uint8List> releasedReportPdf(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       build: (context) => [
-        _header('Released Requests', periodLabel, summary.rows.length),
+        _header(
+          'Released Requests',
+          periodLabel,
+          summary.rows.length,
+          companyName,
+        ),
         pw.SizedBox(height: 12),
         pw.TableHelper.fromTextArray(
-          headers: const ['Beneficiary', 'Purpose', 'Date', 'Amount'],
+          headers: const ['Requestor', 'Purpose', 'Date', 'Amount'],
           data: dataRows,
           headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
           headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
@@ -66,6 +72,7 @@ Future<Uint8List> releasedReportPdf(
 Future<Uint8List> replenishmentReportPdf(
   ReportSummary<ReplenishmentRow> summary,
   String periodLabel,
+  String companyName,
 ) async {
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
@@ -86,7 +93,7 @@ Future<Uint8List> replenishmentReportPdf(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       build: (context) => [
-        _header('Replenishments', periodLabel, summary.rows.length),
+        _header('Replenishments', periodLabel, summary.rows.length, companyName),
         pw.SizedBox(height: 12),
         pw.TableHelper.fromTextArray(
           headers: const ['Approved date', 'Requests', 'Total'],
@@ -113,6 +120,7 @@ Future<Uint8List> replenishmentReportPdf(
 Future<Uint8List> replenishmentDetailPdf(
   ReportSummary<ReplenishedLineRow> summary,
   String periodLabel,
+  String companyName,
 ) async {
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
@@ -133,13 +141,18 @@ Future<Uint8List> replenishmentDetailPdf(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       build: (context) => [
-        _header('Replenishment detail', periodLabel, summary.rows.length),
+        _header(
+          'Replenishment detail',
+          periodLabel,
+          summary.rows.length,
+          companyName,
+        ),
         pw.SizedBox(height: 12),
         pw.TableHelper.fromTextArray(
           headers: const [
             'Approved date',
             'Fund',
-            'Beneficiary',
+            'Requestor',
             'Purpose',
             'Type',
             'Amount',
@@ -165,10 +178,22 @@ Future<Uint8List> replenishmentDetailPdf(
   return doc.save();
 }
 
-pw.Widget _header(String title, String periodLabel, int rowCount) {
+pw.Widget _header(
+  String title,
+  String periodLabel,
+  int rowCount,
+  String companyName,
+) {
   return pw.Column(
     crossAxisAlignment: pw.CrossAxisAlignment.start,
     children: [
+      if (companyName.isNotEmpty) ...[
+        pw.Text(
+          companyName,
+          style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+        ),
+        pw.SizedBox(height: 2),
+      ],
       pw.Text(
         title,
         style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold),

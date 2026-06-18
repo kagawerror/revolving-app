@@ -27,9 +27,11 @@ class ReportShareServiceImpl implements ReportShareService {
     ReportKind kind,
     ReportSummary<Object> summary,
     String periodLabel,
+    String companyName,
   ) async {
     try {
-      final bytes = await _buildBytes(format, kind, summary, periodLabel);
+      final bytes =
+          await _buildBytes(format, kind, summary, periodLabel, companyName);
       final filename =
           '${kind.name}_${_slug(periodLabel)}.${format.extension}';
 
@@ -62,6 +64,7 @@ class ReportShareServiceImpl implements ReportShareService {
     ReportKind kind,
     ReportSummary<Object> summary,
     String periodLabel,
+    String companyName,
   ) async {
     switch (kind) {
       case ReportKind.released:
@@ -72,11 +75,11 @@ class ReportShareServiceImpl implements ReportShareService {
         );
         switch (format) {
           case ReportExportFormat.csv:
-            return encodeCsvBytes(releasedReportCsv(s, periodLabel));
+            return encodeCsvBytes(releasedReportCsv(s, periodLabel, companyName));
           case ReportExportFormat.excel:
-            return releasedReportXlsx(s, periodLabel);
+            return releasedReportXlsx(s, periodLabel, companyName);
           case ReportExportFormat.pdf:
-            return releasedReportPdf(s, periodLabel);
+            return releasedReportPdf(s, periodLabel, companyName);
         }
       case ReportKind.replenishments:
         final s = ReportSummary<ReplenishmentRow>(
@@ -86,11 +89,13 @@ class ReportShareServiceImpl implements ReportShareService {
         );
         switch (format) {
           case ReportExportFormat.csv:
-            return encodeCsvBytes(replenishmentReportCsv(s, periodLabel));
+            return encodeCsvBytes(
+              replenishmentReportCsv(s, periodLabel, companyName),
+            );
           case ReportExportFormat.excel:
-            return replenishmentReportXlsx(s, periodLabel);
+            return replenishmentReportXlsx(s, periodLabel, companyName);
           case ReportExportFormat.pdf:
-            return replenishmentReportPdf(s, periodLabel);
+            return replenishmentReportPdf(s, periodLabel, companyName);
         }
     }
   }
@@ -100,9 +105,11 @@ class ReportShareServiceImpl implements ReportShareService {
     ReportExportFormat format,
     ReportSummary<ReplenishedLineRow> summary,
     String periodLabel,
+    String companyName,
   ) async {
     try {
-      final bytes = await _buildDetailBytes(format, summary, periodLabel);
+      final bytes =
+          await _buildDetailBytes(format, summary, periodLabel, companyName);
       final filename =
           'replenishment_detail_${_slug(periodLabel)}.${format.extension}';
       final dir = await getTemporaryDirectory();
@@ -131,14 +138,17 @@ class ReportShareServiceImpl implements ReportShareService {
     ReportExportFormat format,
     ReportSummary<ReplenishedLineRow> summary,
     String periodLabel,
+    String companyName,
   ) async {
     switch (format) {
       case ReportExportFormat.csv:
-        return encodeCsvBytes(replenishmentDetailCsv(summary, periodLabel));
+        return encodeCsvBytes(
+          replenishmentDetailCsv(summary, periodLabel, companyName),
+        );
       case ReportExportFormat.excel:
-        return replenishmentDetailXlsx(summary, periodLabel);
+        return replenishmentDetailXlsx(summary, periodLabel, companyName);
       case ReportExportFormat.pdf:
-        return replenishmentDetailPdf(summary, periodLabel);
+        return replenishmentDetailPdf(summary, periodLabel, companyName);
     }
   }
 

@@ -74,14 +74,58 @@ void main() {
           ),
         ]),
         'June 2026',
+        '',
       );
       final lines = csv.trimRight().split('\n');
-      expect(lines.first, 'Beneficiary,Purpose,Date,Amount,Pending sync');
+      expect(lines.first, 'Requestor,Purpose,Date,Amount,Pending sync');
       expect(lines[1],
           '"Doe, Jane","Fuel ""premium""",2026-06-13,1250.00,no');
       expect(lines.last, 'GRAND TOTAL,June 2026,,1250.00,');
       // No peso symbol anywhere.
       expect(csv.contains('₱'), isFalse);
+    });
+
+    test('prepends Company metadata line when companyName is provided', () {
+      final csv = releasedReportCsv(
+        releasedSummary([
+          ReleasedRequestRow(
+            requestId: 'r1',
+            beneficiaryName: 'Jane',
+            purpose: 'Fuel',
+            amount: Money.fromCentavos(10000),
+            effectiveDate: DateTime(2026, 6, 13),
+            datePending: false,
+          ),
+        ]),
+        'June 2026',
+        'Acme, Inc.',
+      );
+      final lines = csv.split('\n');
+      // Company line first (quoted because of the comma), then a blank spacer,
+      // then the column header row.
+      expect(lines.first, 'Company,"Acme, Inc."');
+      expect(lines[1], '');
+      expect(lines[2], 'Requestor,Purpose,Date,Amount,Pending sync');
+    });
+
+    test('omits Company line cleanly when companyName is empty', () {
+      final csv = releasedReportCsv(
+        releasedSummary([
+          ReleasedRequestRow(
+            requestId: 'r1',
+            beneficiaryName: 'Jane',
+            purpose: 'Fuel',
+            amount: Money.fromCentavos(10000),
+            effectiveDate: DateTime(2026, 6, 13),
+            datePending: false,
+          ),
+        ]),
+        'June 2026',
+        '',
+      );
+      expect(csv.startsWith('Company'), isFalse);
+      expect(csv.contains('\n\n'), isFalse, reason: 'no leading blank gap');
+      expect(csv.split('\n').first, 'Requestor,Purpose,Date,Amount,Pending sync');
     });
   });
 
@@ -97,6 +141,7 @@ void main() {
           ),
         ]),
         'June 2026',
+        '',
       );
       final lines = csv.trimRight().split('\n');
       expect(lines.first, 'Approved date,Requests,Total');
@@ -123,6 +168,7 @@ void main() {
           ),
         ]),
         periodLabel,
+        '',
       );
 
       // Encode through the SAME path the share service writes to disk.
@@ -151,6 +197,7 @@ void main() {
           ),
         ]),
         'June 2026',
+        '',
       );
       expect(bytes.length, greaterThan(0));
       // PK zip magic header.
@@ -169,6 +216,7 @@ void main() {
           ),
         ]),
         'June 2026',
+        '',
       );
       expect(bytes.length, greaterThan(0));
       expect(bytes[0], 0x50);
@@ -190,6 +238,7 @@ void main() {
           ),
         ]),
         'June 2026',
+        'Acme Corp',
       );
       expect(bytes.length, greaterThan(0));
       expect(String.fromCharCodes(bytes.take(4)), '%PDF');
@@ -206,6 +255,7 @@ void main() {
           ),
         ]),
         'June 2026',
+        '',
       );
       expect(bytes.length, greaterThan(0));
       expect(String.fromCharCodes(bytes.take(4)), '%PDF');

@@ -28,6 +28,15 @@ String csvField(String value) {
 
 String _row(List<String> fields) => fields.map(csvField).join(',');
 
+/// Prepends a `Company,<name>` metadata line + a blank spacer line, before the
+/// column-header row, when [companyName] is non-empty. No-op when empty so the
+/// CSV starts cleanly at the header row.
+void _writeCompanyHeader(StringBuffer b, String companyName) {
+  if (companyName.isEmpty) return;
+  b.writeln(_row(['Company', companyName]));
+  b.writeln();
+}
+
 /// CSV for the released-requests report. Header + one row per release + a
 /// trailing GRAND TOTAL line. Amounts are bare pesos. The period label and date
 /// (ISO yyyy-MM-dd, with a `(pending)` marker for un-synced releases) make the
@@ -35,9 +44,11 @@ String _row(List<String> fields) => fields.map(csvField).join(',');
 String releasedReportCsv(
   ReportSummary<ReleasedRequestRow> summary,
   String periodLabel,
+  String companyName,
 ) {
   final b = StringBuffer();
-  b.writeln(_row(['Beneficiary', 'Purpose', 'Date', 'Amount', 'Pending sync']));
+  _writeCompanyHeader(b, companyName);
+  b.writeln(_row(['Requestor', 'Purpose', 'Date', 'Amount', 'Pending sync']));
   for (final r in summary.rows) {
     b.writeln(
       _row([
@@ -66,8 +77,10 @@ String releasedReportCsv(
 String replenishmentReportCsv(
   ReportSummary<ReplenishmentRow> summary,
   String periodLabel,
+  String companyName,
 ) {
   final b = StringBuffer();
+  _writeCompanyHeader(b, companyName);
   b.writeln(_row(['Approved date', 'Requests', 'Total']));
   for (final r in summary.rows) {
     final date = r.approvedDate ?? r.createdDate;
@@ -95,10 +108,12 @@ String replenishmentReportCsv(
 String replenishmentDetailCsv(
   ReportSummary<ReplenishedLineRow> summary,
   String periodLabel,
+  String companyName,
 ) {
   final b = StringBuffer();
+  _writeCompanyHeader(b, companyName);
   b.writeln(
-    _row(['Approved date', 'Fund', 'Beneficiary', 'Purpose', 'Type', 'Amount']),
+    _row(['Approved date', 'Fund', 'Requestor', 'Purpose', 'Type', 'Amount']),
   );
   for (final r in summary.rows) {
     b.writeln(

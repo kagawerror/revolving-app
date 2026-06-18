@@ -2,8 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/money/money.dart';
 import '../../auth/presentation/auth_providers.dart';
+import '../../companies/domain/company.dart';
 import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
+import '../../companies/presentation/admin_providers.dart';
 import '../../../services/firebase/firebase_providers.dart';
 import '../../../services/share/report_share_service.dart';
 import '../data/firestore_report_repository.dart';
@@ -74,6 +76,22 @@ final reportCompanyIdProvider = Provider<String>((ref) {
   final user = ref.watch(currentUserProvider).valueOrNull;
   if (user == null) return '';
   return effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+});
+
+/// The display NAME of the active report company, resolved from the live
+/// [companiesProvider] list by id. Empty when no company is active or the id is
+/// not (yet) in the streamed list — the report builders then omit the company
+/// header line. Threaded into exports so a printed/shared file says which
+/// company it belongs to.
+final reportCompanyNameProvider = Provider<String>((ref) {
+  final id = ref.watch(reportCompanyIdProvider);
+  if (id.isEmpty) return '';
+  final companies =
+      ref.watch(companiesProvider).valueOrNull ?? const <Company>[];
+  for (final c in companies) {
+    if (c.id == id) return c.name;
+  }
+  return '';
 });
 
 // --- Data access -----------------------------------------------------------

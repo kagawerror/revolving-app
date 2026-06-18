@@ -40,6 +40,7 @@ abstract class ReportShareService {
     ReportKind kind,
     ReportSummary<Object> summary,
     String periodLabel,
+    String companyName,
   );
 
   /// Export the DETAILED (per-request) replenishment report. Separate entry so
@@ -48,5 +49,6 @@ abstract class ReportShareService {
     ReportExportFormat format,
     ReportSummary<ReplenishedLineRow> summary,
     String periodLabel,
+    String companyName,
   );
 }

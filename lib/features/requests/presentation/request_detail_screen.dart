@@ -195,7 +195,7 @@ class RequestDetailScreen extends ConsumerWidget {
                 const SizedBox(height: AppTokens.md),
                 _DetailRow(
                   icon: Icons.person_rounded,
-                  label: 'Beneficiary',
+                  label: 'Requestor',
                   value: request.beneficiaryName,
                 ),
                 const SizedBox(height: AppTokens.md),

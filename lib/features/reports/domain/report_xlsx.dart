@@ -9,20 +9,33 @@ import 'report_models.dart';
 /// them; we round centavos/100 to two decimals deterministically.
 double _pesos(Money m) => m.centavos / 100.0;
 
+/// Prepends a `['Company', name]` row + an empty spacer row before the header
+/// row when [companyName] is non-empty. No-op when empty.
+void _appendCompanyHeader(Sheet sheet, String companyName) {
+  if (companyName.isEmpty) return;
+  sheet.appendRow(<CellValue?>[
+    TextCellValue('Company'),
+    TextCellValue(companyName),
+  ]);
+  sheet.appendRow(<CellValue?>[null]);
+}
+
 /// .xlsx workbook for the released-requests report: header row, one data row per
 /// release (amount as a number), and a bold-ish GRAND TOTAL row. Returns the
 /// encoded bytes (PK zip).
 Uint8List releasedReportXlsx(
   ReportSummary<ReleasedRequestRow> summary,
   String periodLabel,
+  String companyName,
 ) {
   final excel = Excel.createExcel();
   final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
   excel.rename(sheetName, 'Released');
   final sheet = excel['Released'];
 
+  _appendCompanyHeader(sheet, companyName);
   sheet.appendRow(<CellValue?>[
-    TextCellValue('Beneficiary'),
+    TextCellValue('Requestor'),
     TextCellValue('Purpose'),
     TextCellValue('Date'),
     TextCellValue('Amount'),
@@ -52,12 +65,14 @@ Uint8List releasedReportXlsx(
 Uint8List replenishmentReportXlsx(
   ReportSummary<ReplenishmentRow> summary,
   String periodLabel,
+  String companyName,
 ) {
   final excel = Excel.createExcel();
   final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
   excel.rename(sheetName, 'Replenishments');
   final sheet = excel['Replenishments'];
 
+  _appendCompanyHeader(sheet, companyName);
   sheet.appendRow(<CellValue?>[
     TextCellValue('Approved date'),
     TextCellValue('Requests'),
@@ -85,16 +100,18 @@ Uint8List replenishmentReportXlsx(
 Uint8List replenishmentDetailXlsx(
   ReportSummary<ReplenishedLineRow> summary,
   String periodLabel,
+  String companyName,
 ) {
   final excel = Excel.createExcel();
   final sheetName = excel.getDefaultSheet() ?? 'Sheet1';
   excel.rename(sheetName, 'Replenishment detail');
   final sheet = excel['Replenishment detail'];
 
+  _appendCompanyHeader(sheet, companyName);
   sheet.appendRow(<CellValue?>[
     TextCellValue('Approved date'),
     TextCellValue('Fund'),
-    TextCellValue('Beneficiary'),
+    TextCellValue('Requestor'),
     TextCellValue('Purpose'),
     TextCellValue('Type'),
     TextCellValue('Amount'),

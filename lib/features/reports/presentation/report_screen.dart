@@ -218,6 +218,7 @@ class _ExportAction extends ConsumerWidget {
     // per-format builders + the share service are the testable seams; the widget
     // only orchestrates and reports the outcome.
     final share = ref.read(reportShareServiceProvider);
+    final companyName = ref.read(reportCompanyNameProvider);
 
     if (onReleasedTab) {
       final summary = ref.read(releasedReportProvider).valueOrNull;
@@ -227,6 +228,7 @@ class _ExportAction extends ConsumerWidget {
         ReportKind.released,
         summary,
         label,
+        companyName,
       );
       if (!context.mounted) return;
       _reportResult(
@@ -277,7 +279,12 @@ class _ExportAction extends ConsumerWidget {
       period: period,
       truncated: page.truncated,
     );
-    final result = await share.shareReplenishmentDetail(format, summary, label);
+    final result = await share.shareReplenishmentDetail(
+      format,
+      summary,
+      label,
+      companyName,
+    );
     if (!context.mounted) return;
     _reportResult(
       context,
