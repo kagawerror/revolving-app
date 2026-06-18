@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:excel/excel.dart';
 
 import '../../../core/money/money.dart';
+import 'report_math.dart';
 import 'report_models.dart';
 
 /// Amounts go in as numeric (pesos) cell values so the spreadsheet can sum/format
@@ -41,14 +42,34 @@ Uint8List releasedReportXlsx(
     TextCellValue('Amount'),
     TextCellValue('Pending sync'),
   ]);
-  for (final r in summary.rows) {
+  final groups = groupByFund<ReleasedRequestRow>(
+    summary.rows,
+    (r) => r.fundName,
+    (r) => r.amount,
+    (r) => r.datePending ? null : r.effectiveDate,
+  );
+  for (final group in groups) {
     sheet.appendRow(<CellValue?>[
-      TextCellValue(r.beneficiaryName),
-      TextCellValue(r.purpose),
-      TextCellValue(_iso(r.effectiveDate)),
-      DoubleCellValue(_pesos(r.amount)),
-      TextCellValue(r.datePending ? 'yes' : 'no'),
+      TextCellValue('Fund'),
+      TextCellValue(group.fundName),
     ]);
+    for (final r in group.rows) {
+      sheet.appendRow(<CellValue?>[
+        TextCellValue(r.beneficiaryName),
+        TextCellValue(r.purpose),
+        TextCellValue(_iso(r.effectiveDate)),
+        DoubleCellValue(_pesos(r.amount)),
+        TextCellValue(r.datePending ? 'yes' : 'no'),
+      ]);
+    }
+    sheet.appendRow(<CellValue?>[
+      TextCellValue('Subtotal'),
+      null,
+      null,
+      DoubleCellValue(_pesos(group.subtotal)),
+      null,
+    ]);
+    sheet.appendRow(<CellValue?>[null]);
   }
   sheet.appendRow(<CellValue?>[
     TextCellValue('GRAND TOTAL'),
@@ -110,25 +131,42 @@ Uint8List replenishmentDetailXlsx(
   _appendCompanyHeader(sheet, companyName);
   sheet.appendRow(<CellValue?>[
     TextCellValue('Approved date'),
-    TextCellValue('Fund'),
     TextCellValue('Requestor'),
     TextCellValue('Purpose'),
     TextCellValue('Type'),
     TextCellValue('Amount'),
   ]);
-  for (final r in summary.rows) {
+  final groups = groupByFund<ReplenishedLineRow>(
+    summary.rows,
+    (r) => r.fundName,
+    (r) => r.amount,
+    (r) => r.approvedDate,
+  );
+  for (final group in groups) {
     sheet.appendRow(<CellValue?>[
-      TextCellValue(r.approvedDate == null ? '' : _iso(r.approvedDate!)),
-      TextCellValue(r.fundName),
-      TextCellValue(r.beneficiaryName),
-      TextCellValue(r.purpose),
-      TextCellValue(r.isPartial ? 'Partial' : 'Full'),
-      DoubleCellValue(_pesos(r.amount)),
+      TextCellValue('Fund'),
+      TextCellValue(group.fundName),
     ]);
+    for (final r in group.rows) {
+      sheet.appendRow(<CellValue?>[
+        TextCellValue(r.approvedDate == null ? '' : _iso(r.approvedDate!)),
+        TextCellValue(r.beneficiaryName),
+        TextCellValue(r.purpose),
+        TextCellValue(r.isPartial ? 'Partial' : 'Full'),
+        DoubleCellValue(_pesos(r.amount)),
+      ]);
+    }
+    sheet.appendRow(<CellValue?>[
+      TextCellValue('Subtotal'),
+      null,
+      null,
+      null,
+      DoubleCellValue(_pesos(group.subtotal)),
+    ]);
+    sheet.appendRow(<CellValue?>[null]);
   }
   sheet.appendRow(<CellValue?>[
     TextCellValue('GRAND TOTAL ($periodLabel)'),
-    null,
     null,
     null,
     null,

@@ -16,8 +16,9 @@ import 'report_period.dart';
 /// with neither timestamp materialized yet are skipped (nothing to date by).
 List<ReleasedRequestRow> releasedRowsInWindow(
   List<FundRequest> all,
-  DateRange window,
-) {
+  DateRange window, {
+  Map<String, String> fundNameById = const {},
+}) {
   final rows = <ReleasedRequestRow>[];
   for (final r in all) {
     final released = r.releasedAt;
@@ -32,6 +33,7 @@ List<ReleasedRequestRow> releasedRowsInWindow(
         amount: r.amount,
         effectiveDate: effective,
         datePending: released == null,
+        fundName: fundNameById[r.fundId] ?? '',
       ),
     );
   }
@@ -119,3 +121,62 @@ List<ReplenishedLineRow> replenishmentLineRows(
 /// Sum of [amounts], folding from [Money.zero]. Empty → zero.
 Money grandTotal(Iterable<Money> amounts) =>
     amounts.fold(Money.zero, (acc, m) => acc + m);
+
+/// Buckets [rows] by their fund name into [FundGroup]s for nested report
+/// rendering. Pure: the four accessors read the fund name, amount, and (sort)
+/// date off a row of any type so released + replenishment-detail share one path.
+///
+/// Rules:
+/// - A row whose [fundNameOf] is empty (after trim) groups under
+///   [fallbackFundName] (default `Unassigned`).
+/// - Within a group, rows sort by [dateOf] OLDEST-first; null dates sort last,
+///   preserving input order among themselves (stable).
+/// - Each group's `subtotal` is `grandTotal` over its rows' amounts.
+/// - Groups are returned A→Z by fund name, case-insensitive; the fallback label
+///   sorts naturally among the real names.
+/// - Empty input → empty list.
+List<FundGroup<T>> groupByFund<T>(
+  List<T> rows,
+  String Function(T) fundNameOf,
+  Money Function(T) amountOf,
+  DateTime? Function(T) dateOf, {
+  String fallbackFundName = 'Unassigned',
+}) {
+  // Preserve first-seen order so the stable in-bucket sort is deterministic.
+  final buckets = <String, List<T>>{};
+  for (final r in rows) {
+    final raw = fundNameOf(r).trim();
+    final name = raw.isEmpty ? fallbackFundName : raw;
+    (buckets[name] ??= <T>[]).add(r);
+  }
+
+  final groups = <FundGroup<T>>[];
+  for (final entry in buckets.entries) {
+    // Decorate-sort-undecorate so equal (Equatable) rows can't collide on a
+    // map key: the original index is the stable tiebreaker for null/equal dates.
+    final decorated = [
+      for (var i = 0; i < entry.value.length; i++) (i, entry.value[i]),
+    ];
+    decorated.sort((a, b) {
+      final da = dateOf(a.$2), db = dateOf(b.$2);
+      if (da == null && db == null) return a.$1.compareTo(b.$1);
+      if (da == null) return 1;
+      if (db == null) return -1;
+      final byDate = da.compareTo(db);
+      return byDate != 0 ? byDate : a.$1.compareTo(b.$1);
+    });
+    final bucket = [for (final d in decorated) d.$2];
+    groups.add(
+      FundGroup<T>(
+        fundName: entry.key,
+        rows: bucket,
+        subtotal: grandTotal(bucket.map(amountOf)),
+      ),
+    );
+  }
+
+  groups.sort(
+    (a, b) => a.fundName.toLowerCase().compareTo(b.fundName.toLowerCase()),
+  );
+  return groups;
+}

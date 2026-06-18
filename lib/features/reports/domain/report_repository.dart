@@ -9,10 +9,20 @@ import 'report_period.dart';
 /// slice of the window, so any total derived from them is a lower bound — the UI
 /// must say so rather than present it as complete.
 class ReportPage<T> {
-  const ReportPage(this.items, {this.truncated = false});
+  const ReportPage(
+    this.items, {
+    this.truncated = false,
+    this.fundNameById = const {},
+  });
 
   final List<T> items;
   final bool truncated;
+
+  /// Fund id → fund name for every fund referenced by [items], resolved from the
+  /// fund docs. Empty when a report kind doesn't carry a per-row fund (the
+  /// grouping then falls back to `Unassigned`). Used to enrich rows with their
+  /// fund name for nested, fund-grouped rendering.
+  final Map<String, String> fundNameById;
 }
 
 /// Read-only data source for the Reports feature. All methods are company-scoped

@@ -1,4 +1,5 @@
 import '../../../core/money/money.dart';
+import 'report_math.dart';
 import 'report_models.dart';
 
 /// Bare-pesos string for a [Money], e.g. `1234.50` — centavos/100 with exactly
@@ -49,16 +50,27 @@ String releasedReportCsv(
   final b = StringBuffer();
   _writeCompanyHeader(b, companyName);
   b.writeln(_row(['Requestor', 'Purpose', 'Date', 'Amount', 'Pending sync']));
-  for (final r in summary.rows) {
-    b.writeln(
-      _row([
-        r.beneficiaryName,
-        r.purpose,
-        _isoDate(r.effectiveDate),
-        moneyPesosBare(r.amount),
-        r.datePending ? 'yes' : 'no',
-      ]),
-    );
+  final groups = groupByFund<ReleasedRequestRow>(
+    summary.rows,
+    (r) => r.fundName,
+    (r) => r.amount,
+    (r) => r.datePending ? null : r.effectiveDate,
+  );
+  for (final group in groups) {
+    b.writeln(_row(['Fund', group.fundName]));
+    for (final r in group.rows) {
+      b.writeln(
+        _row([
+          r.beneficiaryName,
+          r.purpose,
+          _isoDate(r.effectiveDate),
+          moneyPesosBare(r.amount),
+          r.datePending ? 'yes' : 'no',
+        ]),
+      );
+    }
+    b.writeln(_row(['Subtotal', '', '', moneyPesosBare(group.subtotal), '']));
+    b.writeln();
   }
   b.writeln(
     _row([
@@ -112,25 +124,32 @@ String replenishmentDetailCsv(
 ) {
   final b = StringBuffer();
   _writeCompanyHeader(b, companyName);
-  b.writeln(
-    _row(['Approved date', 'Fund', 'Requestor', 'Purpose', 'Type', 'Amount']),
+  b.writeln(_row(['Approved date', 'Requestor', 'Purpose', 'Type', 'Amount']));
+  final groups = groupByFund<ReplenishedLineRow>(
+    summary.rows,
+    (r) => r.fundName,
+    (r) => r.amount,
+    (r) => r.approvedDate,
   );
-  for (final r in summary.rows) {
-    b.writeln(
-      _row([
-        r.approvedDate == null ? '' : _isoDate(r.approvedDate!),
-        r.fundName,
-        r.beneficiaryName,
-        r.purpose,
-        r.isPartial ? 'Partial' : 'Full',
-        moneyPesosBare(r.amount),
-      ]),
-    );
+  for (final group in groups) {
+    b.writeln(_row(['Fund', group.fundName]));
+    for (final r in group.rows) {
+      b.writeln(
+        _row([
+          r.approvedDate == null ? '' : _isoDate(r.approvedDate!),
+          r.beneficiaryName,
+          r.purpose,
+          r.isPartial ? 'Partial' : 'Full',
+          moneyPesosBare(r.amount),
+        ]),
+      );
+    }
+    b.writeln(_row(['Subtotal', '', '', '', moneyPesosBare(group.subtotal)]));
+    b.writeln();
   }
   b.writeln(
     _row([
       'GRAND TOTAL ($periodLabel)',
-      '',
       '',
       '',
       '',

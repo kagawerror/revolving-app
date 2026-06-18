@@ -3,6 +3,7 @@ import 'package:rev_app/core/money/money.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment_status.dart';
 import 'package:rev_app/features/reports/domain/report_math.dart';
+import 'package:rev_app/features/reports/domain/report_models.dart';
 import 'package:rev_app/features/reports/domain/report_period.dart';
 import 'package:rev_app/features/requests/domain/fund_request.dart';
 import 'package:rev_app/features/requests/domain/request_status.dart';
@@ -109,6 +110,24 @@ void main() {
         req(id: 'mid', releasedAt: DateTime(2026, 6, 11)),
       ], window);
       expect(rows.map((r) => r.requestId), ['late', 'mid', 'early']);
+    });
+
+    test('maps fundName from fundNameById', () {
+      final rows = releasedRowsInWindow(
+        [req(id: 'in', releasedAt: DateTime(2026, 6, 5))],
+        window,
+        fundNameById: {'f1': 'Petty Cash'},
+      );
+      expect(rows.single.fundName, 'Petty Cash');
+    });
+
+    test('fundName defaults to empty when fundId missing from map', () {
+      final rows = releasedRowsInWindow(
+        [req(id: 'in', releasedAt: DateTime(2026, 6, 5))],
+        window,
+        fundNameById: const {'other': 'X'},
+      );
+      expect(rows.single.fundName, '');
     });
   });
 
@@ -272,5 +291,106 @@ void main() {
       final rows = replenishmentLineRows(reps, requests, {'f1': 'AUDIT'});
       expect(grandTotal(rows.map((r) => r.amount)).centavos, 5400);
     });
+  });
+
+  group('groupByFund', () {
+    // A tiny test row: (fund, amount centavos, date).
+    ReleasedRequestRow row(
+      String fund,
+      int cents,
+      DateTime? date, {
+      String id = 'x',
+    }) =>
+        ReleasedRequestRow(
+          requestId: id,
+          beneficiaryName: 'n',
+          purpose: 'p',
+          amount: Money.fromCentavos(cents),
+          effectiveDate: date ?? DateTime(2000),
+          datePending: date == null,
+          fundName: fund,
+        );
+
+    List<FundGroup<ReleasedRequestRow>> group(List<ReleasedRequestRow> rows) =>
+        groupByFund<ReleasedRequestRow>(
+          rows,
+          (r) => r.fundName,
+          (r) => r.amount,
+          (r) => r.datePending ? null : r.effectiveDate,
+        );
+
+    test('empty input yields empty list', () {
+      expect(group(const []), isEmpty);
+    });
+
+    test('groups by fund and sorts groups A->Z case-insensitively', () {
+      final groups = group([
+        row('Zulu', 100, DateTime(2026, 6, 1)),
+        row('alpha', 200, DateTime(2026, 6, 1)),
+        row('Mike', 300, DateTime(2026, 6, 1)),
+      ]);
+      expect(groups.map((g) => g.fundName), ['alpha', 'Mike', 'Zulu']);
+    });
+
+    test('rows within a group are oldest-first', () {
+      final groups = group([
+        row('F', 100, DateTime(2026, 6, 20), id: 'late'),
+        row('F', 200, DateTime(2026, 6, 1), id: 'early'),
+        row('F', 300, DateTime(2026, 6, 11), id: 'mid'),
+      ]);
+      expect(
+        groups.single.rows.map((r) => r.requestId),
+        ['early', 'mid', 'late'],
+      );
+    });
+
+    test('single fund returns one group with the right subtotal', () {
+      final groups = group([
+        row('F', 100, DateTime(2026, 6, 1)),
+        row('F', 250, DateTime(2026, 6, 2)),
+      ]);
+      expect(groups.length, 1);
+      expect(groups.single.subtotal.centavos, 350);
+    });
+
+    test('blank/whitespace fund name falls back to Unassigned and sorts in', () {
+      final groups = group([
+        row('Bravo', 100, DateTime(2026, 6, 1)),
+        row('   ', 200, DateTime(2026, 6, 1)),
+        row('Zen', 300, DateTime(2026, 6, 1)),
+      ]);
+      // 'Bravo' < 'Unassigned' < 'Zen' case-insensitively.
+      expect(groups.map((g) => g.fundName), ['Bravo', 'Unassigned', 'Zen']);
+    });
+
+    test('null dates sort last within a group without throwing', () {
+      final groups = group([
+        row('F', 100, null, id: 'nullA'),
+        row('F', 200, DateTime(2026, 6, 5), id: 'dated'),
+        row('F', 300, null, id: 'nullB'),
+      ]);
+      final ids = groups.single.rows.map((r) => r.requestId).toList();
+      expect(ids.first, 'dated');
+      expect(ids.sublist(1), containsAll(['nullA', 'nullB']));
+    });
+
+    test(
+      'invariant: sum of group subtotals equals grandTotal of all amounts',
+      () {
+        final rows = [
+          row('B', 100, DateTime(2026, 6, 1)),
+          row('A', 250, DateTime(2026, 6, 2)),
+          row('B', 75, DateTime(2026, 6, 3)),
+          row('', 999, DateTime(2026, 6, 4)),
+          row('A', 1, DateTime(2026, 6, 5)),
+        ];
+        final groups = group(rows);
+        final subtotalSum =
+            grandTotal(groups.map((g) => g.subtotal));
+        final grand = grandTotal(rows.map((r) => r.amount));
+        expect(subtotalSum, grand);
+        expect(grand.centavos, 1425);
+      },
+    );
   });
 }

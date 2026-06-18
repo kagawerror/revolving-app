@@ -21,10 +21,11 @@ void main() {
     required String companyId,
     DateTime? releasedAt,
     int centavos = 10000,
+    String fundId = 'f1',
   }) {
     return db.collection('requests').doc(id).set({
       'companyId': companyId,
-      'fundId': 'f1',
+      'fundId': fundId,
       'createdByUid': 'u1',
       'beneficiaryName': 'Jane',
       'amountCentavos': centavos,
@@ -69,6 +70,23 @@ void main() {
       expect(res, isA<Ok>());
       final ids = (res as Ok).value.items.map((r) => r.id).toSet();
       expect(ids, {'in'});
+    });
+
+    test('resolves fundNameById for the in-window items', () async {
+      await db
+          .collection('funds')
+          .doc('fA')
+          .set({'companyId': 'c1', 'name': 'Petty Cash'});
+      await seedRequest(
+        id: 'in',
+        companyId: 'c1',
+        fundId: 'fA',
+        releasedAt: DateTime(2026, 6, 5),
+      );
+
+      final res = await repo.fetchReleasedForReport('c1', window);
+      final page = res.valueOrNull!;
+      expect(page.fundNameById['fA'], 'Petty Cash');
     });
   });
 

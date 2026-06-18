@@ -26,6 +26,8 @@ class ReportListScaffold extends StatelessWidget {
     required this.itemBuilder,
     this.truncated = false,
     this.cap = 500,
+    this.separated = true,
+    this.totalItemCount,
   });
 
   final String totalLabel;
@@ -38,31 +40,53 @@ class ReportListScaffold extends StatelessWidget {
   final bool truncated;
   final int cap;
 
+  /// When true the list draws hairline dividers between items (the continuous
+  /// ledger look). When false items are rendered plain — used by the grouped
+  /// released view, where headers/subtotals provide their own separation.
+  final bool separated;
+
+  /// The count surfaced in the footer's "N items" label. When null, the footer
+  /// falls back to [itemCount]; the grouped released view passes the row count
+  /// explicitly because it iterates *entries* (headers + rows + subtotals).
+  final int? totalItemCount;
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
 
+    const listPadding = EdgeInsets.fromLTRB(
+      AppTokens.lg,
+      AppTokens.sm,
+      AppTokens.lg,
+      AppTokens.lg,
+    );
+
     return Column(
       children: [
         Expanded(
-          child: ListView.separated(
-            padding: const EdgeInsets.fromLTRB(
-              AppTokens.lg,
-              AppTokens.sm,
-              AppTokens.lg,
-              AppTokens.lg,
-            ),
-            itemCount: itemCount,
-            separatorBuilder: (_, _) => Divider(
-              height: 1,
-              thickness: 1,
-              color: scheme.outlineVariant.withValues(alpha: 0.5),
-            ),
-            itemBuilder: itemBuilder,
-          ),
+          child: separated
+              ? ListView.separated(
+                  padding: listPadding,
+                  itemCount: itemCount,
+                  separatorBuilder: (_, _) => Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: scheme.outlineVariant.withValues(alpha: 0.5),
+                  ),
+                  itemBuilder: itemBuilder,
+                )
+              : ListView.builder(
+                  padding: listPadding,
+                  itemCount: itemCount,
+                  itemBuilder: itemBuilder,
+                ),
         ),
         if (truncated) _TruncatedNote(cap: cap),
-        _GrandTotalBar(label: totalLabel, total: total, itemCount: itemCount),
+        _GrandTotalBar(
+          label: totalLabel,
+          total: total,
+          itemCount: totalItemCount ?? itemCount,
+        ),
       ],
     );
   }

@@ -5,6 +5,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 
 import '../../../core/money/money.dart';
+import 'report_math.dart';
 import 'report_models.dart';
 
 /// PDF-safe peso amount. The embedded Helvetica/standard PDF fonts can't draw
@@ -33,15 +34,36 @@ Future<Uint8List> releasedReportPdf(
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
 
-  final dataRows = <List<String>>[
-    for (final r in summary.rows)
-      [
-        r.beneficiaryName,
-        r.purpose,
-        '${dateFmt.format(r.effectiveDate)}${r.datePending ? ' (pending)' : ''}',
-        'PHP ${_pdfPeso(r.amount)}',
-      ],
-  ];
+  final groups = groupByFund<ReleasedRequestRow>(
+    summary.rows,
+    (r) => r.fundName,
+    (r) => r.amount,
+    (r) => r.datePending ? null : r.effectiveDate,
+  );
+
+  pw.Widget releasedTable(List<ReleasedRequestRow> rows) {
+    final dataRows = <List<String>>[
+      for (final r in rows)
+        [
+          r.beneficiaryName,
+          r.purpose,
+          '${dateFmt.format(r.effectiveDate)}${r.datePending ? ' (pending)' : ''}',
+          'PHP ${_pdfPeso(r.amount)}',
+        ],
+    ];
+    return pw.TableHelper.fromTextArray(
+      headers: const ['Requestor', 'Purpose', 'Date', 'Amount'],
+      data: dataRows,
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+      cellAlignments: const {
+        0: pw.Alignment.centerLeft,
+        1: pw.Alignment.centerLeft,
+        2: pw.Alignment.centerLeft,
+        3: pw.Alignment.centerRight,
+      },
+    );
+  }
 
   doc.addPage(
     pw.MultiPage(
@@ -54,19 +76,12 @@ Future<Uint8List> releasedReportPdf(
           companyName,
         ),
         pw.SizedBox(height: 12),
-        pw.TableHelper.fromTextArray(
-          headers: const ['Requestor', 'Purpose', 'Date', 'Amount'],
-          data: dataRows,
-          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-          headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
-          cellAlignments: const {
-            0: pw.Alignment.centerLeft,
-            1: pw.Alignment.centerLeft,
-            2: pw.Alignment.centerLeft,
-            3: pw.Alignment.centerRight,
-          },
-        ),
-        pw.SizedBox(height: 12),
+        for (final g in groups) ...[
+          _fundHeading(g.fundName),
+          releasedTable(g.rows),
+          _subtotal(g.fundName, 'PHP ${_pdfPeso(g.subtotal)}'),
+          pw.SizedBox(height: 14),
+        ],
         _grandTotal('PHP ${_pdfPeso(summary.grandTotal)}'),
       ],
     ),
@@ -100,7 +115,12 @@ Future<Uint8List> replenishmentReportPdf(
     pw.MultiPage(
       pageFormat: PdfPageFormat.a4,
       build: (context) => [
-        _header('Replenishments', periodLabel, summary.rows.length, companyName),
+        _header(
+          'Replenishments',
+          periodLabel,
+          summary.rows.length,
+          companyName,
+        ),
         pw.SizedBox(height: 12),
         pw.TableHelper.fromTextArray(
           headers: const ['Approved date', 'Requests', 'Total'],
@@ -132,17 +152,44 @@ Future<Uint8List> replenishmentDetailPdf(
   final doc = pw.Document();
   final dateFmt = DateFormat('MMM d, yyyy');
 
-  final dataRows = <List<String>>[
-    for (final r in summary.rows)
-      [
-        r.approvedDate == null ? '—' : dateFmt.format(r.approvedDate!),
-        r.fundName,
-        r.beneficiaryName,
-        r.purpose,
-        r.isPartial ? 'Partial' : 'Full',
-        'PHP ${_pdfPeso(r.amount)}',
+  final groups = groupByFund<ReplenishedLineRow>(
+    summary.rows,
+    (r) => r.fundName,
+    (r) => r.amount,
+    (r) => r.approvedDate,
+  );
+
+  pw.Widget detailTable(List<ReplenishedLineRow> rows) {
+    final dataRows = <List<String>>[
+      for (final r in rows)
+        [
+          r.approvedDate == null ? '—' : dateFmt.format(r.approvedDate!),
+          r.beneficiaryName,
+          r.purpose,
+          r.isPartial ? 'Partial' : 'Full',
+          'PHP ${_pdfPeso(r.amount)}',
+        ],
+    ];
+    return pw.TableHelper.fromTextArray(
+      headers: const [
+        'Approved date',
+        'Requestor',
+        'Purpose',
+        'Type',
+        'Amount',
       ],
-  ];
+      data: dataRows,
+      headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
+      headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
+      cellAlignments: const {
+        0: pw.Alignment.centerLeft,
+        1: pw.Alignment.centerLeft,
+        2: pw.Alignment.centerLeft,
+        3: pw.Alignment.centerLeft,
+        4: pw.Alignment.centerRight,
+      },
+    );
+  }
 
   doc.addPage(
     pw.MultiPage(
@@ -155,28 +202,12 @@ Future<Uint8List> replenishmentDetailPdf(
           companyName,
         ),
         pw.SizedBox(height: 12),
-        pw.TableHelper.fromTextArray(
-          headers: const [
-            'Approved date',
-            'Fund',
-            'Requestor',
-            'Purpose',
-            'Type',
-            'Amount',
-          ],
-          data: dataRows,
-          headerStyle: pw.TextStyle(fontWeight: pw.FontWeight.bold),
-          headerDecoration: const pw.BoxDecoration(color: PdfColors.grey300),
-          cellAlignments: const {
-            0: pw.Alignment.centerLeft,
-            1: pw.Alignment.centerLeft,
-            2: pw.Alignment.centerLeft,
-            3: pw.Alignment.centerLeft,
-            4: pw.Alignment.centerLeft,
-            5: pw.Alignment.centerRight,
-          },
-        ),
-        pw.SizedBox(height: 12),
+        for (final g in groups) ...[
+          _fundHeading(g.fundName),
+          detailTable(g.rows),
+          _subtotal(g.fundName, 'PHP ${_pdfPeso(g.subtotal)}'),
+          pw.SizedBox(height: 14),
+        ],
         _grandTotal('PHP ${_pdfPeso(summary.grandTotal)}'),
       ],
     ),
@@ -257,6 +288,79 @@ pw.Widget _header(
       ),
       pw.SizedBox(height: 6),
       pw.Container(height: 2, color: _brand),
+    ],
+  );
+}
+
+/// Section heading for a per-fund group: a tinted band with a brand left rule
+/// and the fund's name, introducing the detail table that follows.
+pw.Widget _fundHeading(String fundName) {
+  return pw.Column(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.Container(
+        width: double.infinity,
+        padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        // A non-uniform (left-only) border can't be combined with a
+        // borderRadius in dart_pdf's painter, so the band is square with just
+        // the brand left rule.
+        decoration: pw.BoxDecoration(
+          color: _brandTint,
+          border: pw.Border(left: pw.BorderSide(color: _brand, width: 3)),
+        ),
+        child: pw.Text(
+          fundName,
+          style: pw.TextStyle(
+            fontSize: 13,
+            fontWeight: pw.FontWeight.bold,
+            color: _brand,
+          ),
+        ),
+      ),
+      pw.SizedBox(height: 6),
+    ],
+  );
+}
+
+/// Right-aligned per-fund subtotal line, set under the group's table with a thin
+/// rule so each fund's running figure is legible before the GRAND TOTAL.
+pw.Widget _subtotal(String fundName, String formatted) {
+  return pw.Row(
+    mainAxisAlignment: pw.MainAxisAlignment.end,
+    children: [
+      pw.Container(
+        padding: const pw.EdgeInsets.only(top: 6),
+        decoration: const pw.BoxDecoration(
+          border: pw.Border(
+            top: pw.BorderSide(color: PdfColors.grey400, width: 0.5),
+          ),
+        ),
+        child: pw.Row(
+          mainAxisSize: pw.MainAxisSize.min,
+          children: [
+            pw.Text(
+              // ASCII hyphen, not an em-dash: the standard PDF Helvetica can't
+              // draw U+2014 (same constraint that forces "PHP" over the peso
+              // glyph), and it would render as a missing-glyph box.
+              'Subtotal - $fundName',
+              style: pw.TextStyle(
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColors.grey700,
+              ),
+            ),
+            pw.SizedBox(width: 12),
+            pw.Text(
+              formatted,
+              style: pw.TextStyle(
+                fontSize: 11,
+                fontWeight: pw.FontWeight.bold,
+                color: _brand,
+              ),
+            ),
+          ],
+        ),
+      ),
     ],
   );
 }

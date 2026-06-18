@@ -69,11 +69,23 @@ class FirestoreReportRepository implements ReportRepository {
       // Re-apply the pure window filter defensively (timezone/edge safety).
       final rows = releasedRowsInWindow(all, window);
       final ids = rows.map((r) => r.requestId).toSet();
+      final items = all.where((r) => ids.contains(r.id)).toList();
+
+      // Resolve the fund names for the in-window items so the report can group
+      // releases under their fund. Funds per company are few; parallelize the
+      // single-doc gets (read-only, allowed by the sameCompany rule — no
+      // transaction, no new index).
+      final fundIds = <String>{for (final r in items) r.fundId};
+      final fundSnaps = await Future.wait(
+        fundIds.map((id) => _funds.doc(id).get()),
+      );
+      final fundNameById = <String, String>{
+        for (final s in fundSnaps)
+          if (s.exists) s.id: (s.data()?['name'] ?? '') as String,
+      };
+
       return Ok(
-        ReportPage(
-          all.where((r) => ids.contains(r.id)).toList(),
-          truncated: truncated,
-        ),
+        ReportPage(items, truncated: truncated, fundNameById: fundNameById),
       );
     } catch (e, st) {
       developer.log(

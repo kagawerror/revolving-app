@@ -71,6 +71,7 @@ void main() {
             amount: Money.fromCentavos(125000),
             effectiveDate: DateTime(2026, 6, 13),
             datePending: false,
+            fundName: '',
           ),
         ]),
         'June 2026',
@@ -78,8 +79,12 @@ void main() {
       );
       final lines = csv.trimRight().split('\n');
       expect(lines.first, 'Requestor,Purpose,Date,Amount,Pending sync');
-      expect(lines[1],
+      // A blank fund name groups under the 'Unassigned' fund banner, then the
+      // detail row, then a per-fund subtotal.
+      expect(lines[1], 'Fund,Unassigned');
+      expect(lines[2],
           '"Doe, Jane","Fuel ""premium""",2026-06-13,1250.00,no');
+      expect(lines[3], 'Subtotal,,,1250.00,');
       expect(lines.last, 'GRAND TOTAL,June 2026,,1250.00,');
       // No peso symbol anywhere.
       expect(csv.contains('₱'), isFalse);
@@ -95,6 +100,7 @@ void main() {
             amount: Money.fromCentavos(10000),
             effectiveDate: DateTime(2026, 6, 13),
             datePending: false,
+            fundName: '',
           ),
         ]),
         'June 2026',
@@ -118,13 +124,17 @@ void main() {
             amount: Money.fromCentavos(10000),
             effectiveDate: DateTime(2026, 6, 13),
             datePending: false,
+            fundName: '',
           ),
         ]),
         'June 2026',
         '',
       );
       expect(csv.startsWith('Company'), isFalse);
-      expect(csv.contains('\n\n'), isFalse, reason: 'no leading blank gap');
+      // No leading blank gap: the header row is first, not a blank line. (A
+      // blank separator DOES appear after each fund group, so we only assert
+      // the start is clean rather than the whole file being gap-free.)
+      expect(csv.startsWith('\n'), isFalse, reason: 'no leading blank gap');
       expect(csv.split('\n').first, 'Requestor,Purpose,Date,Amount,Pending sync');
     });
   });
@@ -165,6 +175,7 @@ void main() {
             amount: Money.fromCentavos(125000),
             effectiveDate: DateTime(2026, 6, 13),
             datePending: false,
+            fundName: '',
           ),
         ]),
         periodLabel,
@@ -194,6 +205,7 @@ void main() {
             amount: Money.fromCentavos(10000),
             effectiveDate: DateTime(2026, 6, 13),
             datePending: false,
+            fundName: '',
           ),
         ]),
         'June 2026',
@@ -235,6 +247,7 @@ void main() {
             amount: Money.fromCentavos(10000),
             effectiveDate: DateTime(2026, 6, 13),
             datePending: true,
+            fundName: '',
           ),
         ]),
         'June 2026',

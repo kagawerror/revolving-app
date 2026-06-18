@@ -14,12 +14,18 @@ class ReleasedRequestRow extends Equatable {
     required this.amount,
     required this.effectiveDate,
     required this.datePending,
+    required this.fundName,
   });
 
   final String requestId;
   final String beneficiaryName;
   final String purpose;
   final Money amount;
+
+  /// The name of the fund this release was drawn from, resolved from the fund
+  /// doc by id. Empty when the fund is missing/blank/deleted — the report then
+  /// groups the row under the `Unassigned` fallback label.
+  final String fundName;
 
   /// The date the row sorts/displays by: the release date when synced, else
   /// `createdAt` for a still-pending release.
@@ -37,7 +43,30 @@ class ReleasedRequestRow extends Equatable {
     amount,
     effectiveDate,
     datePending,
+    fundName,
   ];
+}
+
+/// A set of report detail rows that all belong to the same fund, with their
+/// summed [subtotal]. Reports nest detail rows under their fund: the [rows] are
+/// the lines for [fundName] (already ordered oldest-first by the grouping fn),
+/// and [subtotal] reconciles to the report's grand total when summed across
+/// every group. Generic over the row type so released + replenishment-detail
+/// share one grouping path.
+@immutable
+class FundGroup<T> extends Equatable {
+  const FundGroup({
+    required this.fundName,
+    required this.rows,
+    required this.subtotal,
+  });
+
+  final String fundName;
+  final List<T> rows;
+  final Money subtotal;
+
+  @override
+  List<Object?> get props => [fundName, rows, subtotal];
 }
 
 /// One approved (signed-off) replenishment in the active period window.

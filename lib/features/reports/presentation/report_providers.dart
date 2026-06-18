@@ -122,7 +122,11 @@ final releasedReportProvider =
           .fetchReleasedForReport(companyId, window);
       return result.when(
         ok: (page) {
-          final rows = releasedRowsInWindow(page.items, window);
+          final rows = releasedRowsInWindow(
+            page.items,
+            window,
+            fundNameById: page.fundNameById,
+          );
           return ReportSummary(
             rows: rows,
             grandTotal: grandTotal(rows.map((r) => r.amount)),
