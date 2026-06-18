@@ -19,6 +19,7 @@ import '../domain/fund_audit_math.dart';
 import '../domain/fund_audit_pdf.dart';
 import '../domain/fund_audit_repository.dart';
 import '../domain/ocr_count_parser.dart';
+import '../domain/ocr_row_reconstructor.dart';
 import '../domain/ocr_text_service.dart';
 import '../../../services/firebase/firebase_providers.dart';
 import '../../../services/share/file_share_service.dart';
@@ -44,6 +45,11 @@ class FundAuditFormState extends Equatable {
   final String proofImageUrl;
   final String note;
   final bool ocrRunning;
+
+  /// True after an OCR run that produced NO usable denomination counts, so the
+  /// UI can prompt manual entry. The photo is still kept as proof; the grid stays
+  /// fully editable.
+  final bool ocrAttemptedNoMatch;
   final bool saving;
   final FundAuditOutcome outcome;
 
@@ -57,6 +63,7 @@ class FundAuditFormState extends Equatable {
     required this.proofImageUrl,
     required this.note,
     required this.ocrRunning,
+    required this.ocrAttemptedNoMatch,
     required this.saving,
     required this.outcome,
   });
@@ -71,6 +78,7 @@ class FundAuditFormState extends Equatable {
     String? proofImageUrl,
     String? note,
     bool? ocrRunning,
+    bool? ocrAttemptedNoMatch,
     bool? saving,
     FundAuditOutcome? outcome,
   }) {
@@ -84,6 +92,7 @@ class FundAuditFormState extends Equatable {
       proofImageUrl: proofImageUrl ?? this.proofImageUrl,
       note: note ?? this.note,
       ocrRunning: ocrRunning ?? this.ocrRunning,
+      ocrAttemptedNoMatch: ocrAttemptedNoMatch ?? this.ocrAttemptedNoMatch,
       saving: saving ?? this.saving,
       outcome: outcome ?? this.outcome,
     );
@@ -100,6 +109,7 @@ class FundAuditFormState extends Equatable {
         proofImageUrl,
         note,
         ocrRunning,
+        ocrAttemptedNoMatch,
         saving,
         outcome,
       ];
@@ -146,6 +156,7 @@ class FundAuditController
       proofImageUrl: '',
       note: '',
       ocrRunning: false,
+      ocrAttemptedNoMatch: false,
       saving: false,
       outcome: outcome,
     );
@@ -189,22 +200,31 @@ class FundAuditController
     final XFile? file = await picker.pickImage(source: source, maxWidth: 1600);
     if (file == null) return;
 
-    state = state.copyWith(proofImagePath: file.path, ocrRunning: true);
+    state = state.copyWith(
+      proofImagePath: file.path,
+      ocrRunning: true,
+      ocrAttemptedNoMatch: false,
+    );
 
     final result = await ref.read(ocrTextServiceProvider).recognizeLines(file.path);
     final lines = result.valueOrNull;
     if (lines == null) {
-      // OCR failed — keep the photo, leave the grid for manual entry.
-      state = state.copyWith(ocrRunning: false);
+      // OCR failed — keep the photo, leave the grid for manual entry, and flag
+      // the no-match state so the UI prompts manual entry.
+      state = state.copyWith(ocrRunning: false, ocrAttemptedNoMatch: true);
       return;
     }
 
-    final parsed = parseDenominationCounts(lines);
+    // ML Kit segments bordered sheets column-wise; reconstruct visual rows first
+    // so the line-based parser sees `<face> ... <count>` together.
+    final rows = reconstructRows(lines);
+    final parsed = parseDenominationCounts(rows);
     final merged = {...state.counts, ...parsed};
     state = state.copyWith(
       counts: merged,
       ocrPrefilled: {...state.ocrPrefilled, ...parsed.keys},
       ocrRunning: false,
+      ocrAttemptedNoMatch: parsed.isEmpty,
       outcome: _recompute(merged),
     );
   }

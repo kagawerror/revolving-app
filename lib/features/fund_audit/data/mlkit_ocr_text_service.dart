@@ -1,4 +1,5 @@
 import 'dart:developer' as developer;
+import 'dart:ui' show Rect;
 
 import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
@@ -20,9 +21,13 @@ class MlkitOcrTextService implements OcrTextService {
     try {
       final input = InputImage.fromFilePath(imagePath);
       final recognized = await _recognizer.processImage(input);
+      // Carry each line's bounding box through the seam so the pure
+      // [reconstructRows] stage can rebuild visual rows from a sheet ML Kit
+      // segments column-wise.
       final lines = <RecognizedLine>[
         for (final block in recognized.blocks)
-          for (final line in block.lines) RecognizedLine(line.text),
+          for (final line in block.lines)
+            RecognizedLine(line.text, box: _toBox(line.boundingBox)),
       ];
       return Ok(lines);
     } catch (e, st) {
@@ -31,6 +36,10 @@ class MlkitOcrTextService implements OcrTextService {
       return const Err(UnexpectedFailure('Could not read the photo. Enter counts manually.'));
     }
   }
+
+  /// Converts an ML Kit `Rect` into the plugin-free [TextBox] the pure
+  /// reconstructor/parser consume.
+  TextBox _toBox(Rect r) => TextBox(r.left, r.top, r.right, r.bottom);
 
   /// Releases the native recognizer. Call when the owning provider disposes.
   Future<void> dispose() => _recognizer.close();

@@ -169,7 +169,88 @@ void main() {
     expect(state.counts[Denomination.p100], 5);
     expect(state.ocrPrefilled, containsAll([Denomination.p1000, Denomination.p100]));
     expect(state.ocrRunning, isFalse);
+    expect(state.ocrAttemptedNoMatch, isFalse);
     expect(state.proofImagePath, '/tmp/sheet.jpg');
+  });
+
+  test(
+      'pickPhotoAndOcr fills the grid from COLUMN-segmented boxed fragments',
+      () async {
+    final repo = repoWithOutstanding(const []);
+    final ocr = _MockOcr();
+    // ML Kit emits the face-value column, then the count column (column-wise).
+    // Boxes carry geometry so the controller's reconstructRows rebuilds rows.
+    RecognizedLine frag(String t, double left, double right, double cY) =>
+        RecognizedLine(t, box: TextBox(left, cY - 18, right, cY + 18));
+    const faces = ['1.00', '5.00', '10.00', '50.00', '100.00', '1000.00'];
+    const counts = ['8', '1', '1', '2', '2', '2'];
+    final frags = <RecognizedLine>[
+      for (var i = 0; i < faces.length; i++)
+        frag(faces[i], 20, 90, 30 + i * 50),
+      for (var i = 0; i < counts.length; i++)
+        frag(counts[i], 200, 240, 30 + i * 50),
+    ];
+    when(() => ocr.recognizeLines(any())).thenAnswer((_) async => Ok(frags));
+    final picker = _MockPicker();
+    when(() => picker.pickImage(
+          source: any(named: 'source'),
+          maxWidth: any(named: 'maxWidth'),
+        )).thenAnswer((_) async => XFile('/tmp/sheet.jpg'));
+
+    final c = _container(repo: repo, ocr: ocr, picker: picker);
+    addTearDown(c.dispose);
+    await c.read(companyFundsProvider('c1').future);
+
+    final ctrl = c.read(fundAuditControllerProvider(_args).notifier);
+    await ctrl.pickPhotoAndOcr();
+
+    final state = c.read(fundAuditControllerProvider(_args));
+    expect(state.counts[Denomination.p1], 8);
+    expect(state.counts[Denomination.p5], 1);
+    expect(state.counts[Denomination.p10], 1);
+    expect(state.counts[Denomination.p50], 2);
+    expect(state.counts[Denomination.p100], 2);
+    expect(state.counts[Denomination.p1000], 2);
+    expect(state.ocrAttemptedNoMatch, isFalse);
+    expect(state.proofImagePath, '/tmp/sheet.jpg');
+  });
+
+  test('pickPhotoAndOcr matched nothing: flags no-match, keeps photo + manual',
+      () async {
+    final repo = repoWithOutstanding(const []);
+    final ocr = _MockOcr();
+    RecognizedLine frag(String t, double left, double right, double cY) =>
+        RecognizedLine(t, box: TextBox(left, cY - 18, right, cY + 18));
+    when(() => ocr.recognizeLines(any())).thenAnswer((_) async => Ok([
+          frag('hello', 20, 90, 30),
+          frag('world', 200, 260, 30),
+          frag('nonsense', 20, 90, 80),
+        ]));
+    final picker = _MockPicker();
+    when(() => picker.pickImage(
+          source: any(named: 'source'),
+          maxWidth: any(named: 'maxWidth'),
+        )).thenAnswer((_) async => XFile('/tmp/sheet.jpg'));
+
+    final c = _container(repo: repo, ocr: ocr, picker: picker);
+    addTearDown(c.dispose);
+    await c.read(companyFundsProvider('c1').future);
+    final sub = c.listen(fundAuditControllerProvider(_args), (_, _) {});
+    addTearDown(sub.close);
+
+    final ctrl = c.read(fundAuditControllerProvider(_args).notifier);
+    await ctrl.pickPhotoAndOcr();
+
+    var state = c.read(fundAuditControllerProvider(_args));
+    expect(state.counts.values.where((v) => v > 0), isEmpty);
+    expect(state.ocrPrefilled, isEmpty);
+    expect(state.ocrAttemptedNoMatch, isTrue);
+    expect(state.proofImagePath, '/tmp/sheet.jpg');
+
+    // Manual entry still works after a no-match OCR.
+    ctrl.setCount(Denomination.p50, 4);
+    state = c.read(fundAuditControllerProvider(_args));
+    expect(state.counts[Denomination.p50], 4);
   });
 
   test('OCR error leaves the grid editable (counts unchanged, not running)',
@@ -196,6 +277,7 @@ void main() {
     expect(state.counts[Denomination.p20], 3);
     expect(state.ocrPrefilled, isEmpty);
     expect(state.ocrRunning, isFalse);
+    expect(state.ocrAttemptedNoMatch, isTrue);
   });
 
   test('save builds a FundAudit with snapshotted names + signed variance',

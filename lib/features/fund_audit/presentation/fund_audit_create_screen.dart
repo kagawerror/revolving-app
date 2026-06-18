@@ -137,7 +137,10 @@ class _FundAuditCreateScreenState extends ConsumerState<FundAuditCreateScreen> {
                   onCapture: () => ctrl.pickPhotoAndOcr(),
                 ),
                 const SizedBox(height: AppTokens.md),
-                _OcrHint(prefilledCount: state.ocrPrefilled.length),
+                _OcrHint(
+                  prefilledCount: state.ocrPrefilled.length,
+                  noMatch: state.ocrAttemptedNoMatch,
+                ),
                 const SizedBox(height: AppTokens.lg),
                 _SectionLabel(
                   text: 'Denomination count',
@@ -268,29 +271,38 @@ class _SectionLabel extends StatelessWidget {
 }
 
 class _OcrHint extends StatelessWidget {
-  const _OcrHint({required this.prefilledCount});
+  const _OcrHint({required this.prefilledCount, this.noMatch = false});
   final int prefilledCount;
+  final bool noMatch;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final text = prefilledCount == 0
-        ? 'Counts you enter are computed live below. The photo is your proof of count.'
-        : '$prefilledCount row${prefilledCount == 1 ? '' : 's'} pre-filled from the photo. '
-            'Verify the highlighted rows — every value is editable.';
+
+    // OCR ran but read nothing usable — warn and steer to manual entry, without
+    // blocking the (already editable) grid. The photo is kept as proof.
+    final showNoMatch = noMatch && prefilledCount == 0;
+    final color = showNoMatch ? scheme.error : scheme.onSurfaceVariant;
+    final icon =
+        showNoMatch ? Icons.warning_amber_rounded : Icons.info_outline_rounded;
+    final text = showNoMatch
+        ? "Couldn't read the sheet — enter the counts manually below. "
+            'Your photo is still saved as proof.'
+        : prefilledCount == 0
+            ? 'Counts you enter are computed live below. The photo is your proof of count.'
+            : '$prefilledCount row${prefilledCount == 1 ? '' : 's'} pre-filled from the photo. '
+                'Verify the highlighted rows — every value is editable.';
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(Icons.info_outline_rounded,
-            size: 16, color: scheme.onSurfaceVariant),
+        Icon(icon, size: 16, color: color),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             text,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall
-                ?.copyWith(color: scheme.onSurfaceVariant),
+            style:
+                Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
           ),
         ),
       ],
