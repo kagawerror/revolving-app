@@ -48,9 +48,15 @@ fi
 APK_NAME="rev_app-${VERSION_NAME}-${VERSION_CODE}.apk"
 APK_URL="${HTTPS_BASE_URL%/}/${APK_NAME}"
 
-# Escape for safe embedding in a JSON string (backslash first, then double-quote).
+# Escape for safe embedding in a JSON string (backslash first, then double-quote,
+# then literal newlines/carriage-returns -> \n). A raw newline inside a JSON
+# string is invalid and makes the strict Dart jsonDecode throw, which silently
+# kills the update check for every client. The \n sequence still renders as a
+# line break in the in-app update dialog.
 NOTES_ESCAPED="${NOTES//\\/\\\\}"
 NOTES_ESCAPED="${NOTES_ESCAPED//\"/\\\"}"
+NOTES_ESCAPED="${NOTES_ESCAPED//$'\r'/}"
+NOTES_ESCAPED="${NOTES_ESCAPED//$'\n'/\\n}"
 
 # Write version.json (manifest the app reads).
 MANIFEST="$ROOT_DIR/build/version.json"
