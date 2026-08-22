@@ -56,6 +56,19 @@ class FundRequest extends Equatable {
   final String? disputedByUid;
   final DateTime? disputedAt;
 
+  /// Rejection audit. Null unless the request was rejected, and on legacy
+  /// rejected docs (the trio predates neither — it is simply absent there).
+  ///
+  /// Stamped by `rejectBeforeRelease` (an incharge cancelling a request whose
+  /// cash was never released) and, for the approver path, by the same
+  /// `created → rejected` write. The reason is REQUIRED — see
+  /// `core/validation/rejection_remarks.dart` — because a cancelled request
+  /// with no explanation is an audit gap. Read-only: never set by
+  /// [toCreateMap] (a request cannot be born rejected).
+  final String? rejectedReason;
+  final String? rejectedByUid;
+  final DateTime? rejectedAt;
+
   /// Local reference to an image captured offline that still needs uploading +
   /// backfilling once a connection returns. Null when no image is pending.
   final String? pendingImageRef;
@@ -81,6 +94,9 @@ class FundRequest extends Equatable {
     this.disputedReason,
     this.disputedByUid,
     this.disputedAt,
+    this.rejectedReason,
+    this.rejectedByUid,
+    this.rejectedAt,
     this.pendingImageRef,
   });
 
@@ -121,6 +137,9 @@ class FundRequest extends Equatable {
         disputedReason: m['disputedReason'] as String?,
         disputedByUid: m['disputedByUid'] as String?,
         disputedAt: (m['disputedAt'] as Timestamp?)?.toDate(),
+        rejectedReason: m['rejectedReason'] as String?,
+        rejectedByUid: m['rejectedByUid'] as String?,
+        rejectedAt: (m['rejectedAt'] as Timestamp?)?.toDate(),
         pendingImageRef: m['pendingImageRef'] as String?,
       );
 
@@ -163,6 +182,9 @@ class FundRequest extends Equatable {
     String? disputedReason,
     String? disputedByUid,
     DateTime? disputedAt,
+    String? rejectedReason,
+    String? rejectedByUid,
+    DateTime? rejectedAt,
     String? pendingImageRef,
   }) =>
       FundRequest(
@@ -186,6 +208,9 @@ class FundRequest extends Equatable {
         disputedReason: disputedReason ?? this.disputedReason,
         disputedByUid: disputedByUid ?? this.disputedByUid,
         disputedAt: disputedAt ?? this.disputedAt,
+        rejectedReason: rejectedReason ?? this.rejectedReason,
+        rejectedByUid: rejectedByUid ?? this.rejectedByUid,
+        rejectedAt: rejectedAt ?? this.rejectedAt,
         pendingImageRef: pendingImageRef ?? this.pendingImageRef,
       );
 
@@ -196,6 +221,7 @@ class FundRequest extends Equatable {
         releaseProofUrl, releaseSignatureUrl,
         replenishedCentavos, createdAt, releasedAt,
         releaseState, clientReleaseId,
-        disputedReason, disputedByUid, disputedAt, pendingImageRef,
+        disputedReason, disputedByUid, disputedAt,
+        rejectedReason, rejectedByUid, rejectedAt, pendingImageRef,
       ];
 }

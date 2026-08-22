@@ -150,6 +150,38 @@ abstract interface class RequestRepository {
     required String proofImageUrl,
   });
 
+  /// REJECT BEFORE RELEASE: cancels a request whose cash was NEVER handed out
+  /// (`created → rejected`). This is the "created/approved by mistake" escape
+  /// hatch for the incharge — the request is still sitting in the release
+  /// worklist, so nothing has to be un-done.
+  ///
+  /// MONEY SAFETY: this NEVER touches the fund balance, in either direction.
+  /// In the release-first lifecycle the fund is debited ONLY inside the release
+  /// transaction, so a request rejected at `created` never cost the fund
+  /// anything — and crediting it back here would silently INFLATE the fund.
+  /// Guaranteed structurally: the implementation routes through the money-free
+  /// plain-transition path, which never opens the fund ref.
+  ///
+  /// [reason] is REQUIRED and re-validated here against
+  /// `validateRejectionRemarks` (the same rule the sheet enforces live), so a
+  /// caller cannot bypass the UI and land an unexplained rejection. It is
+  /// stored on the request (`rejectedReason`) and as the history note.
+  ///
+  /// An already-`released` request is refused with a [ValidationFailure] — that
+  /// cash IS out of the fund and must be reconciled through replenishment or
+  /// dispute, not erased. The status is re-read inside the transaction, so a
+  /// concurrent release on another device wins over a stale `created` snapshot.
+  ///
+  /// [fundName] is an optional display value denormalized onto the
+  /// `requestRejected` notification; it never affects money or the transition.
+  Future<Result<void>> rejectBeforeRelease({
+    required FundRequest request,
+    required String actorUid,
+    required String reason,
+    String? actorName,
+    String? fundName,
+  });
+
   /// RESOLVE CONFLICT: the incharge resolves an overdraft `conflict`. [to] must
   /// be [RequestStatus.released] (re-runs the release transaction so the money
   /// re-validates via computeRelease) or [RequestStatus.rejected] (plain

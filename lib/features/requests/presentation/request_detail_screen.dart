@@ -18,6 +18,7 @@ import 'conflict_worklist_body.dart';
 import 'post_release_review_body.dart';
 import 'request_providers.dart';
 import 'request_status_visual.dart';
+import 'widgets/reject_request_sheet.dart';
 import 'widgets/release_signature_tile.dart';
 import 'widgets/request_breakdown_view.dart';
 
@@ -91,6 +92,37 @@ class RequestDetailScreen extends ConsumerWidget {
     if (res.showOnError(context)) Navigator.of(context).pop();
   }
 
+  /// REJECT BEFORE RELEASE — the incharge's escape hatch for a request that is
+  /// still "To release": created (or acted on) by mistake, cash never handed
+  /// out. Collects a REQUIRED reason via [RejectRequestSheet], which doubles as
+  /// the confirmation (it states that no cash is deducted, then requires the
+  /// reason before the destructive button enables).
+  Future<void> _reject(BuildContext context, WidgetRef ref) async {
+    final user = ref.read(currentUserProvider).valueOrNull;
+    if (user == null) return;
+    final reason = await RejectRequestSheet.show(context, request);
+    if (reason == null || !context.mounted) return; // cancelled
+    final res = await ref.read(requestRepositoryProvider).rejectBeforeRelease(
+          request: request,
+          actorUid: user.uid,
+          reason: reason,
+          // actorName + fundName are denormalized onto the approvers'
+          // notification (display-only); the reason itself is PII and never
+          // travels to the notification. fundName is null-safe while loading.
+          actorName: user.displayName,
+          fundName: ref.read(fundByIdProvider(request.fundId)).valueOrNull?.name,
+        );
+    if (!context.mounted) return;
+    if (res.showOnError(context)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Request rejected — no funds were deducted.'),
+        ),
+      );
+      Navigator.of(context).pop();
+    }
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
@@ -101,11 +133,16 @@ class RequestDetailScreen extends ConsumerWidget {
     final visual = requestStatusVisual(request.status);
     final canDecide =
         canApprove && request.status == RequestStatus.released;
+    // The incharge (or an admin) may cancel a request that is STILL `created`
+    // — nothing has been deducted, so there is nothing to reverse. Deliberately
+    // NOT offered from `released` onward: that cash is out of the fund and must
+    // be reconciled through replenishment or dispute, never erased.
+    final canReject = canManage && request.status == RequestStatus.created;
     // Pre-warm the fund stream while a decision is possible so the fund name is
     // already resolved (not AsyncLoading) when the approver taps Acknowledge /
     // Dispute — _acknowledge/_dispute read it null-safely for the incharge's
     // denormalized notification. Display-only; never feeds money/transition.
-    if (canDecide) ref.watch(fundByIdProvider(request.fundId));
+    if (canDecide || canReject) ref.watch(fundByIdProvider(request.fundId));
     // An offline release captured on this device but not yet server-confirmed.
     final isLocalPending = request.releaseState == 'localPending';
     // A conflicted (overdraft-on-sync) release the incharge can resolve.
@@ -305,6 +342,72 @@ class RequestDetailScreen extends ConsumerWidget {
               ),
             ]).animate().fadeIn(delay: 160.ms, duration: 280.ms),
           ],
+
+          // Rejection audit: why a cancelled request never became a release.
+          if (request.status == RequestStatus.rejected &&
+              (request.rejectedReason?.isNotEmpty ?? false)) ...[
+            const SizedBox(height: AppTokens.lg),
+            _RejectionCard(request: request)
+                .animate()
+                .fadeIn(delay: 150.ms, duration: 280.ms),
+          ],
+
+          if (canReject) ...[
+            const SizedBox(height: AppTokens.xl),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => _reject(context, ref),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: scheme.error,
+                  side: BorderSide(color: scheme.error),
+                  minimumSize: const Size.fromHeight(52),
+                ),
+                icon: const Icon(Icons.cancel_rounded),
+                label: const Text('Reject'),
+              ),
+            ).animate().fadeIn(delay: 160.ms, duration: 280.ms),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Read-only audit card for a rejected request: the recorded reason, plus the
+/// reassurance that the fund was never touched — the first question anyone
+/// opening a rejected request asks.
+class _RejectionCard extends StatelessWidget {
+  const _RejectionCard({required this.request});
+
+  final FundRequest request;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return SurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.cancel_rounded, color: scheme.error, size: 20),
+              const SizedBox(width: AppTokens.sm),
+              Text('Rejected',
+                  style: textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+            ],
+          ),
+          const SizedBox(height: AppTokens.sm),
+          Text(request.rejectedReason!, style: textTheme.bodyMedium),
+          const SizedBox(height: AppTokens.sm),
+          Text(
+            'This request was rejected before release — no funds were '
+            'deducted from the fund.',
+            style: textTheme.bodySmall
+                ?.copyWith(color: scheme.onSurfaceVariant),
+          ),
         ],
       ),
     );

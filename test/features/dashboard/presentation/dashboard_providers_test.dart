@@ -193,6 +193,14 @@ class _FakeRequestRepo implements RequestRepository {
     String? fundName,
   }) async => const Ok(null);
   @override
+  Future<Result<void>> rejectBeforeRelease({
+    required FundRequest request,
+    required String actorUid,
+    required String reason,
+    String? actorName,
+    String? fundName,
+  }) async => const Ok(null);
+  @override
   Future<Result<void>> resolveConflict({
     required FundRequest request,
     required RequestStatus to,

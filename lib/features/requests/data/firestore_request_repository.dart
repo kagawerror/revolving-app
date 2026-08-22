@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../../core/error/failure.dart';
 import '../../../core/error/result.dart';
 import '../../../core/money/money.dart';
+import '../../../core/validation/rejection_remarks.dart';
 import '../../companies/domain/fund.dart';
 import '../../messaging/domain/push_sender.dart';
 import '../../sync/domain/release_intent.dart';
@@ -661,6 +662,59 @@ class FirestoreRequestRepository implements RequestRepository {
           actorName: actorName,
         ),
       );
+
+  @override
+  Future<Result<void>> rejectBeforeRelease({
+    required FundRequest request,
+    required String actorUid,
+    required String reason,
+    String? actorName,
+    String? fundName,
+  }) {
+    // Re-check the shared rule BEFORE opening any transaction, so an
+    // unexplained rejection can never be persisted by a caller that bypassed
+    // the sheet. Trim once here and use the trimmed value everywhere below.
+    final trimmed = reason.trim();
+    final invalid = validateRejectionRemarks(trimmed);
+    if (invalid != null) {
+      return Future.value(Err(ValidationFailure(invalid)));
+    }
+    // _plainTransition is the money-free path: it opens ONLY the request ref
+    // and its history subcollection. The fund ref is never read or written
+    // here — a request rejected before release neither cost the fund anything
+    // nor owes it anything back.
+    return _plainTransition(
+      request: request,
+      to: RequestStatus.rejected,
+      actorUid: actorUid,
+      note: trimmed,
+      extraUpdate: {
+        'rejectedReason': trimmed,
+        'rejectedByUid': actorUid,
+        'rejectedAt': FieldValue.serverTimestamp(),
+      },
+      failureMessage: 'Could not reject the request.',
+      // The rejection reason is PII — it is NEVER put in the notification body
+      // (generic body, no reason field), matching the dispute path. It stays on
+      // the request detail screen.
+      stageNotification: (tx) => _stageRequestNotification(
+        tx,
+        companyId: request.companyId,
+        // Same audience as the requestReleased alert: approvers are told
+        // because the request leaves their review queue without ever becoming
+        // a release, and admins see it for oversight.
+        recipientRoles: const ['admin', 'superior', 'manager', 'ceo'],
+        type: 'requestRejected',
+        title: 'Request rejected',
+        body: 'A request was rejected before release. No cash was released.',
+        requestId: request.id,
+        requestAmountCentavos: request.amount.centavos,
+        requestBeneficiaryName: request.beneficiaryName,
+        fundName: fundName,
+        actorName: actorName,
+      ),
+    );
+  }
 
   @override
   Future<Result<void>> resolveConflict({

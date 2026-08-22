@@ -26,14 +26,12 @@ import '../../replenishment/presentation/replenishment_providers.dart';
 import '../../sync/presentation/pending_sync_indicator.dart';
 import '../domain/fund_request.dart';
 import '../domain/request_breakdown.dart';
-import '../domain/request_status.dart';
 import 'conflict_worklist_providers.dart';
-import 'release_flow_controller.dart';
 import 'request_detail_screen.dart';
 import 'request_providers.dart';
-import 'request_status_visual.dart';
 import 'visible_funds_providers.dart';
 import 'widgets/request_breakdown_view.dart';
+import 'widgets/request_row_action.dart';
 
 /// Requests under a single fund. Keyed by (companyId, fundId) so the query is
 /// company-scoped for the sameCompany read rule — a fundId-only query is
@@ -495,7 +493,7 @@ class _FundSectionState extends ConsumerState<_FundSection> {
                                   compact: true,
                                 ),
                                 const SizedBox(height: AppTokens.xs),
-                                _RequestAction(request: list[i]),
+                                RequestRowAction(request: list[i]),
                               ],
                             ),
                             onTap: () => Navigator.of(context).push(
@@ -513,47 +511,5 @@ class _FundSectionState extends ConsumerState<_FundSection> {
         ],
       ),
     ).animate().fadeIn(duration: 280.ms).moveY(begin: 8, end: 0, duration: 280.ms);
-  }
-}
-
-class _RequestAction extends ConsumerWidget {
-  final FundRequest request;
-  const _RequestAction({required this.request});
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final user = ref.read(currentUserProvider).valueOrNull;
-    // Defense-in-depth: an incharge custodian (or an admin superuser operating
-    // this company) may release/ready requests — mirrors the isIncharge() ||
-    // isAdmin() Firestore rule. Otherwise show the status pill.
-    final canManage = user?.role.canManageFundOrAdmin ?? false;
-    if (!canManage) return _statusPill();
-    switch (request.status) {
-      // Release-first: the incharge releases a freshly created request directly.
-      // A conflicted (overdraft) request is resolved through the same release
-      // flow once funds allow.
-      case RequestStatus.created:
-      case RequestStatus.conflict:
-        return FilledButton.icon(
-          onPressed: () => unawaited(
-            ref
-                .read(releaseFlowControllerProvider.notifier)
-                .run(context, request, user!.uid),
-          ),
-          icon: const Icon(Icons.payments_rounded, size: 18),
-          label: const Text('Release'),
-        );
-      default:
-        return _statusPill();
-    }
-  }
-
-  Widget _statusPill() {
-    final visual = requestStatusVisual(request.status);
-    return StatusPill(
-      label: visual.label,
-      tone: visual.tone,
-      icon: visual.icon,
-    );
   }
 }

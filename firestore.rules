@@ -280,10 +280,33 @@ service cloud.firestore {
           && request.resource.data.amountCentavos == resource.data.amountCentavos
           && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
           && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
-        // REJECT: approver/admin rejects a still-created request.
-        || ((isApprover() || isAdmin())
+        // REJECT BEFORE RELEASE: incharge/approver/admin cancels a request whose
+        // cash was NEVER released (`created -> rejected`). Mirrors
+        // RequestStatus._allowed (created -> rejected) and the repository's
+        // rejectBeforeRelease.
+        //
+        // The incharge is permitted because they are the custodian holding a
+        // request created (or approved) by mistake and sitting in their release
+        // worklist; approver/admin keep the ability they already had.
+        //
+        // MONEY: no fund write accompanies this transition (the funds
+        // OPERATIONAL clause is not invoked), and amountCentavos is pinned so a
+        // rejection can never be used to quietly re-price a request. Rejecting
+        // at `created` costs the fund nothing, so nothing is credited back.
+        //
+        // AUDIT: the rejecter must stamp themselves and give a non-empty
+        // reason, matching validateRejectionRemarks in the app. The length rule
+        // itself stays client-side; the server enforces only "present and not
+        // blank" so the field can never be silently omitted.
+        || ((isIncharge() || isApprover() || isAdmin())
           && resource.data.status == 'created'
-          && request.resource.data.status == 'rejected')
+          && request.resource.data.status == 'rejected'
+          && request.resource.data.rejectedByUid == request.auth.uid
+          && request.resource.data.rejectedReason is string
+          && request.resource.data.rejectedReason.size() > 0
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.fundId == resource.data.fundId)
         // CONFLICT (overdraft): incharge/admin flags a released request that the
         // server could not actually cover.
         || ((isIncharge() || isAdmin())
