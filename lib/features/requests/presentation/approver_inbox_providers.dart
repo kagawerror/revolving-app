@@ -1,0 +1,63 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../auth/presentation/auth_providers.dart';
+import '../../companies/presentation/admin_active_company.dart';
+import '../../companies/presentation/admin_company_context_bar.dart';
+import '../domain/fund_request.dart';
+import '../domain/request_status.dart';
+import 'request_providers.dart';
+
+/// Cap on the approver "Approved" tab revisit lists — the most recent acted
+/// items, newest-first. Read-only history; a bounded window keeps it light.
+const kApprovedTabLimit = 25;
+
+final pendingRequestsProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return const Stream.empty();
+  // Admin operates a chosen company; everyone else is pinned to their own.
+  final companyId =
+      effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+  if (companyId.isEmpty) return const Stream.empty();
+  // Release-first: the approver's pending queue is releases awaiting post-hoc
+  // review (acknowledge/dispute), i.e. status == released.
+  return ref
+      .watch(requestRepositoryProvider)
+      .watchByStatus(companyId, RequestStatus.released);
+});
+
+/// The approver "Approved" tab: this company's acted requests (acknowledged /
+/// readyForRelease / released), newest-first, capped. Resolves the company
+/// exactly like [pendingRequestsProvider].
+final recentApprovedRequestsProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return const Stream.empty();
+  final companyId =
+      effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+  if (companyId.isEmpty) return const Stream.empty();
+  return ref
+      .watch(requestRepositoryProvider)
+      .watchApproverActedRecent(companyId, kApprovedTabLimit);
+});
+
+/// The incharge release worklist: acknowledged + readyForRelease requests for
+/// the effective company. Released items drop off automatically (filter-only).
+/// Resolves the company exactly like [pendingRequestsProvider].
+final acknowledgedWorklistProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) {
+  final user = ref.watch(currentUserProvider).valueOrNull;
+  if (user == null) return const Stream.empty();
+  final companyId =
+      effectiveCompanyId(user, ref.watch(adminActiveCompanyProvider));
+  if (companyId.isEmpty) return const Stream.empty();
+  return ref
+      .watch(requestRepositoryProvider)
+      .watchAcknowledgedWorklist(companyId);
+});
+
+/// Admin-only: released requests awaiting post-hoc review across every company.
+final allPendingRequestsProvider =
+    StreamProvider.autoDispose<List<FundRequest>>((ref) => ref
+        .watch(requestRepositoryProvider)
+        .watchByStatusAll(RequestStatus.released));

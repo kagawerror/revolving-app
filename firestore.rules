@@ -1,0 +1,449 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function myProfile() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+    // Membership-aware company set. Multi-company users carry `companyIds`;
+    // legacy docs (no `companyIds`, or an empty list) fall back to their single
+    // primary `companyId` so they behave exactly as before this migration.
+    function myCompanyIds() {
+      return myProfile().get('companyIds', []).size() > 0
+        ? myProfile().get('companyIds', [])
+        : [myProfile().companyId];
+    }
+    function myRole() { return myProfile().role; }
+    function isAdmin() { return signedIn() && myRole() == 'admin'; }
+    function isCeo() { return signedIn() && myRole() == 'ceo'; }
+    function sameCompany(companyId) {
+      return signedIn() && companyId in myCompanyIds();
+    }
+    function isIncharge() { return signedIn() && myRole() == 'incharge'; }
+    function isApprover() {
+      return signedIn() && (myRole() in ['superior', 'manager', 'ceo']);
+    }
+
+    // One-time bootstrap marker. Readable signed-out so the login screen can
+    // offer first-time setup; creatable exactly once by the founding admin.
+    match /meta/bootstrap {
+      allow read: if true;
+      allow create: if signedIn()
+        && !exists(/databases/$(database)/documents/meta/bootstrap)
+        && request.resource.data.seeded == true
+        && request.resource.data.seededByUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || isAdmin());
+      // Admin maintenance: this `write` covers admin create/update/delete of any
+      // profile doc, including creating a profile at an arbitrary (app-minted)
+      // UID — required by the admin user console (no Cloud Functions on Spark).
+      allow write: if isAdmin();
+      // Owner self-service: a signed-in user may update ONLY their own
+      // presentation/profile fields. role + companyId are admin-controlled and
+      // must remain immutable on this path.
+      allow update: if isAdmin()
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['displayName', 'photoUrl', 'themeMode', 'accentId'])
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.companyId == resource.data.companyId
+          // Defense-in-depth: assignedFundIds is admin-controlled (per-incharge
+          // fund scoping). The hasOnly allow-list above already excludes it; this
+          // pin makes the intent explicit alongside role/companyId.
+          && request.resource.data.get('assignedFundIds', [])
+               == resource.data.get('assignedFundIds', [])
+        )
+        // Owner clears their OWN forced-rotation flag (true -> false ONLY) after
+        // a successful self-service password change. mustChangePassword is the
+        // sole mutable key; role + companyId stay pinned. The owner can never
+        // set the flag true (admin-only) — only flip an existing true to false.
+        || (
+          signedIn()
+          && request.auth.uid == uid
+          && request.resource.data.diff(resource.data).affectedKeys()
+               .hasOnly(['mustChangePassword'])
+          && resource.data.get('mustChangePassword', false) == true
+          && request.resource.data.mustChangePassword == false
+          && request.resource.data.role == resource.data.role
+          && request.resource.data.companyId == resource.data.companyId
+          // Defense-in-depth pin (see above): the owner clearing their rotation
+          // flag may not alter their admin-controlled fund scoping.
+          && request.resource.data.get('assignedFundIds', [])
+               == resource.data.get('assignedFundIds', [])
+        );
+      // First-time setup: the founding user creates their own admin profile,
+      // allowed only while the app has not been bootstrapped yet.
+      allow create: if signedIn()
+        && request.auth.uid == uid
+        && request.resource.data.role == 'admin'
+        && request.resource.data.companyId == ''
+        && !exists(/databases/$(database)/documents/meta/bootstrap);
+    }
+
+    match /companies/{companyId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Global app configuration (e.g. cloudinary). Any signed-in user may read so
+    // uploaders can resolve the active config; only an admin may write. Stores
+    // NON-SECRET fields only — the Cloudinary API secret is never persisted.
+    match /appConfig/{docId} {
+      allow read: if signedIn();
+      allow write: if isAdmin();
+    }
+
+    match /funds/{fundId} {
+      // CEO reads funds in ANY company (cross-company Fund Adjustment, intentional).
+      allow read: if isAdmin() || isCeo() || sameCompany(resource.data.companyId);
+      allow create: if isAdmin();
+      // Two distinct paths:
+      //  1) METADATA EDIT (first disjunct): an admin renaming a saved fund.
+      //     name is the sole mutable field — companyId, budget, balance,
+      //     threshold and status are all pinned immutable here (mirrors the
+      //     name-only Edit-fund dialog: budget changes would move real money).
+      //  2) OPERATIONAL (second disjunct): incharge releases and replenishment
+      //     create/discard, approver replenishment approval (resets the
+      //     balance), and admin acting as superuser. This path trusts the
+      //     writer to mutate ANY fund field, including the balance — admin is
+      //     trusted exactly the same way incharge/approver already are. That is
+      //     safe because every money write goes through a runTransaction in the
+      //     repos that re-reads and re-validates against current server state.
+      allow update: if (isAdmin()
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.originalBudgetCentavos
+              == resource.data.originalBudgetCentavos
+          && request.resource.data.availableBalanceCentavos
+              == resource.data.availableBalanceCentavos
+          && request.resource.data.lowBalanceThresholdPct
+              == resource.data.lowBalanceThresholdPct
+          && request.resource.data.status == resource.data.status)
+        // FUND ADJUSTMENT (availability-only): admin OR ceo may move available
+        // cash. Tightly scoped — the diff is exactly {availableBalanceCentavos,
+        // status, adjustmentsCentavos}, and the budget, threshold, name and
+        // companyId are pinned immutable. adjustmentsCentavos is the signed
+        // running total of these same adjustments (written via
+        // FieldValue.increment). CEO is intentionally cross-company here. Every
+        // write goes through a runTransaction in the repo that re-reads +
+        // re-validates the balance, so this can never overdraw despite trusting
+        // the new value.
+        || ((isAdmin() || isCeo())
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['availableBalanceCentavos', 'status', 'adjustmentsCentavos'])
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.originalBudgetCentavos
+              == resource.data.originalBudgetCentavos
+          && request.resource.data.lowBalanceThresholdPct
+              == resource.data.lowBalanceThresholdPct
+          && request.resource.data.name == resource.data.name)
+        // OPERATIONAL: incharge debits availableBalanceCentavos on release AND
+        // now CREDITS it during the auto-approve replenishment submit (same
+        // clause). Approver credits it via the legacy approve() path.
+        || ((sameCompany(resource.data.companyId) || isAdmin())
+          && (isIncharge() || isApprover() || isAdmin()));
+      allow delete: if isAdmin();
+
+      // Append-only audit trail (budgetAdjusted, etc.). Mirrors the request
+      // history block. No amounts are exposed beyond the company scope.
+      match /history/{eventId} {
+        allow read: if isAdmin() || isCeo()
+          || sameCompany(get(/databases/$(database)/documents/funds/$(fundId)).data.companyId);
+        // balanceAdjusted is written by admin or ceo (cross-company); other
+        // audit events (budgetAdjusted) are admin-only and still admitted here.
+        allow create: if isAdmin() || isCeo();
+        allow update, delete: if false;
+      }
+    }
+
+    match /requests/{requestId} {
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
+
+      // Incharge creates; must belong to their company and carry a proof image
+      // OR a non-empty pendingImageRef (offline create backfills the image
+      // later). Status on create must be 'created'. Admin superuser may create
+      // in ANY company (non-empty companyId), still owning the doc.
+      // The offline-create image backfill is enforced by the CREATE IMAGE
+      // BACKFILL clause in the `update` block below (created->created changing
+      // only proofImageUrl/pendingImageRef, requiring a real proof URL).
+      allow create: if (isIncharge()
+          && request.resource.data.companyId in myCompanyIds()
+          && request.resource.data.createdByUid == request.auth.uid
+          && request.resource.data.status == 'created'
+          && ((request.resource.data.proofImageUrl is string
+              && request.resource.data.proofImageUrl.size() > 0)
+            || (request.resource.data.get('pendingImageRef', '') is string
+              && request.resource.data.get('pendingImageRef', '').size() > 0)))
+        || (isAdmin()
+          && request.resource.data.companyId is string
+          && request.resource.data.companyId.size() > 0
+          && request.resource.data.createdByUid == request.auth.uid
+          && request.resource.data.status == 'created'
+          && ((request.resource.data.proofImageUrl is string
+              && request.resource.data.proofImageUrl.size() > 0)
+            || (request.resource.data.get('pendingImageRef', '') is string
+              && request.resource.data.get('pendingImageRef', '').size() > 0)));
+
+      // Release-first lifecycle. Mirrors RequestStatus._allowed exactly. Admin is
+      // a superuser across companies, but every status check below stays so admin
+      // cannot make an illegal transition.
+      allow update: if (sameCompany(resource.data.companyId) || isAdmin()) && (
+        // CREATE IMAGE BACKFILL: fills the deferred create proof photo for an
+        // offline-created request. The request may since have moved on (a doc
+        // created offline can also be RELEASED offline, so its server status is
+        // 'released' by the time this backfill drains — see confirmPendingRelease
+        // / the queued capture write). So status is pinned UNCHANGED rather than
+        // to 'created', and only an EMPTY proofImageUrl may be filled (the create
+        // proof is write-once — this can never overwrite an existing photo).
+        // Changes ONLY proofImageUrl (+ clears pendingImageRef); amountCentavos
+        // and every other field stay pinned. Incharge owner or admin only.
+        ((isIncharge() || isAdmin())
+          && request.resource.data.status == resource.data.status
+          && resource.data.get('proofImageUrl', '') == ''
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['proofImageUrl', 'pendingImageRef'])
+          && request.resource.data.proofImageUrl is string
+          && request.resource.data.proofImageUrl.size() > 0
+          && request.resource.data.amountCentavos == resource.data.amountCentavos)
+        // RELEASE: incharge/admin releases a created OR conflict-resolved
+        // request. The write MUST carry a non-empty release proof photo AND
+        // recipient signature, OR be an offline release pending backfill
+        // (releaseState 'localPending', both URLs may be empty here and are
+        // backfilled by the image-backfill clause below). amountCentavos is
+        // immutable. Mirrors RequestStatus._allowed: only 'created' and
+        // 'conflict' may transition to 'released'.
+        || ((isIncharge() || isAdmin())
+          && resource.data.status in ['created', 'conflict']
+          && request.resource.data.status == 'released'
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && ((request.resource.data.releaseProofUrl is string
+              && request.resource.data.releaseProofUrl.size() > 0
+              && request.resource.data.releaseSignatureUrl is string
+              && request.resource.data.releaseSignatureUrl.size() > 0)
+            || request.resource.data.get('releaseState', '') == 'localPending'))
+        // IMAGE BACKFILL: released -> released changing only the release image
+        // URLs / pendingImageRef / releaseState. Both URLs must now be present.
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'released'
+          && request.resource.data.status == 'released'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['releaseProofUrl', 'releaseSignatureUrl', 'pendingImageRef', 'releaseState'])
+          && request.resource.data.releaseProofUrl is string
+          && request.resource.data.releaseProofUrl.size() > 0
+          && request.resource.data.releaseSignatureUrl is string
+          && request.resource.data.releaseSignatureUrl.size() > 0)
+        // RELEASE-CONFIRM (offline replay): released -> released, promoting a
+        // locally-captured release ('localPending') to 'serverConfirmed'. This
+        // is the server-side confirm in confirmPendingRelease, which ALSO debits
+        // the fund in the same transaction (permitted by the funds OPERATIONAL
+        // update clause for incharge/admin). Distinct from IMAGE BACKFILL above
+        // because it additionally stamps releasedAt. The affectedKeys set is
+        // exactly {releasedAt, releaseProofUrl, releaseSignatureUrl,
+        // releaseState, pendingImageRef} (status + clientReleaseId are rewritten
+        // to identical values, so they stay out of the diff and are pinned by
+        // equality below). Money + identity are immutable; both proof URLs must
+        // now be present. Incharge owner or admin only.
+        || ((isIncharge() || isAdmin())
+          && resource.data.get('releaseState', '') == 'localPending'
+          && resource.data.status == 'released'
+          && request.resource.data.releaseState == 'serverConfirmed'
+          && request.resource.data.status == 'released'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['releasedAt', 'releaseProofUrl', 'releaseSignatureUrl', 'releaseState', 'pendingImageRef'])
+          && request.resource.data.releaseProofUrl is string
+          && request.resource.data.releaseProofUrl.size() > 0
+          && request.resource.data.releaseSignatureUrl is string
+          && request.resource.data.releaseSignatureUrl.size() > 0
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.fundId == resource.data.fundId
+          && request.resource.data.createdByUid == resource.data.createdByUid
+          && request.resource.data.clientReleaseId == resource.data.clientReleaseId)
+        // POST-HOC ACKNOWLEDGE: approver/admin acknowledges a released spend.
+        || ((isApprover() || isAdmin())
+          && resource.data.status == 'released'
+          && request.resource.data.status == 'acknowledged'
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
+        // DISPUTE: approver/admin disputes a released OR acknowledged spend, and
+        // must stamp themselves as the disputer. No money/proof changes.
+        || ((isApprover() || isAdmin())
+          && resource.data.status in ['released', 'acknowledged']
+          && request.resource.data.status == 'disputed'
+          && request.resource.data.disputedByUid == request.auth.uid
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
+        // REJECT BEFORE RELEASE: incharge/approver/admin cancels a request whose
+        // cash was NEVER released (`created -> rejected`). Mirrors
+        // RequestStatus._allowed (created -> rejected) and the repository's
+        // rejectBeforeRelease.
+        //
+        // The incharge is permitted because they are the custodian holding a
+        // request created (or approved) by mistake and sitting in their release
+        // worklist; approver/admin keep the ability they already had.
+        //
+        // MONEY: no fund write accompanies this transition (the funds
+        // OPERATIONAL clause is not invoked), and amountCentavos is pinned so a
+        // rejection can never be used to quietly re-price a request. Rejecting
+        // at `created` costs the fund nothing, so nothing is credited back.
+        //
+        // AUDIT: the rejecter must stamp themselves and give a non-empty
+        // reason, matching validateRejectionRemarks in the app. The length rule
+        // itself stays client-side; the server enforces only "present and not
+        // blank" so the field can never be silently omitted.
+        || ((isIncharge() || isApprover() || isAdmin())
+          && resource.data.status == 'created'
+          && request.resource.data.status == 'rejected'
+          && request.resource.data.rejectedByUid == request.auth.uid
+          && request.resource.data.rejectedReason is string
+          && request.resource.data.rejectedReason.size() > 0
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.fundId == resource.data.fundId)
+        // CONFLICT (overdraft): incharge/admin flags a released request that the
+        // server could not actually cover.
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'released'
+          && request.resource.data.status == 'conflict')
+        // RESOLVE CONFLICT to rejected (resolve-to-released is the RELEASE
+        // clause above). Incharge/admin only.
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'conflict'
+          && request.resource.data.status == 'rejected')
+        // Full replenishment: released OR acknowledged OR disputed ->
+        // replenished. Disputed/acknowledged cash is still reconcilable.
+        // Captured proof + signature stay immutable. Mirrors
+        // RequestStatus._allowed (released/acknowledged/disputed -> replenished).
+        // Incharge is permitted because replenishment now auto-approves on the
+        // incharge's submit (one runTransaction credits the fund and marks the
+        // line-item requests replenished); approver/admin retained for legacy
+        // in-flight 'submitted' reports they still drain.
+        || ((isIncharge() || isApprover() || isAdmin())
+          && resource.data.status in ['released', 'acknowledged', 'disputed']
+          && request.resource.data.status == 'replenished'
+          && request.resource.data.replenishmentId is string
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
+        // Partial replenishment: the request stays in its current reconcilable
+        // status (released, acknowledged or disputed) while only
+        // replenishedCentavos grows; amount, release proof and signature are
+        // immutable. This is a self-transition (no status change). Incharge is
+        // permitted because partial rows are written by the incharge's
+        // auto-approve submit transaction (see full-replenishment clause above).
+        || ((isIncharge() || isApprover() || isAdmin())
+          && resource.data.status in ['released', 'acknowledged', 'disputed']
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.replenishedCentavos
+              > resource.data.get('replenishedCentavos', 0)
+          && request.resource.data.amountCentavos == resource.data.amountCentavos
+          && request.resource.data.get('releaseProofUrl', '') == resource.data.get('releaseProofUrl', '')
+          && request.resource.data.get('releaseSignatureUrl', '') == resource.data.get('releaseSignatureUrl', ''))
+      );
+
+      allow delete: if false;
+
+      match /history/{eventId} {
+        allow read: if sameCompany(get(/databases/$(database)/documents/requests/$(requestId)).data.companyId);
+        allow create: if signedIn();
+        allow update, delete: if false;
+      }
+    }
+
+    match /replenishments/{repId} {
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
+      // Incharge creates in their own company; admin superuser in any company.
+      allow create: if (isIncharge()
+          && request.resource.data.companyId in myCompanyIds()
+          && request.resource.data.status == 'draft')
+        || (isAdmin()
+          && request.resource.data.companyId is string
+          && request.resource.data.companyId.size() > 0
+          && request.resource.data.status == 'draft');
+      // Admin superuser may act across companies; the status-transition checks
+      // mirror ReplenishmentStatus._allowed so admin cannot make an illegal
+      // transition.
+      allow update: if (sameCompany(resource.data.companyId) || isAdmin()) && (
+        // AUTO-APPROVE SUBMIT: incharge/admin flips a draft straight to approved
+        // (the money transaction). companyId/fundId/totalCentavos are pinned
+        // immutable; autoApproved must be set true. The fund credit + per-item
+        // writes are authorized by their own collection rules (funds OPERATIONAL
+        // clause; requests replenish clauses; partialReplenishments create).
+        ((isIncharge() || isAdmin())
+          && resource.data.status == 'draft'
+          && request.resource.data.status == 'approved'
+          && request.resource.data.autoApproved == true
+          && request.resource.data.companyId == resource.data.companyId
+          && request.resource.data.fundId == resource.data.fundId
+          && request.resource.data.totalCentavos == resource.data.totalCentavos)
+        // DISCARD DRAFT: incharge/admin cancels a draft (no money moves).
+        || ((isIncharge() || isAdmin())
+          && resource.data.status == 'draft'
+          && request.resource.data.status == 'rejected')
+        // ACKNOWLEDGE: approver/admin acknowledges an auto-approved report. NOT a
+        // status transition (approved stays approved) — a field update writing
+        // exactly the acknowledgment audit, with the actor stamping themselves.
+        // totalCentavos is pinned immutable.
+        || ((isApprover() || isAdmin())
+          && resource.data.status == 'approved'
+          && request.resource.data.status == 'approved'
+          && request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['acknowledgedByUid', 'acknowledgedByName', 'acknowledgedAt'])
+          && request.resource.data.acknowledgedByUid == request.auth.uid
+          && request.resource.data.totalCentavos == resource.data.totalCentavos)
+        // LEGACY (drain-only): approver/admin approves or rejects an in-flight
+        // `submitted` doc created before the auto-approve change. No new
+        // `submitted` docs are produced by the app anymore.
+        || ((isApprover() || isAdmin())
+          && resource.data.status == 'submitted'
+          && request.resource.data.status in ['approved', 'rejected'])
+      );
+      allow delete: if false;
+    }
+
+    match /partialReplenishments/{partialId} {
+      // Audit rows written when a replenishment with partial line items is
+      // credited. Under the auto-approve lifecycle the INCHARGE writes these
+      // inside their submit transaction, so incharge is now allowed alongside
+      // the legacy approver/admin path. Immutable thereafter.
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
+      allow create: if (isIncharge() || isApprover() || isAdmin())
+        && (sameCompany(request.resource.data.companyId) || isAdmin());
+      allow update, delete: if false;
+    }
+
+    // Physical cash-count audits (proof-of-cash). Write-once and immutable: a
+    // new count is always a new doc. Read is open to the whole company (admins +
+    // approvers + incharge) so superiors can review counts; create is limited to
+    // the incharge custodian (or admin) for their own company, and the
+    // recorded custodian must be the authenticated user.
+    match /fundAudits/{auditId} {
+      allow read: if isAdmin() || sameCompany(resource.data.companyId);
+      allow create: if (isIncharge() || isAdmin())
+        && (sameCompany(request.resource.data.companyId) || isAdmin())
+        && request.resource.data.custodianUid == request.auth.uid
+        && request.resource.data.companyId is string
+        && request.resource.data.companyId.size() > 0
+        && request.resource.data.fundId is string
+        && request.resource.data.fundId.size() > 0;
+      allow update, delete: if false;
+    }
+
+    match /notifications/{notifId} {
+      allow read: if (sameCompany(resource.data.companyId) || isAdmin())
+        && (myRole() in resource.data.recipientRoles);
+      // Admin's post-commit notif writes target other companies (admins have
+      // no company membership), so allow them explicitly.
+      allow create: if sameCompany(request.resource.data.companyId) || isAdmin();
+      allow update: if (sameCompany(resource.data.companyId) || isAdmin())
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt']);
+      allow delete: if false;
+    }
+  }
+}
