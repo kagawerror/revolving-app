@@ -10,6 +10,7 @@ import 'package:rev_app/features/companies/domain/fund_repository.dart';
 import 'package:rev_app/features/companies/presentation/admin_company_context_bar.dart';
 import 'package:rev_app/features/companies/presentation/admin_providers.dart';
 import 'package:rev_app/features/dashboard/presentation/dashboard_providers.dart';
+import 'package:rev_app/features/reports/domain/report_period.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment_repository.dart';
 import 'package:rev_app/features/replenishment/domain/replenishment_status.dart';
@@ -145,6 +146,19 @@ class _FakeRequestRepo implements RequestRepository {
   @override
   Stream<List<FundRequest>> watchByFund(String companyId, String fundId) =>
       const Stream.empty();
+  @override
+  Future<Result<List<FundRequest>>> fetchByCompanyAndPeriod(
+    String companyId,
+    DateRange range, {
+    required int limit,
+    PeriodCursor? before,
+  }) async => const Ok([]);
+  @override
+  Future<Result<List<FundRequest>>> fetchAllByPeriod(
+    DateRange range, {
+    required int limit,
+    PeriodCursor? before,
+  }) async => const Ok([]);
   @override
   Future<Result<FundRequest>> getById(String id) async =>
       const Err(NotFoundFailure('not found'));

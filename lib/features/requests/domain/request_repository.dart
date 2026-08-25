@@ -1,7 +1,17 @@
 import '../../../core/error/result.dart';
+import '../../reports/domain/report_period.dart';
 import '../../sync/domain/release_sync_result.dart';
 import 'fund_request.dart';
 import 'request_status.dart';
+
+/// Position of the last row on a page, used to fetch the next one.
+///
+/// A COMPOSITE cursor on purpose: `createdAt` alone is not unique. The app's
+/// offline outbox drains queued creates back-to-back on reconnect, so two
+/// requests really can land on the same instant — and a timestamp-only cursor
+/// would silently drop one of them from every page it straddles. [id] breaks
+/// the tie, matching the `__name__` ordering Firestore appends to every index.
+typedef PeriodCursor = ({DateTime at, String id});
 
 abstract interface class RequestRepository {
   /// Requests for one fund, scoped to its company. The companyId is required
@@ -46,6 +56,28 @@ abstract interface class RequestRepository {
   /// every company, newest-first, capped at [limit] — the source for the grouped
   /// admin aging view.
   Stream<List<FundRequest>> watchOutstandingAll(int limit);
+
+  /// One-shot page of a company's requests created within [range], newest
+  /// first, capped at [limit]. Pass [before] (the cursor of the last item on
+  /// the previous page) to fetch the next page; omit for the first page.
+  ///
+  /// One-shot (not a stream) on purpose: this backs the dashboard's browsable
+  /// Activity-history archive, where an open listener per page would keep
+  /// re-billing reads for a window the user is no longer looking at.
+  Future<Result<List<FundRequest>>> fetchByCompanyAndPeriod(
+    String companyId,
+    DateRange range, {
+    required int limit,
+    PeriodCursor? before,
+  });
+
+  /// Admin-only: same as [fetchByCompanyAndPeriod] but unscoped across every
+  /// company.
+  Future<Result<List<FundRequest>>> fetchAllByPeriod(
+    DateRange range, {
+    required int limit,
+    PeriodCursor? before,
+  });
 
   /// Single-doc fetch by id (for the alert tap-to-open flow). Missing →
   /// [NotFoundFailure]; failure → [UnexpectedFailure].

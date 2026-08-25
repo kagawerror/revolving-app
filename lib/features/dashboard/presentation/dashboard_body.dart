@@ -21,6 +21,7 @@ import '../../requests/presentation/request_status_visual.dart';
 import '../../requests/presentation/widgets/request_breakdown_view.dart';
 import '../../requests/presentation/widgets/request_detail_sheet.dart';
 import '../domain/dashboard_summary.dart';
+import 'activity_history_providers.dart';
 import 'dashboard_providers.dart';
 
 /// Maps a fund's lifecycle status to a consistent, color-coded pill tone +
@@ -66,6 +67,8 @@ class DashboardBody extends ConsumerWidget {
           _FundsSection(funds: funds),
           const SectionHeader(title: 'Recent activity'),
           _RecentSection(recent: recent),
+          const SectionHeader(title: 'Activity history'),
+          const _ActivityHistorySection(),
         ],
       ),
     );
@@ -409,6 +412,226 @@ String? recentDateLine(FundRequest request) {
 
 /// Formats a [DateTime] as `d MMM y` in local time — the app-wide convention.
 String _fmtDate(DateTime date) => DateFormat('d MMM y').format(date.toLocal());
+
+// --- Activity history -------------------------------------------------------
+
+/// Browsable month-by-month archive of the company's requests, paged 50 rows at
+/// a time. Sits under the (live, capped) "Recent activity" list and answers the
+/// "what happened back in March?" question the recent list can't.
+class _ActivityHistorySection extends ConsumerWidget {
+  const _ActivityHistorySection();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final state = ref.watch(activityHistoryControllerProvider);
+    // Watched once here, then handed to each row — see [_RecentSection] for why
+    // per-tile watching would cause a rebuild storm.
+    final pendingPartials = ref.watch(dashboardPendingPartialByRequestProvider);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const _ActivityHistoryFilterBar(),
+        const SizedBox(height: AppTokens.md),
+        _ActivityHistoryBody(state: state, pendingPartials: pendingPartials),
+        // Only worth any pixels once the archive actually spans >1 page.
+        if (state.isPaginated) _ActivityHistoryPager(state: state),
+      ],
+    );
+  }
+}
+
+/// Full month name for the Month dropdown, e.g. `March`. The day/year in the
+/// probe date are irrelevant — only the month is formatted.
+String _monthName(int month) =>
+    DateFormat.MMMM().format(DateTime(2000, month, 1));
+
+class _ActivityHistoryFilterBar extends ConsumerWidget {
+  const _ActivityHistoryFilterBar();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final filter = ref.watch(activityHistoryFilterProvider);
+    final years = ref.watch(activityHistoryYearsProvider);
+    // Stops at the current month in the current year — a future window has no
+    // data and would only ever render "No activity in this period".
+    final months = ref.watch(activityHistoryMonthsProvider);
+    final notifier = ref.read(activityHistoryFilterProvider.notifier);
+
+    return SurfaceCard(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AppTokens.md,
+        vertical: AppTokens.sm,
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: _FilterDropdown<int>(
+              dropdownKey: const Key('activityHistoryMonth'),
+              label: 'Month',
+              icon: Icons.calendar_month_rounded,
+              value: filter.month,
+              items: {for (final m in months) m: _monthName(m)},
+              onChanged: notifier.setMonth,
+            ),
+          ),
+          const SizedBox(width: AppTokens.md),
+          Expanded(
+            flex: 2,
+            child: _FilterDropdown<int>(
+              dropdownKey: const Key('activityHistoryYear'),
+              label: 'Year',
+              icon: Icons.event_rounded,
+              value: filter.year,
+              items: {for (final y in years) y: '$y'},
+              onChanged: notifier.setYear,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A labeled, themed dropdown.
+///
+/// Built on [DropdownButton] (not [DropdownButtonFormField]) on purpose: the
+/// form-field variant seeds itself from `initialValue` and never re-syncs when
+/// that value changes, so it would drift out of step with the provider the
+/// moment the filter is set from anywhere but the dropdown itself.
+class _FilterDropdown<T> extends StatelessWidget {
+  const _FilterDropdown({
+    required this.dropdownKey,
+    required this.label,
+    required this.icon,
+    required this.value,
+    required this.items,
+    required this.onChanged,
+  });
+
+  final Key dropdownKey;
+  final String label;
+  final IconData icon;
+  final T value;
+  final Map<T, String> items;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return InputDecorator(
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        isDense: true,
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<T>(
+          key: dropdownKey,
+          value: value,
+          isExpanded: true,
+          isDense: true,
+          borderRadius: AppTokens.brField,
+          items: [
+            for (final entry in items.entries)
+              DropdownMenuItem<T>(
+                value: entry.key,
+                child: Text(entry.value, overflow: TextOverflow.ellipsis),
+              ),
+          ],
+          onChanged: (v) {
+            if (v != null) onChanged(v);
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityHistoryBody extends StatelessWidget {
+  const _ActivityHistoryBody({
+    required this.state,
+    required this.pendingPartials,
+  });
+
+  final ActivityHistoryState state;
+  final Map<String, Money> pendingPartials;
+
+  @override
+  Widget build(BuildContext context) {
+    if (state.loading) {
+      return const SurfaceCard(child: SkeletonList(count: 5));
+    }
+    if (state.failure != null) {
+      return const SurfaceCard(
+        child: Text('Could not load activity history'),
+      );
+    }
+    if (state.items.isEmpty) {
+      return const SurfaceCard(
+        child: EmptyState(
+          title: 'No activity in this period',
+          message: 'Pick another month to look further back.',
+        ),
+      );
+    }
+    return SurfaceCard(
+      padding: const EdgeInsets.symmetric(vertical: AppTokens.xs),
+      child: Column(
+        children: [
+          // No staggered entrance here (unlike the 15-row recent list): a full
+          // page is 50 rows, and a per-row delay would run for seconds and
+          // animate rows the user has already scrolled past.
+          for (final request in state.items)
+            _RecentTile(
+              request: request,
+              pendingPartial: pendingPartials[request.id] ?? Money.zero,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ActivityHistoryPager extends ConsumerWidget {
+  const _ActivityHistoryPager({required this.state});
+
+  final ActivityHistoryState state;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final controller = ref.read(activityHistoryControllerProvider.notifier);
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+
+    return Padding(
+      padding: const EdgeInsets.only(top: AppTokens.sm),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          TextButton.icon(
+            onPressed: state.canGoPrevious ? controller.previousPage : null,
+            icon: const Icon(Icons.chevron_left_rounded),
+            label: const Text('Previous'),
+          ),
+          Text(
+            'Page ${state.pageNumber}',
+            style: textTheme.labelLarge?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          TextButton.icon(
+            onPressed: state.canGoNext ? controller.nextPage : null,
+            // Trailing chevron: icon after the label.
+            iconAlignment: IconAlignment.end,
+            icon: const Icon(Icons.chevron_right_rounded),
+            label: const Text('Next'),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _RecentTile extends StatelessWidget {
   const _RecentTile({required this.request, required this.pendingPartial});

@@ -9,6 +9,7 @@ import '../../../core/money/money.dart';
 import '../../../core/validation/rejection_remarks.dart';
 import '../../companies/domain/fund.dart';
 import '../../messaging/domain/push_sender.dart';
+import '../../reports/domain/report_period.dart';
 import '../../sync/domain/release_intent.dart';
 import '../../sync/domain/release_reconcile.dart';
 import '../../sync/domain/release_sync_result.dart';
@@ -157,6 +158,89 @@ class FirestoreRequestRepository implements RequestRepository {
       .limit(limit)
       .snapshots()
       .map((s) => s.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList());
+
+  @override
+  Future<Result<List<FundRequest>>> fetchByCompanyAndPeriod(
+    String companyId,
+    DateRange range, {
+    required int limit,
+    PeriodCursor? before,
+  }) =>
+      _fetchPeriodPage(
+        // Equality on companyId + a range filter on the SAME field we order by
+        // (createdAt) — served by the existing {companyId ASC, createdAt DESC}
+        // composite index; no new index needed. The __name__ tiebreak below is
+        // implicitly the final segment of every composite index, so it adds no
+        // index requirement either.
+        _requests.where('companyId', isEqualTo: companyId),
+        range,
+        limit: limit,
+        before: before,
+        label: 'fetchByCompanyAndPeriod',
+      );
+
+  @override
+  Future<Result<List<FundRequest>>> fetchAllByPeriod(
+    DateRange range, {
+    required int limit,
+    PeriodCursor? before,
+  }) =>
+      // Unscoped: a createdAt range + createdAt orderBy only, which Firestore
+      // serves from the automatic single-field index.
+      _fetchPeriodPage(
+        _requests,
+        range,
+        limit: limit,
+        before: before,
+        label: 'fetchAllByPeriod',
+      );
+
+  /// Shared paging body for the Activity-history fetches. [base] carries any
+  /// scoping equality filter; everything after it is identical so the two
+  /// variants can never drift on ordering, boundaries, or cursor semantics.
+  Future<Result<List<FundRequest>>> _fetchPeriodPage(
+    Query<Map<String, dynamic>> base,
+    DateRange range, {
+    required int limit,
+    required PeriodCursor? before,
+    required String label,
+  }) async {
+    try {
+      // Half-open window: start inclusive, end exclusive — matches DateRange.
+      // The documentId tiebreak makes the ordering a TOTAL order, so no two
+      // rows can share a cursor position and get skipped at a page boundary.
+      var query = base
+          .where('createdAt',
+              isGreaterThanOrEqualTo: Timestamp.fromDate(range.start))
+          .where('createdAt',
+              isLessThan: Timestamp.fromDate(range.endExclusive))
+          .orderBy('createdAt', descending: true)
+          .orderBy(FieldPath.documentId, descending: true);
+
+      if (before != null) {
+        // Materialize the cursor DOCUMENT (one extra read per page turn)
+        // instead of passing raw values. startAfterDocument reads the doc's own
+        // stored orderBy values, which makes it immune to the precision loss a
+        // value cursor suffers: Firestore Timestamps carry nanoseconds but
+        // FundRequest.createdAt is a DateTime (microseconds), so a
+        // round-tripped `Timestamp.fromDate(before.at)` can land at a slightly
+        // different position than the row it came from and skip rows.
+        final anchor = await _requests.doc(before.id).get();
+        query = anchor.exists
+            ? query.startAfterDocument(anchor)
+            // Cursor row deleted mid-browse: fall back to the value cursor.
+            : query.startAfter([Timestamp.fromDate(before.at), before.id]);
+      }
+
+      final snap = await query.limit(limit).get();
+      return Ok(
+        snap.docs.map((d) => FundRequest.fromMap(d.id, d.data())).toList(),
+      );
+    } catch (e, st) {
+      developer.log('$label failed', name: 'requests', error: e, stackTrace: st);
+      return const Err(UnexpectedFailure('Could not load activity history.'));
+    }
+  }
 
   @override
   Future<Result<FundRequest>> getById(String id) async {
