@@ -16,6 +16,12 @@ abstract interface class ReplenishmentRepository {
   /// Admin-only: every company's replenishments with the given status (unscoped).
   Stream<List<Replenishment>> watchByStatusAll(String status);
 
+  /// Every replenishment report whose `requestIds` contains [requestId], scoped
+  /// to [companyId] for the sameCompany read rule. UNSORTED — ordering is done
+  /// in Dart by `computeLiquidationHistory` so legacy docs missing
+  /// `submittedAt` are not silently dropped by an orderBy.
+  Stream<List<Replenishment>> watchByRequestId(String companyId, String requestId);
+
   /// Compiles the SELECTED released requests for the fund into a DRAFT report
   /// of line [items] (each Full or Partial) and flips the fund to `replenishing`.
   /// Full items' amounts are recomputed server-side from each request's

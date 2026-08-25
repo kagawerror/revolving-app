@@ -1,3 +1,5 @@
+import 'dart:developer' as developer;
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/money/money.dart';
@@ -7,6 +9,7 @@ import '../../companies/presentation/admin_active_company.dart';
 import '../../companies/presentation/admin_company_context_bar.dart';
 import '../../messaging/presentation/messaging_providers.dart';
 import '../data/firestore_replenishment_repository.dart';
+import '../domain/liquidation_history.dart';
 import '../domain/pending_partials.dart';
 import '../domain/replenishment.dart';
 import '../domain/replenishment_repository.dart';
@@ -94,3 +97,44 @@ final pendingPartialByRequestProvider =
       const <Replenishment>[];
   return partialAmountByRequest(reps);
 });
+
+/// Family key for [liquidationHistoryProvider]: the request's OWN companyId
+/// (not `effectiveCompanyId`) plus its id.
+typedef LiquidationHistoryArgs = ({String companyId, String requestId});
+
+/// The itemized liquidation ledger of ONE request — every non-draft
+/// replenishment report line that liquidated it, oldest-first. Feeds the full
+/// (detail) breakdown variant, which replaces its two lumped partial rows with
+/// one row per entry.
+///
+/// Keyed by the request document's own `companyId`: the request doc carries the
+/// authoritative tenant, and scoping the query that way also lets an admin read
+/// cross-company via the rules' `isAdmin()` short-circuit. autoDispose so the
+/// listener closes with the detail screen/sheet.
+///
+/// A query failure here is invisible in the UI — the breakdown just degrades to
+/// its lumped rows — so the stream leaves a `dart:developer` breadcrumb before
+/// forwarding the error. The likeliest cause is a `FAILED_PRECONDITION` from the
+/// `(companyId, requestIds array-contains)` composite index not being deployed
+/// yet — see firestore.indexes.json (deliberately two fields, no `createdAt`, so
+/// no `orderBy` here — see [FirestoreReplenishmentRepository.watchByRequestId]).
+/// Only ids and the error are logged: no amounts, no PII.
+final liquidationHistoryProvider = StreamProvider.autoDispose
+    .family<List<LiquidationEntry>, LiquidationHistoryArgs>(
+  (ref, arg) => ref
+      .watch(replenishmentRepositoryProvider)
+      .watchByRequestId(arg.companyId, arg.requestId)
+      .map((reps) => computeLiquidationHistory(arg.requestId, reps))
+      .handleError((Object e, StackTrace st) {
+    developer.log(
+      'liquidation history stream failed '
+      '(companyId=${arg.companyId}, requestId=${arg.requestId})',
+      name: 'replenishment',
+      error: e,
+      stackTrace: st,
+    );
+    // handleError swallows by default; re-throw so the provider still surfaces
+    // AsyncError rather than hanging in AsyncLoading forever.
+    Error.throwWithStackTrace(e, st);
+  }),
+);

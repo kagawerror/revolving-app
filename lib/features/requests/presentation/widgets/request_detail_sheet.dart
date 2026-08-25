@@ -1,10 +1,12 @@
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/status_pill.dart';
 import '../../../../core/widgets/surface_card.dart';
+import '../../../replenishment/presentation/replenishment_providers.dart';
 import '../../domain/fund_request.dart';
 import '../../domain/request_breakdown.dart';
 import '../request_status_visual.dart';
@@ -23,6 +25,16 @@ import 'request_breakdown_view.dart';
 /// pending-partial source — mirroring how the detail screen reads
 /// `pendingPartialByRequestProvider`. Pass
 /// `computeRequestBreakdown(request, pendingPartial: ...)`.
+///
+/// TESTING: when `breakdown.hasAnyPartial` is `true` this sheet subscribes to
+/// [liquidationHistoryProvider], which resolves
+/// `replenishmentRepositoryProvider` → `firestoreProvider` → the live
+/// `FirebaseFirestore.instance`. Any widget test that opens the sheet with such
+/// a breakdown MUST override `liquidationHistoryProvider` (or
+/// `replenishmentRepositoryProvider`) in its `ProviderScope`, or the pump throws
+/// on uninitialised Firebase. See
+/// `test/features/requests/presentation/widgets/request_detail_sheet_test.dart`
+/// for the override pattern.
 Future<void> showRequestDetailSheet(
   BuildContext context, {
   required FundRequest request,
@@ -43,7 +55,7 @@ Future<void> showRequestDetailSheet(
   );
 }
 
-class _RequestDetailSheet extends StatelessWidget {
+class _RequestDetailSheet extends ConsumerWidget {
   const _RequestDetailSheet({
     required this.request,
     required this.breakdown,
@@ -53,8 +65,17 @@ class _RequestDetailSheet extends StatelessWidget {
   final RequestBreakdown breakdown;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    // Itemized liquidation ledger, subscribed only when this request actually
+    // has a partial. Null while loading / on error → the breakdown view falls
+    // back to its lumped (still correct) totals.
+    final entries = breakdown.hasAnyPartial
+        ? ref
+            .watch(liquidationHistoryProvider(
+                (companyId: request.companyId, requestId: request.id)))
+            .valueOrNull
+        : null;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -134,6 +155,7 @@ class _RequestDetailSheet extends StatelessWidget {
                               RequestBreakdownView(
                                 breakdown: breakdown,
                                 compact: false,
+                                entries: entries,
                               ),
                             ],
                           ),

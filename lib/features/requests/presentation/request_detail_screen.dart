@@ -153,6 +153,16 @@ class RequestDetailScreen extends ConsumerWidget {
       pendingPartial:
           ref.watch(pendingPartialByRequestProvider)[request.id] ?? Money.zero,
     );
+    // Itemized liquidation ledger backing the breakdown's middle rows. Only
+    // subscribed when there IS a partial — a plain request opens zero extra
+    // listeners. While loading (or on stream error) this stays null and the
+    // view falls back to the lumped, still-correct totals.
+    final entries = breakdown.hasAnyPartial
+        ? ref
+            .watch(liquidationHistoryProvider(
+                (companyId: request.companyId, requestId: request.id)))
+            .valueOrNull
+        : null;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Request')),
@@ -254,6 +264,7 @@ class RequestDetailScreen extends ConsumerWidget {
               child: RequestBreakdownView(
                 breakdown: breakdown,
                 compact: false,
+                entries: entries,
               ),
             ).animate().fadeIn(delay: 90.ms, duration: 280.ms),
           ],

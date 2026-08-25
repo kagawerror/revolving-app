@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 import '../../../../core/money/money.dart';
 import '../../../../core/theme/app_tokens.dart';
 import '../../../../core/widgets/status_pill.dart';
+import '../../../replenishment/domain/liquidation_history.dart';
 import '../../domain/request_breakdown.dart';
 
 /// Renders a [RequestBreakdown] in one of two densities sharing a single
@@ -22,12 +24,21 @@ class RequestBreakdownView extends StatelessWidget {
     super.key,
     required this.breakdown,
     this.compact = true,
-  });
+    this.entries,
+  }) : assert(entries == null || !compact,
+            'entries is a full-variant concern; the compact variant must keep '
+            'using breakdown.approvedPartial/pendingPartial.');
 
   final RequestBreakdown breakdown;
 
   /// `true` → dense trailing-column variant; `false` → roomy detail variant.
   final bool compact;
+
+  /// Itemized liquidation ledger for the FULL variant only. When non-null it
+  /// replaces the two lumped middle rows with one row per report line; `null`
+  /// (loading, stream error, or an uninterested caller) degrades to those
+  /// lumped rows, which are always correct totals.
+  final List<LiquidationEntry>? entries;
 
   @override
   Widget build(BuildContext context) {
@@ -42,7 +53,7 @@ class RequestBreakdownView extends StatelessWidget {
     }
     return compact
         ? _CompactBreakdown(breakdown: breakdown)
-        : _FullBreakdown(breakdown: breakdown);
+        : _FullBreakdown(breakdown: breakdown, entries: entries);
   }
 }
 
@@ -169,9 +180,13 @@ class _CompactPartialLine extends StatelessWidget {
 // ---------------------------------------------------------------------------
 
 class _FullBreakdown extends StatelessWidget {
-  const _FullBreakdown({required this.breakdown});
+  const _FullBreakdown({required this.breakdown, this.entries});
 
   final RequestBreakdown breakdown;
+
+  /// See [RequestBreakdownView.entries]. Three states drive the middle band:
+  /// `null` → lumped rows, `[]` → muted placeholder, non-empty → one row each.
+  final List<LiquidationEntry>? entries;
 
   @override
   Widget build(BuildContext context) {
@@ -180,7 +195,7 @@ class _FullBreakdown extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: _semanticSummary(breakdown),
+      label: _semanticSummary(breakdown, entries),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -199,24 +214,7 @@ class _FullBreakdown extends StatelessWidget {
               fontFeatures: const [FontFeature.tabularFigures()],
             ),
           ),
-          if (breakdown.hasPending) ...[
-            const SizedBox(height: AppTokens.sm),
-            _FullRow(
-              label: 'Partial · for approval',
-              amount: breakdown.pendingPartial,
-              negative: true,
-              tone: StatusTone.warning,
-            ),
-          ],
-          if (breakdown.hasApproved) ...[
-            const SizedBox(height: AppTokens.sm),
-            _FullRow(
-              label: 'Partial · approved',
-              amount: breakdown.approvedPartial,
-              negative: true,
-              tone: StatusTone.success,
-            ),
-          ],
+          ..._middleBand(),
           const SizedBox(height: AppTokens.md),
           const Divider(height: 1),
           const SizedBox(height: AppTokens.md),
@@ -242,6 +240,112 @@ class _FullBreakdown extends StatelessWidget {
           ],
         ],
       ),
+    );
+  }
+
+  /// The rows between `Original` and `Remaining`. Three states, no spinner —
+  /// the band always shows something arithmetically true.
+  List<Widget> _middleBand() {
+    final items = entries;
+
+    // Loading / stream error / caller not interested → the lumped totals.
+    if (items == null) {
+      return [
+        if (breakdown.hasPending) ...[
+          const SizedBox(height: AppTokens.sm),
+          _FullRow(
+            label: 'Partial · for approval',
+            amount: breakdown.pendingPartial,
+            negative: true,
+            tone: StatusTone.warning,
+          ),
+        ],
+        if (breakdown.hasApproved) ...[
+          const SizedBox(height: AppTokens.sm),
+          _FullRow(
+            label: 'Partial · approved',
+            amount: breakdown.approvedPartial,
+            negative: true,
+            tone: StatusTone.success,
+          ),
+        ],
+      ];
+    }
+
+    // Resolved but empty (e.g. legacy reports carrying no line items): say so
+    // rather than leaving a silent gap between the two totals.
+    if (items.isEmpty) {
+      return const [
+        SizedBox(height: AppTokens.sm),
+        _EmptyHistoryRow(),
+      ];
+    }
+
+    return [
+      for (final e in items) ...[
+        const SizedBox(height: AppTokens.sm),
+        _FullRow(
+          label: _entryLabel(e),
+          amount: e.amount,
+          negative: true,
+          tone: _entryTone(e.status),
+        ),
+      ],
+    ];
+  }
+}
+
+/// `Partial · Jan 5, 2026 · approved`. A null date (legacy report) reads as a
+/// dash instead of crashing or inventing a timestamp.
+String _entryLabel(LiquidationEntry e) {
+  final kind = e.isPartial ? 'Partial' : 'Full';
+  final when = e.date == null
+      ? '—'
+      : DateFormat('MMM d, yyyy').format(e.date!.toLocal());
+  return '$kind · $when · ${_statusWord(e.status)}';
+}
+
+String _statusWord(LiquidationEntryStatus status) => switch (status) {
+      LiquidationEntryStatus.approved => 'approved',
+      LiquidationEntryStatus.forApproval => 'for approval',
+      LiquidationEntryStatus.rejected => 'rejected',
+    };
+
+StatusTone _entryTone(LiquidationEntryStatus status) => switch (status) {
+      LiquidationEntryStatus.approved => StatusTone.success,
+      LiquidationEntryStatus.forApproval => StatusTone.warning,
+      LiquidationEntryStatus.rejected => StatusTone.danger,
+    };
+
+/// Muted stand-in for "we looked, there is nothing itemized to show". Mirrors
+/// [_FullRow]'s label/value geometry so the column stays visually aligned.
+class _EmptyHistoryRow extends StatelessWidget {
+  const _EmptyHistoryRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final textTheme = Theme.of(context).textTheme;
+    final scheme = Theme.of(context).colorScheme;
+    final muted = textTheme.bodyMedium?.copyWith(color: scheme.onSurfaceVariant);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            Expanded(child: Text('Liquidation history', style: muted)),
+            const SizedBox(width: AppTokens.md),
+            Text('—', textAlign: TextAlign.end, style: muted),
+          ],
+        ),
+        const SizedBox(height: AppTokens.xs),
+        Text(
+          'No itemized history available.',
+          style: textTheme.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
+        ),
+      ],
     );
   }
 }
@@ -335,12 +439,31 @@ class _AmountText extends StatelessWidget {
 }
 
 /// A11y: a single spoken sentence rather than a fragmentary digit-by-digit read.
-String _semanticSummary(RequestBreakdown b) {
+///
+/// [entries] must be whatever the widget actually rendered, so the spoken and
+/// visual content agree: non-empty → the itemized rows are narrated using the
+/// same `Partial · <date> · <status>` labels shown on screen; `[]` → "no
+/// itemized history", matching the [_EmptyHistoryRow] placeholder; `null`
+/// (still loading, or the stream errored) → the legacy lumped description,
+/// which is also what [_middleBand] renders in that state.
+String _semanticSummary(RequestBreakdown b, [List<LiquidationEntry>? entries]) {
   final parts = <String>['Original ${b.original.format()}'];
-  if (b.hasApproved) parts.add('approved partial ${b.approvedPartial.format()}');
-  if (b.hasPending) {
-    parts.add('partial for approval ${b.pendingPartial.format()}');
+
+  if (entries == null) {
+    if (b.hasApproved) {
+      parts.add('approved partial ${b.approvedPartial.format()}');
+    }
+    if (b.hasPending) {
+      parts.add('partial for approval ${b.pendingPartial.format()}');
+    }
+  } else if (entries.isEmpty) {
+    parts.add('no itemized history available');
+  } else {
+    for (final e in entries) {
+      parts.add('${_entryLabel(e)}, minus ${e.amount.format()}');
+    }
   }
+
   final tail = b.hasPending ? ' including pending' : '';
   parts.add('remaining ${b.projectedRemaining.format()}$tail');
   return parts.join(', ');

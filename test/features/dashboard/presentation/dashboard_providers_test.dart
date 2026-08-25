@@ -254,6 +254,11 @@ class _FakeReplenishmentRepo implements ReplenishmentRepository {
   @override
   Stream<List<Replenishment>> watchByFund(String companyId, String fundId) =>
       const Stream.empty();
+
+  @override
+  Stream<List<Replenishment>> watchByRequestId(
+          String companyId, String requestId) =>
+      const Stream.empty();
   @override
   Future<Result<Replenishment>> createDraft(
           {required String fundId,

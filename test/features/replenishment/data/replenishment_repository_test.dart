@@ -772,4 +772,70 @@ void main() {
         .get();
     expect(partials.docs.length, 2);
   });
+
+  group('watchByRequestId', () {
+    // Seeds a report doc directly so the query can be exercised without going
+    // through the draft/submit lifecycle.
+    Future<void> seedReport(
+      String id, {
+      required String companyId,
+      required List<String> requestIds,
+      String status = 'approved',
+      List<ReplenishmentItem> items = const [],
+    }) =>
+        db.collection('replenishments').doc(id).set({
+          'companyId': companyId,
+          'fundId': 'f1',
+          'status': status,
+          'requestIds': requestIds,
+          'totalCentavos': 0,
+          'reportNotes': '',
+          'createdByUid': 'inc',
+          'items': items.map((i) => i.toMap()).toList(),
+        });
+
+    test('returns only reports of the company whose requestIds contain the id',
+        () async {
+      await seedReport('repA',
+          companyId: 'c1',
+          requestIds: const ['r1', 'r2'],
+          items: [partial('r1', 50000, 'tranche')]);
+      // Same company, different request → excluded by arrayContains.
+      await seedReport('repB', companyId: 'c1', requestIds: const ['r2']);
+      // Same requestId, DIFFERENT company → must never leak across tenants.
+      await seedReport('repC', companyId: 'c2', requestIds: const ['r1']);
+
+      final repo = FirestoreReplenishmentRepository(db);
+      final reps = await repo.watchByRequestId('c1', 'r1').first;
+
+      expect(reps.map((r) => r.id).toList(), ['repA']);
+      expect(reps.single.items.single.requestId, 'r1');
+      expect(reps.single.items.single.amount.centavos, 50000);
+    });
+
+    test('returns every status (filtering is the domain layer\'s job)',
+        () async {
+      await seedReport('repDraft',
+          companyId: 'c1', requestIds: const ['r1'], status: 'draft');
+      await seedReport('repSubmitted',
+          companyId: 'c1', requestIds: const ['r1'], status: 'submitted');
+      await seedReport('repRejected',
+          companyId: 'c1', requestIds: const ['r1'], status: 'rejected');
+
+      final repo = FirestoreReplenishmentRepository(db);
+      final reps = await repo.watchByRequestId('c1', 'r1').first;
+
+      expect(reps.map((r) => r.status).toSet(), {
+        ReplenishmentStatus.draft,
+        ReplenishmentStatus.submitted,
+        ReplenishmentStatus.rejected,
+      });
+    });
+
+    test('empty when no report references the request', () async {
+      await seedReport('repA', companyId: 'c1', requestIds: const ['r2']);
+      final repo = FirestoreReplenishmentRepository(db);
+      expect(await repo.watchByRequestId('c1', 'r1').first, isEmpty);
+    });
+  });
 }

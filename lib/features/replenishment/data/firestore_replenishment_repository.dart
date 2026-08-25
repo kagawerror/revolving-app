@@ -65,6 +65,18 @@ class FirestoreReplenishmentRepository implements ReplenishmentRepository {
       .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
 
   @override
+  Stream<List<Replenishment>> watchByRequestId(String companyId, String requestId) => _reps
+      // Company-scoped for the sameCompany read rule, then membership-filtered
+      // on the denormalized requestIds array. Deliberately NO orderBy: it keeps
+      // the composite index to two fields and, more importantly, an orderBy on
+      // submittedAt would silently drop legacy docs that lack the field.
+      // Ordering happens in Dart (computeLiquidationHistory).
+      .where('companyId', isEqualTo: companyId)
+      .where('requestIds', arrayContains: requestId)
+      .snapshots()
+      .map((s) => s.docs.map((d) => Replenishment.fromMap(d.id, d.data())).toList());
+
+  @override
   Future<Result<Replenishment>> createDraft({
     required String fundId,
     required List<ReplenishmentItem> items,

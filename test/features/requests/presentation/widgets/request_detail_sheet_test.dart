@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:rev_app/core/money/money.dart';
+import 'package:rev_app/features/replenishment/domain/liquidation_history.dart';
+import 'package:rev_app/features/replenishment/presentation/replenishment_providers.dart';
 import 'package:rev_app/features/requests/domain/fund_request.dart';
 import 'package:rev_app/features/requests/domain/request_breakdown.dart';
 import 'package:rev_app/features/requests/domain/request_status.dart';
@@ -43,26 +46,37 @@ FundRequest _request({
 /// transition settles. We deliberately use timed [pump]s rather than
 /// [pumpAndSettle]: the sheet contains CachedNetworkImage placeholders with a
 /// perpetual CircularProgressIndicator, which would make pumpAndSettle time out.
+///
+/// The sheet is a ConsumerWidget that watches [liquidationHistoryProvider], so
+/// a ProviderScope with that family stubbed out is required — [entries] feeds
+/// it (defaults to an empty ledger).
 Future<void> _openSheet(
   WidgetTester tester, {
   required FundRequest request,
   required Money pendingPartial,
+  List<LiquidationEntry> entries = const [],
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
-      home: Scaffold(
-        body: Builder(
-          builder: (context) => Center(
-            child: ElevatedButton(
-              onPressed: () => showRequestDetailSheet(
-                context,
-                request: request,
-                breakdown: computeRequestBreakdown(
-                  request,
-                  pendingPartial: pendingPartial,
+    ProviderScope(
+      overrides: [
+        liquidationHistoryProvider.overrideWith((ref, arg) =>
+            Stream<List<LiquidationEntry>>.value(entries)),
+      ],
+      child: MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () => showRequestDetailSheet(
+                  context,
+                  request: request,
+                  breakdown: computeRequestBreakdown(
+                    request,
+                    pendingPartial: pendingPartial,
+                  ),
                 ),
+                child: const Text('open'),
               ),
-              child: const Text('open'),
             ),
           ),
         ),
@@ -145,6 +159,46 @@ void main() {
       );
       await tester.pump();
       expect(find.text('Liquidation'), findsOneWidget);
+    });
+
+    testWidgets('renders the itemized liquidation history when it resolves',
+        (tester) async {
+      final request = _request(replenishedCentavos: 50000);
+
+      await _openSheet(
+        tester,
+        request: request,
+        pendingPartial: Money.fromCentavos(30000),
+        entries: [
+          LiquidationEntry(
+            replenishmentId: 'rep1',
+            date: DateTime(2026, 1, 5),
+            isPartial: true,
+            amount: Money.fromCentavos(50000),
+            status: LiquidationEntryStatus.approved,
+          ),
+          LiquidationEntry(
+            replenishmentId: 'rep2',
+            date: DateTime(2026, 2, 9),
+            isPartial: true,
+            amount: Money.fromCentavos(30000),
+            status: LiquidationEntryStatus.forApproval,
+          ),
+        ],
+      );
+
+      final sheetList = find.byType(Scrollable).last;
+      await tester.dragUntilVisible(
+        find.text('Liquidation'),
+        sheetList,
+        const Offset(0, -120),
+      );
+      await tester.pump();
+
+      expect(find.text('Partial · Jan 5, 2026 · approved'), findsOneWidget);
+      expect(find.text('Partial · Feb 9, 2026 · for approval'), findsOneWidget);
+      // The lumped rows are gone once the ledger resolves.
+      expect(find.text('Partial · approved'), findsNothing);
     });
 
     testWidgets(
