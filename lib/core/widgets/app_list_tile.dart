@@ -12,6 +12,7 @@ class AppListTile extends StatelessWidget {
     this.subtitle,
     this.trailing,
     this.onTap,
+    this.subtitleMaxLines = 1,
   });
 
   final Widget? leading;
@@ -19,6 +20,11 @@ class AppListTile extends StatelessWidget {
   final String? subtitle;
   final Widget? trailing;
   final VoidCallback? onTap;
+
+  /// Lines the subtitle may occupy before it ellipsizes. Defaults to 1; raise it
+  /// when the caller passes a multi-line subtitle (e.g. `'purpose\ndate'`),
+  /// which would otherwise have everything after the first `\n` clipped away.
+  final int subtitleMaxLines;
 
   @override
   Widget build(BuildContext context) {
@@ -62,7 +68,7 @@ class AppListTile extends StatelessWidget {
                           padding: const EdgeInsets.only(top: 2),
                           child: Text(
                             sub,
-                            maxLines: 1,
+                            maxLines: subtitleMaxLines,
                             overflow: TextOverflow.ellipsis,
                             style: textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,

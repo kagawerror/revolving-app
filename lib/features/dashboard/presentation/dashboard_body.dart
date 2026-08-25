@@ -432,6 +432,9 @@ class _RecentTile extends StatelessWidget {
       subtitle: dateLine == null
           ? request.purpose
           : '${request.purpose}\n$dateLine',
+      // Two lines so the date line survives instead of being clipped away with
+      // everything after the '\n'.
+      subtitleMaxLines: 2,
       onTap: () => showRequestDetailSheet(
         context,
         request: request,
